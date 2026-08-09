@@ -124,11 +124,55 @@ Por isso o corte é configuração, nunca constante no código.
 
 Candidatura contém Discord tag, Battle.tag e texto que a pessoa escreveu esperando que só a liderança lesse. Se qualquer um dos ~590 membros do roster puder abrir isso, é vazamento.
 
-Então o painel é gated por `isOfficer`, uma flag **manual**, atribuída à mão a poucas pessoas. Deliberadamente **não** derivada do rank: errar o mapeamento para cima expõe dado pessoal de centenas de candidatos.
+Então o painel é gated por ser **oficial**, uma marcação **manual**, dada à mão a poucas pessoas. Deliberadamente **não** derivada do rank: errar o mapeamento para cima expõe dado pessoal de centenas de candidatos.
 
 Isso continua valendo **mesmo agora que o rank decide o acesso à área interna**. São dois gates independentes de propósito: passar do corte te dá a área interna, não a caixa de entrada do recrutamento. Um raider dentro do corte não vê candidatura.
 
-Use `canReviewApplications()`. Ela exige membership **e** a flag — sair da guilda derruba o acesso mesmo que ninguém lembre de desligar a flag.
+Use `canReviewApplications()`. Ela exige membership **e** ser oficial — sair da guilda derruba o acesso mesmo que ninguém lembre de revogar.
+
+### Oficial é concessão por personagem, não coluna na conta
+
+**Não existe `User.isOfficer`.** A fonte da verdade é a tabela `OfficerGrant`, uma linha por **personagem** (`nameKey` + `realmSlug`), gerenciada em `/interno/oficiais`. Ser oficial é derivado a cada leitura de sessão por `isOfficerByGrants()`, que casa os personagens da conta contra os grants.
+
+**Por personagem, e não por conta**, porque `User` só existe depois do primeiro login OAuth — e a liderança precisa poder preparar a lista antes disso. Quando isso foi montado, 4 dos 5 oficiais nunca tinham logado no site: uma tela que listasse contas mostraria uma linha só.
+
+**Derivado na leitura, sem cópia gravada**, por duas razões:
+
+- revogar vale na hora, na requisição seguinte — mesma lógica do cookie de sessão com estado no banco em vez de JWT;
+- não existe estado em que a flag da conta e a lista discordam.
+
+Custa uma consulta numa tabela de poucas linhas por requisição interna, e paga.
+
+A agregação é a mesma do resto da Regra 4: **qualquer** personagem da conta que case com **qualquer** grant basta.
+
+#### Três permissões, uma precondição
+
+| Função                    | Decide                                             |
+| ------------------------- | -------------------------------------------------- |
+| `isActingOfficer()`       | precondição comum — é o que o `OfficerGuard` checa |
+| `canReviewApplications()` | painel de candidaturas                             |
+| `canSeeOthersHistory()`   | histórico de outra pessoa (Regra 7)                |
+| `canManageOfficers()`     | conceder e revogar oficial                         |
+
+As três últimas têm o mesmo corpo hoje e continuam separadas de propósito: são decisões diferentes sobre dados diferentes, e uma pode mudar sem as outras. Delegar à precondição não é colapsar — mudar uma permissão é substituir o corpo dela, sem tocar nas demais.
+
+Guard genérico checa a **precondição**, nunca uma das específicas. Um guard que checasse `canSeeOthersHistory()` para proteger a lista de oficiais passaria a mentir no dia em que as duas divergissem, e o jeito de descobrir seria pelo acesso indevido.
+
+#### Conceder valida contra o roster
+
+Nome que não está no roster é recusado, e nome ambíguo também. Um grant com nome errado é indistinguível de um certo até a pessoa tentar entrar e não conseguir — e ninguém relaciona as duas coisas semanas depois. Já aconteceu: um nome passado pela liderança não existia no roster.
+
+Ambíguo é o caso do `toSlug()` da Regra 6: `Shrëwd`, `Shrêwd` e `Shrèwd` colapsam na mesma chave e são pessoas diferentes, com ranks diferentes. A tela lista as grafias e exige a exata em vez de escolher uma sozinha. O que fica gravado é a grafia da **Blizzard**, não a digitada, porque é ela que precisa casar com o `GuildCharacter` do login.
+
+Revogar o **último** oficial é recusado: a tela é gated por oficial, então zerar a lista tranca todo mundo para fora e o conserto vira `INSERT` manual em produção.
+
+#### Isto substituiu a flag no usuário (09/08/2026)
+
+Até aqui `isOfficer` era coluna no `User`, e **nenhum caminho no código escrevia nela** — promover era `UPDATE` no psql, sem registro de quem decidiu.
+
+Foi cogitado derivar de "oficial para cima" no rank, e descartado. Não existe "oficial para cima" legível: o roster devolve `rank` só como número, sem nome, então viraria `rank <= N` com N escolhido hoje — e a Regra 4 já avisa que rank é posicional. Some-se a agregação pelo melhor rank, e qualquer pessoa com um alt em rank alto viraria oficial. Na distribuição real da época, os 5 oficiais eram exatamente os ranks 0–2, mas o rank 3 tinha 4 personagens que não eram oficiais: a fronteira é julgamento humano, não propriedade do roster.
+
+Registrado aqui em vez de apagado, para ninguém refazer o raciocínio antigo achando que é novo.
 
 ## Regra 5 — Autorização é no Nest, sempre
 
