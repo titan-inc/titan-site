@@ -21,8 +21,8 @@ export function Acao({
 }: AcaoProps) {
   const classes = `inline-flex min-h-11 items-center justify-center rounded-[3px] px-5 font-mono text-[11px] tracking-[0.14em] uppercase transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50 ${
     variante === 'solida'
-      ? 'border-t border-edge border-b border-groove bg-accent text-bg hover:bg-accent/90'
-      : 'border border-border text-fg-muted hover:border-fg-subtle hover:text-fg'
+      ? 'acao-solida border-t border-edge border-b border-groove bg-accent text-bg'
+      : 'acao-fantasma border border-border text-fg-muted'
   } ${className}`;
 
   if (href)

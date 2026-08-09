@@ -13,9 +13,9 @@ export default function OpenGraphImage() {
         display: 'flex',
         position: 'relative',
         overflow: 'hidden',
-        color: 'rgb(237, 242, 232)',
+        color: 'rgb(233, 241, 221)',
         background:
-          'radial-gradient(ellipse at 72% 42%, rgb(25, 51, 28), rgb(11, 16, 12) 48%, rgb(8, 11, 8) 100%)',
+          'radial-gradient(ellipse at 72% 42%, rgb(18, 48, 31), rgb(11, 17, 22) 48%, rgb(14, 21, 26) 100%)',
         fontFamily: 'sans-serif',
       }}
     >
@@ -25,7 +25,7 @@ export default function OpenGraphImage() {
           inset: 0,
           display: 'flex',
           background:
-            'linear-gradient(100deg, rgb(8, 11, 8) 0%, rgba(8, 11, 8, .76) 48%, transparent 82%)',
+            'linear-gradient(100deg, rgb(14, 21, 26) 0%, rgba(14, 21, 26, .76) 48%, transparent 82%)',
         }}
       />
       <div
@@ -45,9 +45,9 @@ export default function OpenGraphImage() {
             letterSpacing: '-0.02em',
           }}
         >
-          TITAN<span style={{ marginLeft: 3, color: 'rgb(142, 234, 69)' }}>INC</span>
+          TITAN<span style={{ marginLeft: 3, color: 'rgb(143, 240, 75)' }}>INC</span>
         </div>
-        <div style={{ marginTop: 92, fontSize: 30, lineHeight: 1.3, color: 'rgb(165, 174, 160)' }}>
+        <div style={{ marginTop: 92, fontSize: 30, lineHeight: 1.3, color: 'rgb(170, 178, 156)' }}>
           Endgame sem abrir mão da vida real.
         </div>
         <div
@@ -55,7 +55,7 @@ export default function OpenGraphImage() {
             marginTop: 38,
             display: 'flex',
             alignItems: 'flex-end',
-            color: 'rgb(165, 174, 160)',
+            color: 'rgb(170, 178, 156)',
           }}
         >
           <div
@@ -80,7 +80,7 @@ export default function OpenGraphImage() {
             {Array.from({ length: 8 }, (_, indice) => (
               <div
                 key={indice}
-                style={{ width: 1, height: 7, display: 'flex', background: 'rgb(61, 71, 47)' }}
+                style={{ width: 1, height: 7, display: 'flex', background: 'rgb(57, 66, 42)' }}
               />
             ))}
           </div>
@@ -90,7 +90,7 @@ export default function OpenGraphImage() {
               marginLeft: 14,
               fontSize: 17,
               fontWeight: 700,
-              color: 'rgb(237, 242, 232)',
+              color: 'rgb(233, 241, 221)',
             }}
           >
             —/—
@@ -104,7 +104,7 @@ export default function OpenGraphImage() {
           right: 84,
           bottom: 45,
           height: 1,
-          background: 'rgba(237, 242, 232, .12)',
+          background: 'rgba(233, 241, 221, .12)',
         }}
       />
     </div>,
