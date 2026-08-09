@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { SnapshotsModule } from '../snapshots/snapshots.module';
 import { WarcraftLogsModule } from '../warcraftlogs/warcraftlogs.module';
 import { RaidProgressController } from './raidprogress.controller';
+import { RaidProgressPublicController } from './raidprogress.public.controller';
 import { RaidProgressService } from './raidprogress.service';
 
 /**
@@ -14,7 +15,7 @@ import { RaidProgressService } from './raidprogress.service';
  */
 @Module({
   imports: [AuthModule, SnapshotsModule, WarcraftLogsModule],
-  controllers: [RaidProgressController],
+  controllers: [RaidProgressController, RaidProgressPublicController],
   providers: [RaidProgressService],
 })
 export class RaidProgressModule {}

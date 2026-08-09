@@ -19,9 +19,9 @@ export function Apply() {
           <Rotulo>Candidatura</Rotulo>
           <h2
             id="candidatura-titulo"
-            className="text-fg mt-6 text-[30px] leading-[1.15] font-extrabold text-balance lg:text-[40px]"
+            className="entalhe text-fg text-[30px] font-extrabold lg:text-[40px]"
           >
-            Entrar para o registro
+            Entrar para o <span className="letra-fel">registro</span>
           </h2>
           <p className="text-fg-muted mt-6 text-[17px] leading-[1.6] text-pretty">
             Se o horário bate com o seu, vale conversar. Deixe o essencial; o restante a gente

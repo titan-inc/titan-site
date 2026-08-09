@@ -14,6 +14,21 @@ import { AuthService } from './auth.service';
 
 export const SESSION_COOKIE = 'titan_session';
 const STATE_COOKIE = 'titan_oauth_state';
+const MODE_COOKIE = 'titan_oauth_mode';
+
+function destinoLogin(
+  webUrl: string,
+  popup: boolean,
+  resultado: 'ok' | 'cancelado' | 'state' | 'falha',
+): string {
+  // Sem popup, a falha volta para a home com o motivo na querystring: a home é
+  // o único lugar de login desde que `/entrar` saiu, e ela abre o mesmo modal
+  // do fluxo de popup. O sucesso continua indo direto para a área interna.
+  if (!popup) return resultado === 'ok' ? `${webUrl}/interno` : `${webUrl}/?erro=${resultado}`;
+  return resultado === 'ok'
+    ? `${webUrl}/oauth/callback?status=ok`
+    : `${webUrl}/oauth/callback?status=erro&motivo=${resultado}`;
+}
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -36,7 +51,11 @@ export class AuthController {
    * na hora, sem mostrar tela nenhuma.
    */
   @Get('battlenet')
-  start(@Res() res: Response, @Query('trocar') trocar?: string): void {
+  start(
+    @Res() res: Response,
+    @Query('trocar') trocar?: string,
+    @Query('mode') mode?: string,
+  ): void {
     const state = this.auth.createOpaqueToken();
     const redirectUri = requireEnv('BLIZZARD_REDIRECT_URI');
     const forceLogin = trocar === '1';
@@ -50,6 +69,15 @@ export class AuthController {
       maxAge: 10 * 60 * 1000,
       path: '/',
     });
+    if (mode === 'popup') {
+      res.cookie(MODE_COOKIE, 'popup', {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 10 * 60 * 1000,
+        path: '/',
+      });
+    }
 
     res.redirect(this.auth.buildAuthorizeUrl(state, redirectUri, forceLogin));
   }
@@ -65,19 +93,21 @@ export class AuthController {
   ): Promise<void> {
     const webUrl = requireEnv('WEB_URL');
     const expectedState = (req.cookies as Record<string, string> | undefined)?.[STATE_COOKIE];
+    const popup = (req.cookies as Record<string, string> | undefined)?.[MODE_COOKIE] === 'popup';
 
     res.clearCookie(STATE_COOKIE, { path: '/' });
+    res.clearCookie(MODE_COOKIE, { path: '/' });
 
     // A pessoa pode simplesmente cancelar no consent. Não é erro do sistema.
     if (error) {
       this.logger.log(`Login cancelado ou recusado pela Blizzard: ${error}`);
-      res.redirect(`${webUrl}/entrar?erro=cancelado`);
+      res.redirect(destinoLogin(webUrl, popup, 'cancelado'));
       return;
     }
 
     if (!code || !state || !expectedState || state !== expectedState) {
       this.logger.warn('Callback com state inválido ou ausente');
-      res.redirect(`${webUrl}/entrar?erro=state`);
+      res.redirect(destinoLogin(webUrl, popup, 'state'));
       return;
     }
 
@@ -98,12 +128,12 @@ export class AuthController {
       // O destino é /interno para membro e não-membro: a própria página
       // explica o estado. Mandar não-membro para um 403 seco vira dúvida no
       // Discord — ver a discussão de três estados na TIT-20.
-      res.redirect(`${webUrl}/interno`);
+      res.redirect(destinoLogin(webUrl, popup, 'ok'));
     } catch (err) {
       this.logger.error(
-        `Falha ao concluir login: ${err instanceof Error ? err.message : String(err)}`,
+        `Falha ao concluir login: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
-      res.redirect(`${webUrl}/entrar?erro=falha`);
+      res.redirect(destinoLogin(webUrl, popup, 'falha'));
     }
   }
 

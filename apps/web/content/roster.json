@@ -1,0 +1,14 @@
+{
+  "titulo": "O time de raid",
+  "descricao": "Quem senta na raid. A lista é curadoria do raid leader.",
+  "membros": [
+    { "nome": "Vaelthorn", "imagem": "player-01.webp", "classe": "Death Knight" },
+    { "nome": "Sylvenne", "imagem": "player-02.webp", "classe": "Druid" },
+    { "nome": "Korrighan", "imagem": "player-03.webp", "classe": "Warrior" },
+    { "nome": "Mirethys", "imagem": "player-04.webp", "classe": "Mage" },
+    { "nome": "Draventh", "imagem": "player-05.webp", "classe": "Demon Hunter" },
+    { "nome": "Ashkarel", "imagem": "player-06.webp", "classe": "Paladin" },
+    { "nome": "Nyxaris", "imagem": "player-07.webp", "classe": "Rogue" },
+    { "nome": "Thalorien", "imagem": "player-08.webp", "classe": "Hunter" }
+  ]
+}

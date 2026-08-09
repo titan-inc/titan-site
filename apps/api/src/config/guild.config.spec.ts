@@ -12,7 +12,28 @@ describe('loadGuildConfig', () => {
       region: 'us',
       name: 'Titan Inc',
       realm: 'Azralon',
+      timezone: 'America/Sao_Paulo',
       rankAccessMax: 4,
+    });
+  });
+
+  describe('GUILD_TIMEZONE', () => {
+    it('lê o fuso do ambiente', () => {
+      expect(loadGuildConfig({ ...valid, GUILD_TIMEZONE: 'Europe/Lisbon' }).timezone).toBe(
+        'Europe/Lisbon',
+      );
+    });
+
+    it('cai no default quando não está definida', () => {
+      expect(loadGuildConfig(valid).timezone).toBe('America/Sao_Paulo');
+    });
+
+    it('rejeita fuso inválido no boot', () => {
+      // Sem isto, o erro só apareceria dentro do job de presença, como
+      // RangeError do Intl, sem mencionar configuração.
+      expect(() => loadGuildConfig({ ...valid, GUILD_TIMEZONE: 'Brasilia' })).toThrow(
+        /GUILD_TIMEZONE/,
+      );
     });
   });
 

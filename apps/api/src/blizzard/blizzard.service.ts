@@ -248,7 +248,9 @@ export class BlizzardService implements OnModuleInit {
       const body = await res.text().catch(() => '');
       // Quase sempre redirect_uri divergente da registrada no portal.
       this.logger.error(`Troca de code falhou: HTTP ${res.status} — ${body.slice(0, 200)}`);
-      throw new Error('Não foi possível concluir o login com a Blizzard');
+      throw new Error(
+        `Troca de code falhou com a Blizzard: HTTP ${res.status} — ${body.slice(0, 200)}`,
+      );
     }
 
     const data = (await res.json()) as TokenResponse;

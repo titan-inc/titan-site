@@ -21,6 +21,7 @@
     "probe:oauth": "node scripts/oauth-probe.js",
     "probe:snapshot": "node scripts/snapshot-probe.js",
     "probe:raid": "node scripts/raid-probe.js",
+    "probe:attendance": "node scripts/attendance-probe.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

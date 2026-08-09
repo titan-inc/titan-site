@@ -36,9 +36,12 @@ model User {
 
   membership Membership @default(not_member)
 
-  /// Acesso a dado pessoal de candidatos. Atribuído à MÃO, deliberadamente não
-  /// derivado do rank do jogo — ver Regra 4 do CLAUDE.md.
-  isOfficer Boolean @default(false)
+  /// NÃO existe coluna `isOfficer` aqui, e isso é decisão, não esquecimento.
+  ///
+  /// Ser oficial é derivado de `OfficerGrant` a cada leitura de sessão, porque
+  /// a permissão precisa poder ser dada ANTES do primeiro login — e conta só
+  /// existe depois do OAuth. Guardar uma cópia aqui criaria duas verdades e um
+  /// jeito silencioso de revogar um oficial sem ele perder o acesso.
 
   /// MELHOR rank entre os personagens da conta no roster — menor número é mais
   /// alto, e rank 0 é o guild master. Derivado de `characters`, desnormalizado
@@ -108,6 +111,44 @@ model GuildCharacter {
   @@index([realmSlug, nameKey])
 }
 
+/// Personagem que a liderança marcou como oficial.
+///
+/// É a lista MANUAL da Regra 4 — a única fonte de verdade sobre quem é oficial.
+/// Deliberadamente não derivada de rank: rank é posicional, e reordenar rank no
+/// jogo não pode promover ninguém a ver Discord tag e Battle.tag de candidato.
+///
+/// A concessão é por PERSONAGEM, e não por conta, porque conta só existe depois
+/// do primeiro login e a liderança precisa poder preparar a lista antes disso.
+/// O casamento com a conta acontece na leitura da sessão, via
+/// `isOfficerByGrants()` do shared: qualquer personagem da conta que case com
+/// qualquer grant basta — a mesma agregação por pessoa do resto da Regra 4.
+///
+/// Revogar é apagar a linha, e o efeito é imediato na próxima requisição: nada
+/// fica em cache no User. Mesma lógica da sessão com estado no banco.
+model OfficerGrant {
+  id String @id @default(cuid())
+
+  /// Identidade do personagem via toCharacterKey(): minúsculas em NFC, COM
+  /// acento — Shrëwd e Shrêwd são pessoas diferentes. Ver Regra 6.
+  nameKey String
+
+  /// Realm via toSlug(), igual ao GuildCharacter, para os dois casarem.
+  realmSlug String
+
+  /// Nome e realm como a Blizzard exibe. Só para a tela.
+  name  String
+  realm String
+
+  /// Battletag de quem concedeu, e quando. Promover alguém a ver dado pessoal
+  /// de centenas de candidatos não pode ser uma ação anônima.
+  grantedBy String
+  grantedAt DateTime @default(now())
+
+  /// Um grant por personagem. Conceder duas vezes atualiza, não duplica.
+  @@unique([realmSlug, nameKey])
+  @@index([realmSlug, nameKey])
+}
+
 /// Sessão com estado no banco, não JWT.
 ///
 /// É o que permite cortar acesso na hora quando alguém sai da guilda. Com JWT
@@ -162,6 +203,124 @@ model GameSeason {
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+}
+
+/// Noite de raid, como a guilda a planejou no WoWAudit.
+///
+/// A AUTORIDADE sobre "isso foi noite de raid" é o calendário do WoWAudit, não
+/// o Warcraft Logs. Quem sobe log é jogador, e sobe o que quiser: existe log de
+/// run de alt, de dungeon de M+ e de raid avulsa. A guilda declara a raid quando
+/// marca; o log é só a evidência do que aconteceu nela.
+model RaidNight {
+  /// Id da raid no WoWAudit.
+  id Int @id
+
+  /// Data de calendário no fuso da GUILDA (`GUILD_TIMEZONE`), "2026-07-28".
+  ///
+  /// String, e não DateTime, de propósito: isto é uma data de calendário, não
+  /// um instante. Guardar como timestamp reintroduziria o fuso que a chave
+  /// justamente elimina — e a raid começa 21:00 BRT, que já é o dia seguinte
+  /// em UTC.
+  date String
+
+  title      String
+  instance   String
+  difficulty String
+
+  /// Run extra / de alt.
+  ///
+  /// Gravada sempre, contada separado: comparar quem foi a uma run de alt com
+  /// quem foi à raid do core distorce os dois lados. Descartar seria injusto ao
+  /// contrário — quem aparece nas opcionais está se dedicando.
+  optional Boolean @default(false)
+
+  seasonId Int?
+
+  /// Relatórios do WCL casados com esta noite, pela data. Vazio = sem log.
+  reportCodes String[]
+
+  /// Pulls de boss somadas dos logs da noite. Null = noite sem log.
+  bossPulls Int?
+
+  /// A noite tem lista de signup?
+  ///
+  /// O WoWAudit só devolve signups a partir de 2026; as 83 noites de 2024–2025
+  /// vêm com a lista vazia. Sem esta flag, o backfill afirmaria que essa gente
+  /// toda "apareceu sem confirmar" — indisciplina inventada a partir de dado
+  /// que não existe.
+  hasSignups Boolean @default(false)
+
+  attendance RaidAttendance[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@index([seasonId])
+}
+
+/// O que aconteceu com um personagem numa noite de raid.
+///
+/// Guarda o FATO OBSERVÁVEL, nunca a interpretação. O estado derivado sai de
+/// `toAttendanceState()` no shared, para o job e a tela não divergirem.
+model RaidAttendance {
+  id String @id @default(cuid())
+
+  raidNightId Int
+  raidNight   RaidNight @relation(fields: [raidNightId], references: [id], onDelete: Cascade)
+
+  /// Identidade: nome + realm. Ver Regra 6 — nome sozinho colide.
+  nameKey String
+
+  /// Realm por `toRealmMatchKey()`, NÃO por `toSlug()`.
+  ///
+  /// Aqui a linha nasce de duas fontes que escrevem realm diferente: o signup
+  /// do WoWAudit diz "Area 52" e o log do WCL diz "Area52". Por `toSlug()` isso
+  /// viraria `area-52` e `area52` — duas linhas para a mesma pessoa na mesma
+  /// noite, uma "confirmou e sumiu" e outra "raidou sem confirmar".
+  ///
+  /// Para cruzar com `GuildCharacter`, aplique `toRealmMatchKey()` no
+  /// `realmSlug` de lá — a função é idempotente sobre o slug.
+  realmKey String
+
+  /// Nome exibido, com acento.
+  name String
+
+  /// Realm exibido, na forma da fonte que a guilda reconhece.
+  realm String
+
+  /// Status auto-declarado no signup. Null = a pessoa não estava no signup.
+  signup String?
+
+  /// Apareceu em alguma pull de boss.
+  ///
+  /// **NULL quando a noite não tem log** — e null NÃO é false. Log pode chegar
+  /// dias depois, ou nunca; tratar ausência de log como falta acusaria a raid
+  /// inteira de furar.
+  raided Boolean?
+
+  /// Em que pull de boss entrou (1 = a primeira). Sinal de atraso, não prova:
+  /// "entrou na pull 5" pode ser rodízio normal.
+  firstPull Int?
+
+  /// Em quantas pulls de boss apareceu.
+  pulls Int?
+
+  /// Motivo anotado pelo raid leader, à mão.
+  ///
+  /// É a CORREÇÃO DO HUMANO, e o job **nunca** a sobrescreve ao reprocessar a
+  /// noite. Sistema que decide sozinho a reputação de alguém erra em público, e
+  /// a liderança para de confiar nele.
+  note   String?
+  noteBy String?
+  noteAt DateTime?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Uma linha por personagem por noite. Reprocessar atualiza, não duplica.
+  @@unique([raidNightId, realmKey, nameKey])
+  @@index([realmKey, nameKey])
 }
 
 /// Foto semanal de um personagem do time de raid.

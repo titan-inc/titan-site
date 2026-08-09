@@ -258,6 +258,35 @@ export function toSlug(value: string): string {
 }
 
 /**
+ * Chave de realm para casar **fontes diferentes** entre si.
+ *
+ * `toSlug()` não serve para isso, e o motivo é concreto: cada ferramenta
+ * escreve realm composto de um jeito.
+ *
+ * | fonte              | Area 52   | Demon Soul   |
+ * | ------------------ | --------- | ------------ |
+ * | Blizzard / WoWAudit| `Area 52` | `Demon Soul` |
+ * | Warcraft Logs      | `Area52`  | `DemonSoul`  |
+ *
+ * Pelo `toSlug()` isso vira `area-52` de um lado e `area52` do outro — e o
+ * casamento falha **em silêncio**. Na noite de 28/07/2026, Decenty-DemonSoul e
+ * Kusiak-Area52 estavam no log e seriam gravados como "Não Raidou": acusação de
+ * furo contra quem raidou. Não é caso de borda: **58 dos 344 realms US** têm
+ * hífen no slug.
+ *
+ * A chave tira todo separador depois do `toSlug()`. Verificado contra o índice
+ * de realms da Blizzard: os 344 realms US geram **344 chaves distintas**, zero
+ * colisão — colapsar separador não junta realms diferentes.
+ *
+ * Use **só** para comparar realm entre fontes. O que vai para o banco e para os
+ * endpoints da Blizzard continua sendo `toSlug()`, que é o formato que a
+ * Blizzard aceita na URL.
+ */
+export function toRealmMatchKey(realm: string): string {
+  return toSlug(realm).replace(/[^a-z0-9]/g, '');
+}
+
+/**
  * Identidade de um personagem vindo da API da Blizzard.
  *
  * **Preserva acento de propósito.** WoW não permite dois personagens com o mesmo

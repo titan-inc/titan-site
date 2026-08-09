@@ -1,10 +1,16 @@
 import 'server-only';
 
 import {
+  attendanceReportSchema,
+  myAttendanceSchema,
+  officerListSchema,
   progressReportSchema,
   raidProgressReportSchema,
   rosterSchema,
   sessionUserSchema,
+  type AttendanceReport,
+  type MyAttendance,
+  type OfficerList,
   type ProgressReport,
   type RaidProgressReport,
   type Roster,
@@ -158,6 +164,72 @@ export async function getRaidProgress(season?: string): Promise<RaidProgressRepo
     if (body === null) return null;
 
     const parsed = raidProgressReportSchema.safeParse(body);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Presença de raid de todo mundo. **Só oficial** — Regra 7.
+ *
+ * Null quando a API recusa (403 para membro que não é oficial), e a página
+ * trata isso como "esta seção não é para você", não como erro.
+ */
+export async function getAttendanceReport(): Promise<AttendanceReport | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/attendance`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = attendanceReportSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lista de oficiais. **Só oficial** — quem tem acesso a dado pessoal de
+ * candidato não é informação pública da guilda.
+ *
+ * Null quando a API recusa (403) ou está fora do ar.
+ */
+export async function getOfficers(): Promise<OfficerList | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/officers`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      // Generoso porque a lista busca o roster da Blizzard para mostrar o rank
+      // de cada grant; com o cache do Nest frio isso é uma chamada externa.
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = officerListSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** O próprio histórico de presença. Qualquer membro com acesso interno. */
+export async function getMyAttendance(): Promise<MyAttendance | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/attendance/me`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = myAttendanceSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

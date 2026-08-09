@@ -1,4 +1,4 @@
-import type { CSSProperties, ElementType } from 'react';
+import type { ElementType } from 'react';
 
 interface WordmarkProps {
   as?: ElementType;
@@ -12,22 +12,19 @@ const TAMANHOS = {
   footer: 'text-[34px]',
 } as const;
 
-/** Ponto único de troca do wordmark provisório pelo SVG final A3. */
 export function Wordmark({
   as: Componente = 'span',
   className = '',
   tamanho = 'nav',
 }: WordmarkProps) {
-  const estilo = { fontStretch: '112%' } as CSSProperties;
-
   return (
     <Componente
       aria-label="Titan Inc"
-      className={`relative inline-flex items-center font-sans leading-none font-extrabold tracking-[-0.02em] text-current ${TAMANHOS[tamanho]} ${className}`}
-      style={estilo}
+      style={{ fontStretch: '112%' }}
+      className={`wordmark relative inline-flex items-center font-sans leading-none font-extrabold tracking-[-0.02em] text-current ${TAMANHOS[tamanho]} ${className}`}
     >
       <span aria-hidden="true">TITAN</span>
-      <span aria-hidden="true" className="text-accent ml-[0.06em]">
+      <span aria-hidden="true" className="letra-fel wordmark-inc ml-[0.06em]">
         INC
       </span>
     </Componente>

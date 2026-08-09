@@ -1,62 +1,47 @@
 @import 'tailwindcss';
 
 /**
- * Tokens de tema, derivados da linguagem visual Fel controlada.
- *
- * A procedência anterior — pixels da logo em aquarela (public/titan-inc-logo.png)
- * — não existe mais: a logo saiu do projeto e a metáfora náutica que ela ancorava
- * saiu junto. As cores abaixo vêm das fotografias Fel da hero e do recruit:
- * carvão esverdeado, ferro-oliva e energia Fel correndo nos sulcos.
- *
- * R1 — FERRO-OLIVA É ESTRUTURA, FEL É ENERGIA.
- * O que é estrutura permanece mineral e dessaturado; o que está aceso usa Fel.
- *
- * R2 — Fel é sinal, nunca preenchimento de grandes áreas e nunca glow.
- *
- * Nenhuma página deve hardcodar cor — sempre via token.
- *
- * EXCEÇÃO ÚNICA E AUTORIZADA: cor de classe do WoW, em `lib/wow/classe.ts`.
- * O valor vem de dado (`RosterEntry.wowClass`), não de design, então não pode
- * ser classe Tailwind e vai em `style` inline — só na borda esquerda da placa
- * do roster e no arco do retrato editorial. Nunca como texto (três das treze
- * cores reprovam 4,5:1) e nunca como preenchimento de área. Se você encontrar
- * um hex inline em outro lugar, a regra não caiu: aquilo é bug.
+ * Paleta derivada da key art em public/assets/curseulatek.webp: ardósia (ar e espaço
+ * negativo), pedra oliva (matéria) e Fel (energia acesa).
+ * R1 — Ardósia é o ar. Pedra é a matéria. Fel é a energia.
+ * R2 — Fel acende matéria dentro do teto de 18% da viewport. Halo verde só
+ * emana de veios, fraturas, brasas, arestas energizadas, wordmark e arte da hero.
+ * Nenhuma página hardcoda cor. Exceção única: a cor de classe proveniente de
+ * dado em lib/wow/classe.ts, somente na borda da placa e arco do retrato.
  */
 @theme {
-  --color-bg: #080b08;
-  --color-surface: #111611;
-  --color-border: #293329;
-
-  --color-fg: #edf2e8;
-  --color-fg-muted: #a5aea0;
-  /* Metadado pequeno preserva contraste sem competir com o texto corrido. */
-  --color-fg-subtle: #838d7e;
-
-  /* Energia Fel: ação, foco, progresso vencido e o INC da marca. */
-  --color-accent: #8eea45;
-  --color-accent-soft: #193311;
-
-  /* Aliases legados `bronze*`, agora ferro-oliva estrutural. Mantidos para que
-     a migração cromática não force uma troca cosmética de todas as classes. */
-  --color-bronze: #87945f;
-  /* Aresta do bisel que pega luz. */
-  --color-bronze-lit: #b4c27c;
-  /* Sombra do bisel, corpo do parafuso, runa apagada. */
-  --color-bronze-deep: #3d472f;
-
-  /* A luz superior e o sulco inferior formam o par obrigatório de toda chapa. */
-  --color-edge: rgba(237, 242, 232, 0.08);
+  --color-bg: #111a20;
+  --color-surface: #19242c;
+  --color-deep: #0d151b;
+  --color-deep-lit: #1d5233;
+  --color-border: #27343d;
+  --color-fg: #e9f1dd;
+  --color-fg-muted: #aab29c;
+  --color-fg-subtle: #8b9382;
+  --color-accent: #8ff04b;
+  --color-accent-lit: #c6ee3a;
+  --color-accent-deep: #2c7a18;
+  --color-accent-soft: #16240f;
+  --color-pedra: #8f9a63;
+  --color-pedra-lit: #c2cb8e;
+  --color-pedra-deep: #39422a;
+  --color-edge: rgba(233, 241, 221, 0.08);
   --color-groove: rgba(0, 0, 0, 0.52);
-
-  /* Campo atmosférico da landing. O núcleo claro só aparece em gradientes. */
-  --color-deep: #0b100c;
-  --color-deep-lit: #19331c;
-
-  /* Sucesso é mais frio e menos luminoso que o Fel de ação. */
   --color-ok: #63d18b;
   --color-danger: #ff8178;
   --color-danger-soft: #351b19;
 
+  /* Azul Battle.net. Fora das três famílias de propósito: é afordância de
+     terceiro, como "entrar com o Google" — o usuário precisa reconhecer a marca
+     do provedor de identidade, não a nossa. Só aparece no botão de login.
+     O azul de assinatura (#00aeff) reprova 4,5:1 com texto branco, então ele
+     fica na aresta e no glifo, e o preenchimento usa o azul profundo. */
+  --color-battlenet: #0b6bc7;
+  --color-battlenet-deep: #075b9e;
+  --color-battlenet-lit: #00aeff;
+  /* Branco de verdade, não o osso da paleta: fidelidade de marca do provedor.
+     5,33:1 sobre o azul mais claro do gradiente. */
+  --color-battlenet-fg: #ffffff;
   --font-sans: var(--font-archivo);
   --font-mono: var(--font-geist-mono);
 }
@@ -65,25 +50,45 @@ body {
   background-color: var(--color-bg);
   color: var(--color-fg);
 }
-
 html {
   scroll-behavior: smooth;
 }
-
 section[id] {
+  position: relative;
   scroll-margin-top: 4rem;
 }
-
+section[id]::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  height: 1px;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    var(--color-border) 0 35%,
+    var(--color-accent-deep) 43%,
+    var(--color-accent) 50%,
+    var(--color-accent-deep) 57%,
+    var(--color-border) 65% 100%
+  );
+}
+body::after {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  content: '';
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.7'/%3E%3C/svg%3E");
+}
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-/**
- * Toda superfície elevada recebe a mesma luz superior-direita e o mesmo
- * sulco inferior. Centralizar isso impede que a direção da luz derive entre
- * as seções quando a landing crescer.
- */
 @utility chapa {
   border-top: 1px solid var(--color-edge);
   border-bottom: 1px solid var(--color-groove);
@@ -95,57 +100,240 @@ section[id] {
   );
 }
 
-/**
- * Campo Fel da candidatura. Os veios usam polígonos angulados, sem glow:
- * energia aparece como fratura na matéria, não como iluminação ambiente.
- */
-.recrutamento-fel {
+@utility letra-fel {
+  background: linear-gradient(
+    180deg,
+    var(--color-accent-lit) 0%,
+    var(--color-accent) 46%,
+    var(--color-accent-deep) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.recrutamento-fel,
+.hero-campo {
   background:
     radial-gradient(
-      ellipse at 18% 48%,
+      ellipse at var(--campo-x, 18%) var(--campo-y, 48%),
       color-mix(in srgb, var(--color-accent) 8%, transparent),
-      transparent 36%
-    ),
-    radial-gradient(
-      ellipse at 76% 12%,
-      color-mix(in srgb, var(--color-bronze-deep) 24%, transparent),
-      transparent 42%
+      transparent 38%
     ),
     linear-gradient(118deg, var(--color-bg), var(--color-deep) 48%, var(--color-surface));
 }
-
+.campo-estratos {
+  position: absolute;
+  inset: 0;
+  z-index: -4;
+  opacity: 0.6;
+  background:
+    linear-gradient(
+      100deg,
+      transparent 15%,
+      color-mix(in srgb, var(--color-pedra) 28%, transparent) 15.4%,
+      transparent 16%
+    ),
+    linear-gradient(
+      104deg,
+      transparent 48%,
+      color-mix(in srgb, var(--color-pedra-deep) 30%, transparent) 48.5%,
+      transparent 49.2%
+    ),
+    linear-gradient(
+      97deg,
+      transparent 76%,
+      color-mix(in srgb, var(--color-pedra) 24%, transparent) 76.5%,
+      transparent 77.2%
+    );
+}
+.campo-malha,
 .recrutamento-fel::after {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -3;
+  content: '';
   background:
     linear-gradient(90deg, transparent 49.8%, var(--color-edge) 50%, transparent 50.2%),
     linear-gradient(0deg, transparent 49.8%, var(--color-groove) 50%, transparent 50.2%);
   background-size: 88px 88px;
-  content: '';
-  opacity: 0.28;
+  opacity: 0.34;
   transform: skewX(-8deg);
+}
+.hero-fenda {
+  position: absolute;
+  inset: 0;
+  z-index: -5;
+  opacity: 1;
+  background:
+    radial-gradient(ellipse at 72% 46%, var(--color-deep-lit), transparent 62%),
+    radial-gradient(
+      ellipse at 72% 48%,
+      color-mix(in srgb, var(--color-accent) 30%, transparent),
+      transparent 46%
+    );
+}
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    var(--color-bg) 0%,
+    rgba(14, 21, 26, 0.92) 35%,
+    rgba(14, 21, 26, 0.22) 68%,
+    transparent 82%
+  );
+}
+.hero-vinheta {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(11, 17, 22, 0.68) 100%);
+}
+.hero-arte {
+  animation: acender-arte 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/**
+ * Aura da arte. Três anéis, não dois: o núcleo saturado dá emissão, o médio dá
+ * corpo à luz e o largo assenta a peça no campo. Com só dois o retrato voltava
+ * a parecer flutuando.
+ */
+.hero-aura {
+  position: absolute;
+  inset: -22%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse at 50% 52%,
+      color-mix(in srgb, var(--color-accent) 40%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      ellipse at 50% 53%,
+      color-mix(in srgb, var(--color-accent) 20%, transparent),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse at 50% 55%,
+      color-mix(in srgb, var(--color-deep-lit) 92%, transparent),
+      transparent 72%
+    );
+}
+
+/**
+ * Horizonte Fel: a fenda no chão da hero.
+ *
+ * É o acréscimo de maior retorno da rodada — dá base à composição e acrescenta
+ * área acesa sem manchar a coluna de texto, porque vive abaixo dela. A linha
+ * fina no topo do degradê é o que impede que vire "brilho difuso" e mantém a
+ * aresta definida que a R2 exige.
+ */
+.hero-horizonte {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  height: 230px;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--color-accent) 46%, transparent),
+      color-mix(in srgb, var(--color-accent-deep) 30%, transparent) 30%,
+      transparent 82%
+    ),
+    linear-gradient(0deg, var(--color-accent-lit) 0 2px, transparent 2px);
+  opacity: 0.7;
+}
+
+/**
+ * Fratura entre seções. Substitui a divisória neutra de 1px: o trecho central
+ * fica aceso, como carga passando na junta. Continua dividindo — é a R5, forma
+ * segue função — e acrescenta Fel onde já havia uma linha.
+ */
+.fratura {
+  position: relative;
+}
+
+/**
+ * Estados de interação.
+ *
+ * Só dentro de `hover: hover` — em toque, `:hover` gruda depois do tap e o
+ * elemento fica aceso sem motivo. A aura da ação primária é a única sombra
+ * colorida autorizada pela R2: ela emana do próprio botão aceso, é transitória
+ * e não passa de 24px.
+ */
+@media (hover: hover) {
+  .acao-solida:hover {
+    box-shadow: 0 0 24px -4px color-mix(in srgb, var(--color-accent) 70%, transparent);
+  }
+
+  .placa-roster:hover {
+    border-left-width: 3px;
+    transform: translateY(-2px);
+  }
+}
+
+/* `bottom: 0`, não `-1px`: a hero tem `overflow-hidden` e recortaria a fratura. */
+.fratura::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  content: '';
+  background: linear-gradient(
+    90deg,
+    transparent 4%,
+    color-mix(in srgb, var(--color-accent) 55%, transparent) 26%,
+    var(--color-accent) 44%,
+    color-mix(in srgb, var(--color-accent) 45%, transparent) 62%,
+    transparent 92%
+  );
+  opacity: 0.7;
+}
+.hero-horizonte {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  height: 180px;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--color-accent) 16%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(0deg, var(--color-accent-lit) 0, transparent 2px);
+  opacity: 0.6;
 }
 
 .veios-fel {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -2;
   overflow: hidden;
   pointer-events: none;
 }
-
 .veios-fel span {
   position: absolute;
   left: -12%;
   width: 78%;
-  height: 38px;
+  height: 52px;
+  overflow: hidden;
   background: linear-gradient(
     90deg,
     transparent,
-    var(--color-bronze-deep) 18%,
-    var(--color-accent) 48%,
-    var(--color-bronze-lit) 58%,
+    var(--color-pedra-deep) 18%,
+    var(--color-accent-deep) 45%,
+    var(--color-accent) 51%,
+    var(--color-pedra-lit) 58%,
     transparent 88%
   );
   clip-path: polygon(
@@ -166,54 +354,251 @@ section[id] {
     26% 63%,
     14% 50%
   );
-  opacity: 0.34;
+  opacity: 0.72;
 }
-
 .veios-fel span:nth-child(1) {
   top: 16%;
   transform: rotate(8deg) scaleX(1.15);
 }
-
 .veios-fel span:nth-child(2) {
   top: 35%;
   left: 4%;
   width: 54%;
   transform: rotate(-17deg) scaleY(0.65);
-  opacity: 0.22;
+  opacity: 0.52;
 }
-
 .veios-fel span:nth-child(3) {
   top: 55%;
   left: -18%;
   width: 92%;
   transform: rotate(14deg) scaleY(0.45);
-  opacity: 0.28;
+  opacity: 0.62;
 }
-
 .veios-fel span:nth-child(4) {
   top: 74%;
   left: 8%;
   width: 48%;
   transform: rotate(-9deg) scaleY(0.75);
-  opacity: 0.19;
+  opacity: 0.45;
 }
-
 .veios-fel span:nth-child(5) {
   top: 87%;
   left: -4%;
   width: 68%;
   transform: rotate(19deg) scaleY(0.4);
-  opacity: 0.25;
+  opacity: 0.55;
 }
 
-@media (max-width: 767px) {
-  .veios-fel span {
-    left: -28%;
-    width: 142%;
-    opacity: 0.22;
+.brasas {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.brasas span {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--color-accent-lit);
+  box-shadow: 0 0 12px var(--color-accent-lit);
+  opacity: 0.22;
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* Forma longa de propósito. A abreviada `animation: entalhar linear both`
+       zera a duração (o valor inicial de `animation-duration` é `0s`), e
+       animação ancorada em scroll exige `auto` para que o progresso venha da
+       timeline. Com `0s` ela congela no primeiro quadro — que aqui é
+       `opacity: 0` — e o heading simplesmente não aparece nunca. */
+    .entalhe {
+      animation-name: entalhar;
+      animation-duration: auto;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 34%;
+    }
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .hero-fenda {
+    animation: acender-fenda 1200ms 150ms ease-out both;
+  }
+  .wordmark-inc {
+    animation: ignicao-wordmark 700ms 400ms ease-out both;
+  }
+  .haste-acesa {
+    animation: ignicao-haste 500ms ease-out both;
+  }
+  .haste-acesa:nth-child(2) {
+    animation-delay: 40ms;
+  }
+  .haste-acesa:nth-child(3) {
+    animation-delay: 80ms;
+  }
+  .haste-acesa:nth-child(4) {
+    animation-delay: 120ms;
+  }
+  .haste-acesa:nth-child(5) {
+    animation-delay: 160ms;
+  }
+  .haste-acesa:nth-child(6) {
+    animation-delay: 200ms;
+  }
+  .haste-acesa:nth-child(7) {
+    animation-delay: 240ms;
+  }
+  .haste-acesa:nth-child(8) {
+    animation-delay: 280ms;
+  }
+  .haste-acesa:nth-child(9) {
+    animation-delay: 320ms;
+  }
+  .haste-acesa:nth-child(10) {
+    animation-delay: 360ms;
+  }
+  .haste-acesa:nth-child(n + 11) {
+    animation-delay: 400ms;
+  }
+  .veios-fel span::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--color-accent-lit) 50%,
+      transparent 100%
+    );
+    mix-blend-mode: screen;
+    opacity: 0.85;
+    animation: correr-veio 5s linear infinite;
+  }
+  .veios-fel span:nth-child(2)::after {
+    animation-duration: 7s;
+    animation-delay: -4s;
+  }
+  .veios-fel span:nth-child(3)::after {
+    animation-duration: 6s;
+    animation-delay: -7s;
+  }
+  .veios-fel span:nth-child(4)::after {
+    animation-duration: 9s;
+    animation-delay: -2s;
+  }
+  .brasas span {
+    animation: subir-brasa 24s linear infinite;
+  }
+}
+
+@keyframes correr-veio {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes entalhar {
+  from {
+    clip-path: polygon(
+      0 100%,
+      12% 96%,
+      27% 100%,
+      43% 95%,
+      61% 100%,
+      78% 96%,
+      100% 100%,
+      100% 100%,
+      0 100%
+    );
+    opacity: 0;
+  }
+  to {
+    clip-path: polygon(0 0, 12% 0, 27% 0, 43% 0, 61% 0, 78% 0, 100% 0, 100% 100%, 0 100%);
+    opacity: 1;
+  }
+}
+@keyframes acender-fenda {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes acender-arte {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes ignicao-wordmark {
+  from {
+    background-position: 0 -1.2em;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@keyframes ignicao-haste {
+  from {
+    opacity: 0;
+    transform: scaleY(0.35);
+    transform-origin: bottom;
+  }
+  to {
+    opacity: 0.7;
+    transform: scaleY(1);
+    transform-origin: bottom;
+  }
+}
+@keyframes subir-brasa {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  12% {
+    opacity: 0.5;
+  }
+  82% {
+    opacity: 0.22;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(24px, -58vh, 0);
+  }
+}
+
+@media (forced-colors: active) {
+  .letra-fel {
+    background: none;
+    color: CanvasText;
+  }
+}
+@media (hover: hover) {
+  .acao-solida:hover {
+    background-color: var(--color-accent-lit);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--color-accent) 42%, transparent);
+  }
+  .acao-fantasma:hover {
+    border-color: var(--color-accent);
+    color: var(--color-fg);
+  }
+  nav a:hover > span[aria-hidden] {
+    height: 11px;
+    background-color: var(--color-accent);
+  }
+  .placa-roster:hover {
+    border-left-width: 3px;
+    transform: translateY(-2px);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -223,8 +608,20 @@ section[id] {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  .hero-fenda,
+  .hero-arte {
+    opacity: 1;
+    transform: none;
+  }
+  .brasas,
+  .veios-fel span::after {
+    display: none;
+  }
+  .entalhe {
+    clip-path: none;
+    opacity: 1;
+  }
 }
-
 @media (prefers-contrast: more) {
   :focus-visible {
     outline-width: 3px;
@@ -233,18 +630,13 @@ section[id] {
     border-color: var(--color-fg-subtle);
   }
 }
-
-@keyframes assentar {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@media (max-width: 767px) {
+  .veios-fel span {
+    left: -28%;
+    width: 142%;
+    opacity: 0.45;
   }
 }
-
 @media (max-width: 767px) and (orientation: landscape) and (max-height: 620px) {
   #topo > div:last-child {
     min-height: auto;

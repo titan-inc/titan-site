@@ -6,6 +6,7 @@ import {
   SPEC_CLASS,
   SPECS,
   toCharacterKey,
+  toRealmMatchKey,
   toSlug,
   wowSpecSchema,
 } from './wow.js';
@@ -152,5 +153,38 @@ describe('toCharacterKey', () => {
 
   it('ignora espaço em volta', () => {
     expect(toCharacterKey('  Joci  ')).toBe('joci');
+  });
+});
+
+describe('toRealmMatchKey', () => {
+  it('casa o realm composto entre Warcraft Logs e WoWAudit', () => {
+    // O caso real: o WCL escreve "Area52" e "DemonSoul"; a Blizzard e o
+    // WoWAudit escrevem "Area 52" e "Demon Soul".
+    expect(toRealmMatchKey('Area52')).toBe(toRealmMatchKey('Area 52'));
+    expect(toRealmMatchKey('DemonSoul')).toBe(toRealmMatchKey('Demon Soul'));
+  });
+
+  it('casa também com o slug que a Blizzard usa na URL', () => {
+    expect(toRealmMatchKey('area-52')).toBe(toRealmMatchKey('Area 52'));
+  });
+
+  it('toSlug NÃO casa esses pares — é por isso que esta função existe', () => {
+    // Sem ela, quem raidou de Area52 seria gravado como "Não Raidou".
+    expect(toSlug('Area52')).not.toBe(toSlug('Area 52'));
+    expect(toSlug('DemonSoul')).not.toBe(toSlug('Demon Soul'));
+  });
+
+  it('não junta realms diferentes', () => {
+    // Verificado contra o índice da Blizzard: 344 realms US, 344 chaves.
+    const chaves = new Set(
+      ['Area 52', 'Azralon', 'Demon Soul', 'Illidan', 'Sargeras', 'Stormrage'].map(toRealmMatchKey),
+    );
+    expect(chaves.size).toBe(6);
+  });
+
+  it('é idempotente', () => {
+    for (const realm of ['Area 52', 'Demon Soul', 'Tol Barad']) {
+      expect(toRealmMatchKey(toRealmMatchKey(realm))).toBe(toRealmMatchKey(realm));
+    }
   });
 });

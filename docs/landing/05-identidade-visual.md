@@ -1,250 +1,100 @@
-# Identidade visual — contrato vigente
+# Identidade visual da landing — contrato consolidado
 
-> Documento normativo da identidade da Titan Inc no site.
->
-> Estado consolidado em 06/08/2026. Este arquivo substitui `05-identidade-titanica.md` e as emendas visuais que estavam distribuídas nos documentos 06, 07 e 08.
+Versão 3.1 — 09/08/2026. Este documento é a fonte normativa da identidade visual implementada.
 
 ## 1. Ideia central
 
-A Titan Inc não é apresentada como fantasia naval, painel sci-fi ou reprodução literal da interface de World of Warcraft. O site constrói um ambiente próprio: **estrutura mineral antiga atravessada por energia Fel controlada**.
-
-O tom visual deve comunicar peso, disciplina e aferição. A energia aparece como sinal de funcionamento, nunca como decoração espalhada.
+A identidade nasce da key art `apps/web/public/assets/curseulatek.webp` e trabalha três famílias: **ardósia é o ar**, **pedra é a matéria** e **Fel é a energia**. Ardósia fria ocupa fundo e espaço negativo; pedra oliva dessaturada dá massa a chapas, bordas, sulcos e hastes apagadas; Fel aparece somente no que está aceso.
 
 ## 2. Princípios normativos
 
-### R1 — Ferro-oliva é estrutura; Fel é energia
+### R1 — Ardósia é o ar. Pedra é a matéria. Fel é a energia
 
-Fundos, chapas, linhas, sulcos e ornamentos usam carvão, superfície esverdeada e ferro-oliva dessaturado. Fel fica reservado para:
+Fundo e espaço negativo são ardósia fria. Tudo que tem massa é pedra quente dessaturada. Só energia acesa usa Fel. A oposição térmica entre ardósia azulada e pedra oliva é obrigatória.
 
-- ações primárias;
-- foco;
-- progresso vencido;
-- `INC` no wordmark;
-- fraturas energizadas da candidatura.
+### R2 — Fel acende matéria. Tem orçamento, não proibição
 
-### R2 — Fel é sinal, não preenchimento
-
-Não usar Fel como fundo de seção, grande mancha, texto corrido ou borda generalizada. Não usar glow, blur luminoso, neon ou sombra colorida. A energia deve ter aresta definida.
+Fel e seu halo ocupam entre 10% e 18% de qualquer viewport; abaixo disso a página parece desligada e acima disso a hierarquia morre. Halo é esperado onde energia emana de matéria: veio, fratura, brasa, aresta energizada, aura da arte ou wordmark. Permanecem proibidos: `text-shadow`; halo colorido em chapa, divisória, campo, foco ou moldura; Fel como fundo chapado de seção; halo fora da família Fel; `filter: blur()` sobre conteúdo. A aura transitória do botão sólido no hover fica limitada a 24 px.
 
 ### R3 — Fotografia e interface têm papéis diferentes
 
-A fotografia da hero estabelece atmosfera. A interface estabelece hierarquia e precisão. Não sobrepor mecanismos detalhados ou decoração competitiva à imagem. O scrim faz a ponte entre fotografia e conteúdo.
+A arte dá atmosfera; a interface continua legível e funcional sem depender dela. Texto não recebe sombra: o contraste vem do scrim.
 
-### R4 — O site não imita a UI do jogo
+### R4 — Exceção nominal para a key art
 
-São proibidos molduras de addon, barras de vida, tooltip de item, textura de pergaminho, runas copiadas, brasões oficiais e qualquer asset proprietário usado como ornamento. Referências a World of Warcraft aparecem no conteúdo e nos dados, não por imitação de interface.
+`curseulatek.webp`, derivada exclusivamente de `curseulatek.png`, é autorizada somente na hero, sob a Blizzard Fan Content Policy: site de fã, sem fim comercial e com aviso de propriedade no footer. A exceção não cobre brasão, ícone de classe, screenshot de UI, textura ou fonte da Blizzard, nem arte da Blizzard em Open Graph, favicon ou marca.
 
 ### R5 — Forma segue função
 
-Toda marca visual precisa explicar um papel: chapa agrupa, sulco separa, haste marca estado, Fel indica energia ou ação, monoespaçada identifica metadado. Ornamento sem função deve ser removido.
+Chapa, sulco, haste e recorte existem para hierarquia e leitura, nunca como ornamento gratuito.
+
+### R6 — Pedra não se move. Energia se move
+
+Animação representa energia percorrendo matéria parada. Não há parallax, cards deslizando, layout em movimento, pulso de Fel ou animação contínua da progressão.
+
+### R7 — A letra do jogo é um elemento anômalo, e vive dentro da arte
+
+A tipografia da key art pertence à peça, não à página. A interface não imita nem aproxima a letra do jogo: o contraste entre a arte e a tipografia sóbria da interface é deliberado e aplica a R4 com coerência.
 
 ## 3. Paleta oficial
 
-| Token                 | Valor                   | Uso                        |
-| --------------------- | ----------------------- | -------------------------- |
-| `--color-bg`          | `#080b08`               | fundo principal            |
-| `--color-surface`     | `#111611`               | superfícies elevadas       |
-| `--color-border`      | `#293329`               | divisórias e contornos     |
-| `--color-fg`          | `#edf2e8`               | texto principal            |
-| `--color-fg-muted`    | `#a5aea0`               | texto secundário           |
-| `--color-fg-subtle`   | `#838d7e`               | metadado pequeno           |
-| `--color-accent`      | `#8eea45`               | energia Fel e ação         |
-| `--color-accent-soft` | `#193311`               | apoio Fel de pequena área  |
-| `--color-bronze`      | `#87945f`               | ferro-oliva estrutural     |
-| `--color-bronze-lit`  | `#b4c27c`               | aresta mineral iluminada   |
-| `--color-bronze-deep` | `#3d472f`               | sulco, estrutura apagada   |
-| `--color-edge`        | `rgba(237,242,232,.08)` | luz superior de chapa      |
-| `--color-groove`      | `rgba(0,0,0,.52)`       | sulco inferior             |
-| `--color-deep`        | `#0b100c`               | campo atmosférico          |
-| `--color-deep-lit`    | `#19331c`               | núcleo de gradiente        |
-| `--color-ok`          | `#63d18b`               | sucesso, mais frio que Fel |
-| `--color-danger`      | `#ff8178`               | erro e falha               |
-| `--color-danger-soft` | `#351b19`               | fundo de erro              |
+| Token                                                   | Valor                                         | Papel           |
+| ------------------------------------------------------- | --------------------------------------------- | --------------- |
+| `bg` / `surface` / `deep` / `deep-lit`                  | `#111a20` / `#19242c` / `#0d151b` / `#1d5233` | ardósia e campo |
+| `border`                                                | `#27343d`                                     | divisória       |
+| `fg` / `fg-muted` / `fg-subtle`                         | `#e9f1dd` / `#aab29c` / `#8b9382`             | osso e texto    |
+| `accent` / `accent-lit` / `accent-deep` / `accent-soft` | `#8ff04b` / `#c6ee3a` / `#2c7a18` / `#16240f` | Fel             |
+| `pedra` / `pedra-lit` / `pedra-deep`                    | `#8f9a63` / `#c2cb8e` / `#39422a`             | matéria         |
+| `edge` / `groove`                                       | `rgba(233,241,221,.08)` / `rgba(0,0,0,.52)`   | luz e sulco     |
 
-Os nomes `bronze*` permanecem por compatibilidade, mas sua leitura visual é ferro-oliva, não ouro ou bronze polido.
+Os aliases `bronze*` foram removidos integralmente. `accent-deep` nunca é texto e nunca recebe opacidade. Cores de classe continuam como exceção de dado, apenas na borda da placa e no arco do retrato.
 
-Nenhuma página pode hardcodar uma cor de identidade. Alterações de paleta acontecem nos tokens de `globals.css`.
+Contraste WCAG remedido após a v3.1 (`bg` / `surface`): `fg` 15,17:1 / 13,60:1; `fg-muted` 8,01:1 / 7,19:1; `fg-subtle` 5,53:1 / 4,96:1. Todos os pares aprovam AA, inclusive o par crítico `fg-subtle` sobre `surface`.
 
-## 4. Exceção: cores de classe do WoW
+## 4. Tipografia
 
-A única exceção autorizada ao uso exclusivo de tokens são as treze cores oficiais de classe, centralizadas em `apps/web/lib/wow/classe.ts`.
+Archivo é a única face de títulos e corpo; h1 e h2 usam extrabold e tracking `-0.02em`. Geist Mono permanece em rótulos, metadados, navegação, botões e numerais. Não existe face de display na interface.
 
-Regras:
+O gradiente vertical Fel (`accent-lit` → `accent` → `accent-deep`) aparece somente no `INC` do wordmark e em no máximo uma ênfase por h2. A h1 é osso. Em forced colors a letra volta a `CanvasText`.
 
-- são dado de apresentação, não contrato compartilhado;
-- entram por `style` apenas na borda esquerda da placa e no arco do retrato editorial;
-- nunca aparecem como cor de texto;
-- nunca preenchem áreas grandes;
-- grafia desconhecida degrada para `--color-fg-subtle`;
-- nenhum outro hex inline é permitido fora desse módulo e de APIs que exigem estilo serializado, como `ImageResponse`.
+## 5. Marca
 
-## 5. Tipografia
+`TITANINC` usa Archivo extrabold, `fontStretch: 112%` e os tamanhos históricos 18/22/34 px. `TITAN` mantém `currentColor`; `INC` usa o gradiente Fel e faz uma única ignição no carregamento. O `aria-label="Titan Inc"` é obrigatório.
 
-### Archivo
+## 6. Hero
 
-Fonte sans principal, carregada com eixo de largura. Usa-se em títulos, texto corrido, botões e wordmark.
+A grade de 12 colunas é preservada: texto ocupa colunas 1–5 e a key art decorativa ocupa 7–12. No mobile, arte vem antes do texto. A imagem usa `next/image`, `preload`, dimensões 1202×802, `object-contain`, alpha com múltiplos valores e arquivo WebP de 149.584 bytes. Dois gradientes formam a aura atrás da peça e um horizonte Fel assenta a base da hero; a imagem não usa blend mode nem filtro.
 
-- títulos: peso 700–800, tracking levemente negativo;
-- corpo: 17–22 px conforme contexto, line-height aproximado de 1.6;
-- não usar caixa alta em parágrafos ou headings longos.
+O fundo não usa imagem: ardósia, fenda Fel radial, três estratos de pedra, malha entalhada, quatro veios, 14 brasas determinísticas, scrim direcional e vinheta são CSS. `hero-background.png` não existe. A coluna textual mantém piso escuro e não usa `text-shadow`.
 
-### Geist Mono
+## 7. Progressão
 
-Fonte de metadado: rótulos, contagens, estados, navegação e pequenas leituras técnicas.
+A régua de hastes, resumo, limite de 20 bosses e `sr-only` permanecem. Hastes acesas recebem apenas uma cascata de ignição no carregamento; nunca há animação contínua.
 
-- tamanho recorrente: 10–11 px;
-- caixa alta;
-- tracking entre `.12em` e `.14em`;
-- nunca usar em texto corrido.
+Raid e dificuldade aparecem como **sigla**, nunca como nome inteiro: `CM · M`, na forma em que jogador escreve progressão. O nome completo truncava em "Complexo Merid…", que não informa nada e parece defeito — a régua vive entre o wordmark e o menu e não tem largura para mais que isso. Com sigla o rótulo cabe a partir do `lg`, sem truncamento.
 
-## 6. Marca
+O nome completo não se perde e nunca pode se perder: fica no `title`, no painel do mobile e na descrição do leitor de tela. A derivação e o mapa de exceções vivem em `lib/progressao/sigla.ts`.
 
-A marca principal é o wordmark tipográfico `TITANINC`:
+## 8. Roster
 
-- `TITAN` usa a cor do contexto;
-- `INC` usa Fel;
-- não existe espaço visual amplo entre as partes;
-- usa Archivo extrabold, largura 112%, tracking `-0.02em` e `line-height: 1`;
-- precisa permanecer alinhado ao centro da navbar.
+A fonte pública é `apps/web/content/roster.json`, validada com Zod em `lib/roster/conteudo.ts`. A lista versionada é provisória, usa dez nomes fictícios e deve ser substituída no JSON junto das fotos em `public/roster`; ao fazê-lo, remove-se o sufixo “· lista de exemplo”. Campos: `nome` obrigatório (1–24), `imagem` e `classe` opcionais. O `prebuild` enumera fotos em um manifesto importado pelo servidor, sem acesso ao filesystem em request e compatível com standalone. Fotos são locais, lazy e têm dimensões explícitas. Arquivo ausente cai no retrato editorial; JSON inválido quebra o build; lista vazia omite a seção.
 
-A antiga imagem `titan-inc-logo.png` está aposentada e não deve voltar. A âncora, aquarela e gradiente azul/roxo/rosa não fazem parte da identidade vigente.
+## 9. Candidatura
 
-`Marca` no footer é um vestígio abstrato de baixa opacidade, sem função de progressão. Ela pode ser substituída ou removida, mas nunca promovida a marca principal.
+Hero e candidatura compartilham a gramática do campo Fel. Veios são o único movimento contínuo e representam carga passando em fraturas. Formulário, schema, honeypot e relações ARIA permanecem intactos.
 
-## 7. Superfícies e geometria
+## 10. Movimento e acessibilidade
 
-### Chapa
+Veios têm 52 px, opacidade 0,45–0,72 e brilho corrente a 0,85 em 5–9 s. Brasas medem 4–9 px, usam opacidade 0,22–0,5 e halo próprio de 12 px. Estratos usam opacidade 0,6 e pedra clara/escura; a malha usa 0,34. Fenda, arte, wordmark e hastes têm ignição única. H2 usa carve-in com `animation-timeline: view()` exclusivamente dentro de `@supports`. Sem suporte, headings ficam visíveis. Em hover capaz, ação sólida ganha aura ≤24 px, ação fantasma acende borda, haste da nav cresce e placa do roster sobe 2 px com borda de classe de 3 px. `prefers-reduced-motion` desliga todo movimento e esconde brasas, mantendo fenda, aura, arte e conteúdo visíveis. Só `transform`, `opacity` e `clip-path` animam; não há `will-change` permanente. Um único overlay fixo de grão SVG cobre a página.
 
-`chapa` é a superfície elevada padrão:
+## 11. Área interna
 
-- raio de 3 px;
-- aresta superior clara;
-- sulco inferior escuro;
-- gradiente vertical quase imperceptível;
-- sem sombra colorida;
-- sombra preta é permitida apenas para separação espacial, como no formulário sobre o campo Fel.
+A área interna herda tokens e Archivo extrabold nos títulos de página. Não recebe campo Fel, veios, brasas, carve-in ou animação em laço.
 
-### Linhas e hastes
+## 12. Iconografia, Open Graph e proibições
 
-Linhas estruturais têm 1 px. Estado ativo pode usar uma haste Fel mais longa. Cantos arredondados grandes e cartões flutuantes genéricos não pertencem à landing.
+Não criar ornamento que imite UI do WoW. A arte licenciada não entra em OG, favicon ou marca. Open Graph serializa os RGB da paleta nova. São proibidos: `text-shadow`, glow permanente de interface, Fel acima de 18% do viewport, imitação tipográfica do letreiro do jogo, aleatoriedade em Server Component e qualquer informação transmitida só por cor ou movimento.
 
-### Espaçamento
+## 13. Governança
 
-Conteúdo principal respeita largura máxima de 1120 px; a composição da hero pode chegar a 1440 px. Seções usam ritmo vertical amplo, tipicamente 96–160 px conforme breakpoint.
-
-## 8. Fotografia da hero
-
-`public/assets/hero-background.png` é a única fotografia atmosférica obrigatória da landing.
-
-Direção:
-
-- escura, Fel e com assunto deslocado para a direita;
-- preserva área negativa para a manchete à esquerda;
-- recebe scrim horizontal escuro e gradiente inferior;
-- não recebe filtro de blur, glow ou saturação agressiva;
-- não carrega texto embutido;
-- é decorativa no HTML.
-
-O enquadramento é parte do contrato: 72% no mobile/base e 65% em desktop. Mudanças exigem conferir a face/assunto e a legibilidade do H1 em todos os breakpoints.
-
-## 9. Progressão na navbar
-
-A progressão é uma régua compacta, não um instrumento circular.
-
-- boss vencido: haste Fel de 2 px e 12 px de altura;
-- boss pendente: haste de ferro-oliva de 1 px e 6 px;
-- linha de base: sulco estrutural;
-- contagem `vencidos/total`: texto principal monoespaçado;
-- raid e dificuldade: metadado secundário, visível apenas quando há espaço;
-- acima de 20 bosses, as marcas individuais somem e a contagem permanece.
-
-É proibido tornar as hastes interativas, adicionar tooltip, animar progressão ou reconstruir o disco aposentado.
-
-## 10. Roster
-
-A placa da tripulação é editorial, não um card de jogo:
-
-- retrato ocupa a maior parte da área;
-- dados ficam em faixa inferior compacta;
-- cor de classe é uma assinatura lateral estreita;
-- fallback de retrato usa tipografia e um arco, sem simular personagem;
-- nomes e valores permanecem em cores neutras para garantir contraste.
-
-## 11. Candidatura Fel
-
-A candidatura representa uma superfície de registro diante de um campo instável, mas controlado.
-
-O fundo atual é CSS, sem imagem:
-
-- gradiente mineral de carvão para superfície;
-- campos radiais Fel de até 8% de mistura;
-- grade inclinada em opacidade baixa;
-- cinco fraturas poligonais com rotações e espessuras distintas;
-- nenhuma animação, glow ou blur;
-- no mobile, os veios ficam mais largos e menos opacos.
-
-O formulário permanece em uma chapa escura à direita no desktop e em largura total no mobile. Veios não podem atravessar visualmente o texto a ponto de reduzir contraste.
-
-## 12. Movimento
-
-O estado vigente não depende de animação ornamental. Transições curtas são permitidas para foco, hover, navbar rolada e abertura do painel.
-
-Regras:
-
-- duração curta e easing simples para UI;
-- nenhuma animação contínua;
-- nenhuma pulsação Fel;
-- nenhuma paralaxe;
-- `prefers-reduced-motion: reduce` deve reduzir tudo a efeito praticamente instantâneo;
-- movimento nunca comunica informação sozinho.
-
-## 13. Iconografia e imagens
-
-- preferir tipografia, linha, CSS e componentes existentes;
-- não criar SVG ilustrativo novo para substituir uma imagem;
-- ícones, quando necessários, devem ser simples e funcionais;
-- não usar imagem de recrutamento, personagem ou armadura como fundo da candidatura;
-- retratos reais do roster são permitidos quando vêm da fonte de dados;
-- toda imagem grande precisa passar pelo `next/image`, salvo geração do Open Graph.
-
-## 14. Open Graph
-
-O card social reproduz o sistema atual: fundo carvão/Fel, wordmark tipográfico, headline e régua de progressão indisponível. Não usa logo raster, disco ou imagem de recrutamento.
-
-Como `ImageResponse` recebe estilos serializados, cores equivalentes aos tokens podem aparecer como valores RGB nesse arquivo. Elas devem ser atualizadas junto com a paleta.
-
-## 15. Voz e conteúdo
-
-Tom:
-
-- direto e adulto;
-- específico sobre tempo, agenda e fontes;
-- sem grandiosidade vazia;
-- sem jargão naval;
-- sem fingir que dado pendente está disponível;
-- português brasileiro, com termos do jogo apenas quando são a forma natural usada pela comunidade.
-
-Exemplos alinhados: “cinco horas por semana”, “dados de desenvolvimento”, “progressão indisponível”, “deixe o essencial”.
-
-## 16. Proibições resumidas
-
-Não usar:
-
-- logo raster antiga;
-- metáfora náutica ou âncora;
-- paleta azul/roxo/rosa anterior;
-- ouro brilhante;
-- neon, glow ou blur luminoso;
-- instrumento circular de progressão;
-- imagem de orc/recrutamento;
-- estética de addon ou UI copiada do WoW;
-- Fel em grandes preenchimentos;
-- cor de classe como texto;
-- sombras de texto;
-- decoração animada contínua.
-
-## 17. Governança
-
-Este documento legisla a identidade vigente. `04-implementation-spec.md` legisla estrutura, comportamento, estados e QA. `globals.css` é a implementação canônica dos tokens.
-
-Se código e documento divergirem, a alteração não está concluída: decidir qual estado é intencional e atualizar ambos no mesmo commit. Não criar novo documento de emenda; editar estes contratos diretamente e registrar a decisão no histórico do Git.
+Este arquivo e `04-implementation-spec.md` são os únicos contratos vivos da landing. Mudança implementada deve editar estes contratos diretamente; não criar documento paralelo de emenda.
