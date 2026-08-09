@@ -66,11 +66,13 @@ describe('catalogRaidSchema', () => {
     slug: 'the-voidspire',
     name: 'The Voidspire',
     seasonId,
+    instanceMapId: 2569,
     encounters: [
       {
         id: 'ckboss',
         name: 'Boss A',
         position: 0,
+        dungeonEncounterId: 2687,
         drops: [
           {
             difficulty: RAID_DIFFICULTIES.MYTHIC,
@@ -98,5 +100,19 @@ describe('catalogRaidSchema', () => {
 
   it('aceita raid já ligada à season', () => {
     expect(catalogRaidSchema.parse(raid(17)).seasonId).toBe(17);
+  });
+
+  it('aceita boss sem o id do jogo', () => {
+    // Estado normal de boss cadastrado antes de alguém buscar o número no
+    // Warcraft Logs. Nulo aqui significa "ainda não conferido", e o construtor
+    // de sessão não vai conseguir casar a colagem com este boss até preencher.
+    const base = raid(17);
+    const semId = {
+      ...base,
+      encounters: base.encounters.map((e) => ({ ...e, dungeonEncounterId: null })),
+    };
+
+    const [boss] = catalogRaidSchema.parse(semId).encounters;
+    expect(boss?.dungeonEncounterId).toBeNull();
   });
 });

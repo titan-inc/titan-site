@@ -46,12 +46,14 @@ function raidSelect(difficulty?: RaidDifficultyLevel) {
     slug: true,
     name: true,
     seasonId: true,
+    instanceMapId: true,
     encounters: {
       orderBy: { position: 'asc' },
       select: {
         id: true,
         name: true,
         position: true,
+        dungeonEncounterId: true,
         drops: {
           where: difficulty ? { difficulty } : {},
           select: { difficulty: true, item: { select: itemSelect } },
@@ -98,6 +100,29 @@ export class CatalogRepository {
         update: {},
       });
     }
+  }
+
+  /**
+   * O boss pelo id do jogo, com a raid dele.
+   *
+   * É por aqui que a colagem do addon vira sessão: o cabeçalho traz
+   * `encounter=2687`, e achar o boss por esse número entrega **também** a raid,
+   * pela relação. Por isso o `instanceMapId` da colagem é conferência e não
+   * chave — a raid não precisa ser procurada.
+   */
+  findEncounterByDungeonId(dungeonEncounterId: number) {
+    return this.prisma.catalogEncounter.findUnique({
+      where: { dungeonEncounterId },
+      select: {
+        id: true,
+        name: true,
+        position: true,
+        dungeonEncounterId: true,
+        raid: {
+          select: { id: true, slug: true, name: true, seasonId: true, instanceMapId: true },
+        },
+      },
+    });
   }
 
   /** Itens que nunca foram enriquecidos — a fila do job que preenche nome e ícone. */

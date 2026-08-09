@@ -43,10 +43,12 @@ function toCatalogRaid(raid: RaidRow): CatalogRaid {
     slug: raid.slug,
     name: raid.name,
     seasonId: raid.seasonId,
+    instanceMapId: raid.instanceMapId,
     encounters: raid.encounters.map((encounter) => ({
       id: encounter.id,
       name: encounter.name,
       position: encounter.position,
+      dungeonEncounterId: encounter.dungeonEncounterId,
       drops: encounter.drops.map((drop) => ({
         difficulty: drop.difficulty,
         item: toCatalogItem(drop.item),

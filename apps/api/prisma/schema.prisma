@@ -575,6 +575,18 @@ model CatalogRaid {
   /// "The Voidspire".
   name String
 
+  /// `instanceMapID` do cliente, como o addon emite no cabeçalho da colagem.
+  ///
+  /// É CONFERÊNCIA, não chave de casamento: achar o boss pelo
+  /// `dungeonEncounterId` já entrega a raid pela FK, então a raid vem de graça.
+  /// Guardar isto permite detectar colagem cujo `instance` não corresponde à raid
+  /// do boss — sinal de dado estranho, que é melhor notar do que ignorar.
+  ///
+  /// CUIDADO: não é o mesmo espaço de id da zona do Warcraft Logs. Aberrus é
+  /// `2569` aqui e zona `33` no WCL. Só o id de ENCOUNTER coincide entre as duas
+  /// fontes; comparar estes números com os do WCL erra em silêncio.
+  instanceMapId Int?
+
   /// Season da Blizzard, **opcional de propósito**.
   ///
   /// `GameSeason` é populada pelo job de snapshot a partir de
@@ -610,11 +622,34 @@ model CatalogEncounter {
   /// Ordem do boss na raid, para a tela listar na sequência em que se mata.
   position Int
 
+  /// `dungeonEncounterID` do jogo. É a chave que casa três fontes.
+  ///
+  /// Verificado em 09/08/2026 contra a API do Warcraft Logs, com sete ids que o
+  /// addon emitiu em raid real, de duas expansões: 2688 Kazzara, 2687 The
+  /// Amalgamation Chamber, 2693 The Forgotten Experiments, 2032 Goroth, 2048
+  /// Demonic Inquisition, 2036 Harjatan, 2037 Mistress Sassz'ine. Sete de sete
+  /// com o nome batendo.
+  ///
+  /// Ou seja: o `ENCOUNTER_END` do jogo e o WCL usam o MESMO espaço de id. Uma
+  /// coluna resolve três coisas — casar a colagem do addon com o boss, casar a
+  /// progressão que o `warcraftlogs.service.ts` já busca, e dar identidade
+  /// estável ao boss em vez de depender do nome, que é localizado.
+  ///
+  /// NÃO é o `journalEncounterID` do Encounter Journal, que é outro espaço de id.
+  /// Cadastrar o número de lá faria a colagem não casar com boss nenhum, sem erro.
+  ///
+  /// Único de propósito: dois bosses com o mesmo id seria ambiguidade na hora de
+  /// casar a colagem, e é melhor o banco recusar do que a sessão escolher um dos
+  /// dois. Nulo enquanto o cadastro não tiver o número.
+  dungeonEncounterId Int? @unique
+
   drops EncounterDrop[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  /// Sem `@@index` para o `dungeonEncounterId`: o `@unique` dele já cria índice
+  /// no Postgres, e um segundo seria peso morto na escrita.
   @@unique([raidId, position])
   @@index([raidId])
 }

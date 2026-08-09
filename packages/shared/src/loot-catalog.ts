@@ -73,6 +73,18 @@ export const catalogEncounterSchema = z.object({
   name: z.string(),
   /** Ordem em que se mata na raid. */
   position: z.number().int(),
+
+  /**
+   * `dungeonEncounterID` do jogo — o mesmo id que o Warcraft Logs usa.
+   *
+   * Vai no contrato porque o cadastro do catálogo confere este número contra o
+   * WCL (o WCL responde o nome do boss a partir do id), e quem cadastra precisa
+   * vê-lo na tela para conferir.
+   *
+   * Nulo enquanto ninguém preencheu.
+   */
+  dungeonEncounterId: z.number().int().nullable(),
+
   drops: encounterDropSchema.array(),
 });
 export type CatalogEncounter = z.infer<typeof catalogEncounterSchema>;
@@ -90,6 +102,14 @@ export const catalogRaidSchema = z.object({
    * tratar nulo como "ainda não ligada", nunca como dado faltando.
    */
   seasonId: z.number().int().nullable(),
+
+  /**
+   * `instanceMapID` do cliente. Conferência, não chave de casamento.
+   *
+   * NÃO comparar com a zona do Warcraft Logs: Aberrus é `2569` aqui e zona `33`
+   * lá. Só o id de encounter coincide entre as duas fontes.
+   */
+  instanceMapId: z.number().int().nullable(),
 
   encounters: catalogEncounterSchema.array(),
 });

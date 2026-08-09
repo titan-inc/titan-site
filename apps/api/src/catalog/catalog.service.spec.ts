@@ -35,11 +35,13 @@ const raidRow = (over: Record<string, unknown> = {}) => ({
   slug: 'the-voidspire',
   name: 'The Voidspire',
   seasonId: null,
+  instanceMapId: 2569,
   encounters: [
     {
       id: 'ckboss0',
       name: 'Boss A',
       position: 0,
+      dungeonEncounterId: 2687,
       drops: [
         { difficulty: RaidDifficulty.mythic, item: itemRow(249276) },
         { difficulty: RaidDifficulty.heroic, item: itemRow(249276) },
@@ -49,6 +51,8 @@ const raidRow = (over: Record<string, unknown> = {}) => ({
       id: 'ckboss1',
       name: 'Boss B',
       position: 1,
+      // Nulo de propósito: boss cadastrado antes de alguém buscar o id no WCL.
+      dungeonEncounterId: null,
       drops: [],
     },
   ],
@@ -76,7 +80,10 @@ describe('CatalogService', () => {
 
     const raid = primeira(await service.listRaids());
 
-    expect(raid).toMatchObject({ slug: 'the-voidspire', seasonId: null });
+    expect(raid).toMatchObject({ slug: 'the-voidspire', seasonId: null, instanceMapId: 2569 });
+    // O id do jogo atravessa até o contrato: é o que casa a colagem do addon com
+    // o boss, e é o que o cadastro confere contra o Warcraft Logs.
+    expect(raid.encounters.map((e) => e.dungeonEncounterId)).toEqual([2687, null]);
     expect(raid.encounters.map((e) => e.drops)).toEqual([
       [
         { difficulty: RAID_DIFFICULTIES.MYTHIC, item: item(249276) },
