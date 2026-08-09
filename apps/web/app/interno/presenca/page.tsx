@@ -77,7 +77,7 @@ function Cabecalho({ night, entries }: { night: RaidNightInfo; entries: Attendan
  */
 export default async function PresencaPage() {
   const user = await getSessionUser();
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
   if (!user.hasInternalAccess) redirect('/interno');
 
   const oficial = canSeeOthersHistory(user);

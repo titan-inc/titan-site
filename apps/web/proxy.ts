@@ -23,9 +23,11 @@ export function proxy(request: NextRequest) {
   const temCookie = request.cookies.has(SESSION_COOKIE);
 
   if (!temCookie) {
+    // Para a home, não para uma página de login: a home é o único lugar de
+    // login desde que `/entrar` saiu. O motivo abre o modal e some da URL.
     const url = request.nextUrl.clone();
-    url.pathname = '/entrar';
-    url.search = '';
+    url.pathname = '/';
+    url.search = '?erro=sessao';
     return NextResponse.redirect(url);
   }
 

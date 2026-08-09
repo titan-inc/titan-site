@@ -102,4 +102,20 @@ describe('AuthController popup OAuth', () => {
     );
     expect(auth.completeLogin).not.toHaveBeenCalled();
   });
+
+  // A página `/entrar` não existe mais: a home é o único lugar de login, e é ela
+  // que abre o modal com o motivo. Sem este teste, voltar o destino para
+  // `/entrar` passaria despercebido e mandaria a pessoa para um 404 — justamente
+  // no caminho sem JavaScript, que é o único que sobra quando o popup falha.
+  it('falha sem popup volta para a home com o motivo', async () => {
+    const { res, redirect } = response();
+    await controller.callback(
+      undefined,
+      undefined,
+      'access_denied',
+      request({ titan_oauth_state: 'state-token' }),
+      res,
+    );
+    expect(redirect).toHaveBeenCalledWith('http://web.test/?erro=cancelado');
+  });
 });

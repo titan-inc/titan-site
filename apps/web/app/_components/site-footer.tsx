@@ -1,3 +1,4 @@
+import { API_URL } from '../../lib/config';
 import { Marca } from './ui/marca';
 import { Rotulo } from './ui/rotulo';
 import { Wordmark } from './ui/wordmark';
@@ -44,11 +45,14 @@ export function SiteFooter() {
         </div>
         <div>
           <Rotulo>Membros</Rotulo>
+          {/* Início do OAuth direto no Nest: navegação de página inteira, que
+              funciona sem JavaScript. A página `/entrar` não existe mais — ela
+              só somava um clique entre a pessoa e a Blizzard. */}
           <a
-            href="/entrar"
+            href={`${API_URL}/auth/battlenet`}
             className="text-fg-muted hover:text-fg mt-5 inline-flex min-h-11 items-center text-sm"
           >
-            Entrar
+            Entrar com a Battle.net
           </a>
         </div>
       </div>

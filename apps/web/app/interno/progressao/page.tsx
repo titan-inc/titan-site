@@ -18,7 +18,7 @@ export default async function ProgressaoPage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const user = await getSessionUser();
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
   if (!user.hasInternalAccess) redirect('/interno');
 
   const { season } = await searchParams;

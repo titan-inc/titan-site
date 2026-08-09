@@ -21,7 +21,7 @@ export default async function InternoPage() {
   const user = await getSessionUser();
 
   // Estado 1: sem sessão.
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
 
   // Estado 2: é da guilda, mas o rank não alcança a área interna.
   if (user.membership === 'member' && !user.hasInternalAccess) {

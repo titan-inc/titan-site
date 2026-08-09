@@ -16,7 +16,7 @@ export const metadata = { title: 'Roster — Titan Inc' };
  */
 export default async function RosterPage() {
   const user = await getSessionUser();
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
   if (!user.hasInternalAccess) redirect('/interno');
 
   const roster = await getRoster();

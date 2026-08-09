@@ -2,7 +2,8 @@
 import type { SessionUser } from '@titan/shared';
 import type { ResumoProgressaoNav } from '../../lib/progressao/resumo-nav';
 import { usePathname } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
+import { ErroLoginNaUrl } from './auth/erro-login-na-url';
 import { SiteFooter } from './site-footer';
 import { SiteNav } from './site-nav';
 export function SiteShell({
@@ -24,6 +25,14 @@ export function SiteShell({
       >
         Pular para o conteúdo
       </a>
+      {/* `Suspense` obrigatório: `ErroLoginNaUrl` usa `useSearchParams`, e sem a
+          fronteira a árvore inteira acima dele deixa de ser prerenderizada — a
+          build falha ao exportar `/`. Com ela, só este componente é resolvido no
+          cliente, e ele não pinta nada até haver erro. Ver a doc do Next 16 em
+          `use-search-params.md`. */}
+      <Suspense fallback={null}>
+        <ErroLoginNaUrl />
+      </Suspense>
       <SiteNav sessao={sessao} progressao={progressao} />
       <main id="conteudo" className="flex flex-1 flex-col" tabIndex={-1}>
         {children}

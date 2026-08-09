@@ -21,8 +21,10 @@ function destinoLogin(
   popup: boolean,
   resultado: 'ok' | 'cancelado' | 'state' | 'falha',
 ): string {
-  if (!popup)
-    return resultado === 'ok' ? `${webUrl}/interno` : `${webUrl}/entrar?erro=${resultado}`;
+  // Sem popup, a falha volta para a home com o motivo na querystring: a home é
+  // o único lugar de login desde que `/entrar` saiu, e ela abre o mesmo modal
+  // do fluxo de popup. O sucesso continua indo direto para a área interna.
+  if (!popup) return resultado === 'ok' ? `${webUrl}/interno` : `${webUrl}/?erro=${resultado}`;
   return resultado === 'ok'
     ? `${webUrl}/oauth/callback?status=ok`
     : `${webUrl}/oauth/callback?status=erro&motivo=${resultado}`;
