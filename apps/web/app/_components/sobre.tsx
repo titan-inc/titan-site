@@ -52,22 +52,23 @@ export function Sobre() {
           <div className="text-fg-muted mt-8 max-w-[34ch] space-y-6 text-[17px] leading-[1.6] text-pretty md:text-[20px] lg:text-[22px]">
             {/* [LOREM] T9 — trocar quando C1 chegar. */}
             <p>
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer dignissim, ipsum sed
-              fermentum luctus, justo nunc posuere nibh, non placerat erat sapien sit amet massa.
-              Vivamus vitae mi at sapien feugiat tincidunt. Curabitur tempus, augue vel commodo
-              viverra, justo arcu posuere neque, sed tincidunt turpis arcu eget magna.
+              A vida mudou desde que demos nossos primeiros passos em Azeroth. Carreira, família,
+              responsabilidades e compromissos que não existiam quando passávamos noites inteiras
+              jogando juntos. O tempo ficou mais curto, mas a vontade de raidar permaneceu.
             </p>
             <p>
-              Praesent non magna at velit sodales aliquet. Donec faucibus, nulla quis volutpat
-              consequat, ligula purus faucibus urna, sed luctus lectus ipsum sed justo. Nulla
-              facilisi. Proin accumsan, arcu vitae iaculis euismod, sapien neque feugiat nisl, ut
-              consequat lorem velit in augue.
+              Jogamos pouco, mas não jogamos sem objetivo. Nosso foco está no endgame. Isso
+              significa chegar preparado, conhecer sua classe, estudar os encontros e respeitar o
+              tempo dos outros colegas. Quando cada noite de raid importa, responsabilidade
+              individual é o que permite que o grupo continue avançando.
             </p>
             <p>
-              Aliquam erat volutpat. Suspendisse potenti. Sed euismod sem vitae nisl feugiat, vel
-              interdum arcu ullamcorper. Morbi dignissim neque vitae orci tincidunt, et varius metus
-              ultrices.
+              No fim, somos uma guilda formada por adultos funcionais que ainda encontram espaço
+              para levar a progressão a sério sem precisar transformar o jogo em uma segunda
+              profissão. Queremos desafios e melhorar a cada semana, mas também queremos rir e fazer
+              dessas poucas horas um lugar para onde ainda vale a pena voltar.
             </p>
+            <p>Porque há vida fora de Azeroth.</p>
           </div>
         </div>
       </div>
