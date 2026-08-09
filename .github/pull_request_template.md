@@ -15,4 +15,4 @@
 - [ ] `pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test` passa local
 - [ ] Nenhum segredo, `.env` ou dado de membro no diff
 - [ ] Se mexeu em contrato de API: schema atualizado em `packages/shared`, não duplicado nos apps
-- [ ] Se criou endpoint interno: tem guard no Nest (não só middleware do Next)
+- [ ] Se criou endpoint interno: tem guard no Nest (não só o proxy do Next)
