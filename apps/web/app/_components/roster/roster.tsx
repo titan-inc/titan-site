@@ -1,37 +1,12 @@
 import type { CSSProperties } from 'react';
+import { lerConteudoRoster } from '../../../lib/roster/conteudo';
 import { Rotulo } from '../ui/rotulo';
 import { PlacaTripulante } from './placa-tripulante';
 
-async function rosterDeDesenvolvimento() {
-  if (process.env.NODE_ENV === 'production') return null;
-  return (await import('../../../lib/mock/roster.mock')).ROSTER_MOCK[20];
-}
-
 export async function Roster() {
-  const tripulantes = await rosterDeDesenvolvimento();
-  if (!tripulantes)
-    return (
-      <section
-        id="tripulacao"
-        aria-labelledby="tripulacao-titulo"
-        className="px-6 py-24 md:px-8 lg:py-40 xl:px-12"
-      >
-        <div className="mx-auto max-w-[1120px]">
-          <Rotulo>Tripulação</Rotulo>
-          <h2
-            id="tripulacao-titulo"
-            className="text-fg mt-6 text-[30px] font-extrabold lg:text-[40px]"
-          >
-            O time de raid
-          </h2>
-          <div className="chapa text-fg-muted mt-10 max-w-xl p-6">
-            A lista da tripulação não respondeu agora. O time continua curado no WoWAudit; nenhum
-            número foi inventado.
-          </div>
-        </div>
-      </section>
-    );
-  const total = tripulantes.length;
+  const conteudo = lerConteudoRoster();
+  if (conteudo.membros.length === 0) return null;
+  const total = conteudo.membros.length;
   const estilo = {
     '--colunas-md': Math.min(total, 3),
     '--colunas-lg': Math.min(total, 4),
@@ -50,16 +25,14 @@ export async function Roster() {
             <div>
               <h2
                 id="tripulacao-titulo"
-                className="text-fg text-[30px] font-extrabold lg:text-[40px]"
+                className="entalhe text-fg text-[30px] font-extrabold lg:text-[40px]"
               >
-                O time de raid
+                O time de <span className="letra-fel">raid</span>
               </h2>
-              <p className="text-fg-muted mt-4 max-w-[48ch]">
-                Quem senta na raid. A lista é curadoria do raid leader, não filtro de rank.
-              </p>
+              <p className="text-fg-muted mt-4 max-w-[48ch]">{conteudo.descricao}</p>
             </div>
             <p className="text-fg-subtle font-mono text-[11px] tracking-[0.14em] uppercase">
-              {total} tripulantes · dados de desenvolvimento
+              {total} {total === 1 ? 'tripulante' : 'tripulantes'} · nomes provisórios
             </p>
           </div>
         </div>
@@ -69,12 +42,12 @@ export async function Roster() {
           style={estilo}
           className="mt-12 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-5 md:grid md:[grid-template-columns:repeat(var(--colunas-md),minmax(0,1fr))] md:gap-5 md:overflow-visible md:px-0 lg:[grid-template-columns:repeat(var(--colunas-lg),minmax(0,1fr))] xl:[grid-template-columns:repeat(var(--colunas-xl),minmax(0,1fr))]"
         >
-          {tripulantes.map((tripulante) => (
+          {conteudo.membros.map((membro) => (
             <li
-              key={`${tripulante.realm}/${tripulante.name}`}
+              key={membro.nome}
               className="w-[68vw] max-w-[280px] shrink-0 snap-start md:w-auto md:max-w-[240px]"
             >
-              <PlacaTripulante tripulante={tripulante} />
+              <PlacaTripulante membro={membro} />
             </li>
           ))}
         </ul>
