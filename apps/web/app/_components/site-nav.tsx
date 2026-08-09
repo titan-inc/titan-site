@@ -104,12 +104,11 @@ export function SiteNav({
               </a>
             );
           })}
-          <a
-            href="#candidatura"
-            className="border-border text-fg-muted hover:text-fg inline-flex min-h-11 items-center rounded-[3px] border px-4 font-mono text-[11px] tracking-[0.14em] uppercase"
-          >
-            Candidatar-se
-          </a>
+          {/* O botão "Candidatar-se" saiu daqui: ele repetia o link "Candidatura"
+              que está logo ao lado, apontando para a mesma âncora. A ação primária
+              da página continua sendo o CTA da hero. Sem ele a barra respira e o
+              único elemento sólido passa a ser o login, que é o que de fato leva
+              para outro lugar. */}
           <LoginButton sessao={sessao} />
         </div>
 
