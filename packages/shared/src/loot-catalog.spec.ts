@@ -1,26 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { catalogItemSchema, catalogRaidSchema, raidDifficultyLevelSchema } from './loot-catalog.js';
+import { catalogItemSchema, catalogRaidSchema } from './loot-catalog.js';
+import { PRIMARY_STATS, RAID_DIFFICULTIES, SPECS } from './wow.js';
 
-describe('raidDifficultyLevelSchema', () => {
-  it('aceita as três dificuldades que a guilda joga', () => {
-    for (const d of ['normal', 'heroic', 'mythic']) {
-      expect(raidDifficultyLevelSchema.parse(d)).toBe(d);
-    }
-  });
-
-  it('recusa dificuldade não cadastrada', () => {
-    // LFR ficou de fora de propósito. Aparecer aqui significa que alguém mandou
-    // um valor que o resto do sistema não sabe tratar.
-    expect(raidDifficultyLevelSchema.safeParse('lfr').success).toBe(false);
-  });
-
-  it('recusa valor posicional', () => {
-    // A identidade é o rótulo, nunca o índice. O `responseID` do RCLootCouncil é
-    // posicional e por isso o id 2 aparece como "Big" e como "Banking" no mesmo
-    // export — a armadilha não se repete aqui.
-    expect(raidDifficultyLevelSchema.safeParse(2).success).toBe(false);
-  });
-});
+// Os testes do vocabulário de dificuldade moraram aqui até ele mudar para o
+// `wow.ts`, onde é o lugar dele — é conceito do jogo, não do catálogo. Ver
+// `wow.spec.ts`.
 
 describe('catalogItemSchema', () => {
   const cru = {
@@ -49,12 +33,10 @@ describe('catalogItemSchema', () => {
 
   it('aceita conjunto de stat primário, não só um valor', () => {
     // O trinket com força E agilidade é o caso que derruba "um stat por peça".
-    const item = catalogItemSchema.parse({
-      ...cru,
-      primaryStats: ['strength', 'agility'],
-    });
+    const stats = [PRIMARY_STATS.STRENGTH, PRIMARY_STATS.AGILITY];
+    const item = catalogItemSchema.parse({ ...cru, primaryStats: stats });
 
-    expect(item.primaryStats).toEqual(['strength', 'agility']);
+    expect(item.primaryStats).toEqual(stats);
   });
 
   it('distingue "ninguém revisou" de "nenhuma spec usa"', () => {
@@ -91,15 +73,15 @@ describe('catalogRaidSchema', () => {
         position: 0,
         drops: [
           {
-            difficulty: 'mythic',
+            difficulty: RAID_DIFFICULTIES.MYTHIC,
             item: {
               itemId: 249276,
               name: 'Item de Teste',
               icon: 'inv_helm_plate_raidwarrior_a_01',
               equipLoc: 'INVTYPE_HEAD',
               itemSubclass: 'Plate',
-              primaryStats: ['strength'],
-              usableBySpecs: ['warrior-fury', 'paladin-protection'],
+              primaryStats: [PRIMARY_STATS.STRENGTH],
+              usableBySpecs: [SPECS.WARRIOR_FURY, SPECS.PALADIN_PROTECTION],
               specsCuratedAt: '2026-08-09T00:00:00.000Z',
             },
           },

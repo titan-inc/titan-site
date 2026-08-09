@@ -59,9 +59,46 @@ export type Role = z.infer<typeof roleSchema>;
  * - `[strength, agility, intellect]` — peça totalmente adaptativa
  * - `[]` — peça sem primário nenhum, como trinket que é só efeito
  */
-export const PRIMARY_STATS = ['strength', 'agility', 'intellect'] as const;
-export const primaryStatSchema = z.enum(PRIMARY_STATS);
+export const PRIMARY_STATS = {
+  STRENGTH: 'strength',
+  AGILITY: 'agility',
+  INTELLECT: 'intellect',
+} as const;
+export const primaryStatSchema = z.nativeEnum(PRIMARY_STATS);
 export type PrimaryStat = z.infer<typeof primaryStatSchema>;
+
+/**
+ * Dificuldade de raid: o vocabulário canônico do sistema.
+ *
+ * Mora aqui, e não no arquivo do catálogo, porque é conceito **do jogo** — e
+ * porque não é só do catálogo: a linha de loot importada e a sessão ao vivo
+ * usam o mesmo vocabulário. Ficar em `loot-catalog.ts` era confundir "onde foi
+ * usado primeiro" com "de onde é".
+ *
+ * É **contexto da entrada do catálogo**, não algo derivado do item. Foi testado
+ * nos 445 registros da season passada: dos 112 itens de raid, 75 aparecem em
+ * mais de uma dificuldade, e só um bonus ID separa limpo. Quem cadastra está
+ * lendo a loot table Mítica no Wowhead e já sabe que é mítica.
+ *
+ * (A origem real de uma peça sai do `itemContext` do `itemString` — ver TIT-76.
+ * Isto aqui é o que a gente cadastra, não o que a gente deduz.)
+ *
+ * LFR ficou de fora porque a guilda não roda. Acrescentar valor depois é
+ * migration barata; o inverso, não.
+ *
+ * NÃO CONFUNDIR com o `raidDifficultySchema` de `raid-progress.ts`, que é a
+ * dificuldade **numerada pelo Warcraft Logs** (`{ id: 5, name: 'Mythic' }`) —
+ * identificador de fonte externa que a gente recebe e repassa. O sufixo `Level`
+ * aqui existe só para os dois não se confundirem no autocomplete, e o nome mal
+ * aplicado é o de lá: ver TIT-78.
+ */
+export const RAID_DIFFICULTIES = {
+  NORMAL: 'normal',
+  HEROIC: 'heroic',
+  MYTHIC: 'mythic',
+} as const;
+export const raidDifficultyLevelSchema = z.nativeEnum(RAID_DIFFICULTIES);
+export type RaidDifficultyLevel = z.infer<typeof raidDifficultyLevelSchema>;
 
 /**
  * Specs do jogo.
@@ -75,48 +112,48 @@ export type PrimaryStat = z.infer<typeof primaryStatSchema>;
  * id `2` aparece como "Big" e como "Banking" no mesmo export. Spec muda entre
  * expansões — some, nasce, é renomeada — então o valor tem que ser o rótulo.
  */
-export const SPECS = [
-  'death-knight-blood',
-  'death-knight-frost',
-  'death-knight-unholy',
-  'demon-hunter-havoc',
-  'demon-hunter-vengeance',
-  'druid-balance',
-  'druid-feral',
-  'druid-guardian',
-  'druid-restoration',
-  'evoker-augmentation',
-  'evoker-devastation',
-  'evoker-preservation',
-  'hunter-beast-mastery',
-  'hunter-marksmanship',
-  'hunter-survival',
-  'mage-arcane',
-  'mage-fire',
-  'mage-frost',
-  'monk-brewmaster',
-  'monk-mistweaver',
-  'monk-windwalker',
-  'paladin-holy',
-  'paladin-protection',
-  'paladin-retribution',
-  'priest-discipline',
-  'priest-holy',
-  'priest-shadow',
-  'rogue-assassination',
-  'rogue-outlaw',
-  'rogue-subtlety',
-  'shaman-elemental',
-  'shaman-enhancement',
-  'shaman-restoration',
-  'warlock-affliction',
-  'warlock-demonology',
-  'warlock-destruction',
-  'warrior-arms',
-  'warrior-fury',
-  'warrior-protection',
-] as const;
-export const wowSpecSchema = z.enum(SPECS);
+export const SPECS = {
+  DEATH_KNIGHT_BLOOD: 'death-knight-blood',
+  DEATH_KNIGHT_FROST: 'death-knight-frost',
+  DEATH_KNIGHT_UNHOLY: 'death-knight-unholy',
+  DEMON_HUNTER_HAVOC: 'demon-hunter-havoc',
+  DEMON_HUNTER_VENGEANCE: 'demon-hunter-vengeance',
+  DRUID_BALANCE: 'druid-balance',
+  DRUID_FERAL: 'druid-feral',
+  DRUID_GUARDIAN: 'druid-guardian',
+  DRUID_RESTORATION: 'druid-restoration',
+  EVOKER_AUGMENTATION: 'evoker-augmentation',
+  EVOKER_DEVASTATION: 'evoker-devastation',
+  EVOKER_PRESERVATION: 'evoker-preservation',
+  HUNTER_BEAST_MASTERY: 'hunter-beast-mastery',
+  HUNTER_MARKSMANSHIP: 'hunter-marksmanship',
+  HUNTER_SURVIVAL: 'hunter-survival',
+  MAGE_ARCANE: 'mage-arcane',
+  MAGE_FIRE: 'mage-fire',
+  MAGE_FROST: 'mage-frost',
+  MONK_BREWMASTER: 'monk-brewmaster',
+  MONK_MISTWEAVER: 'monk-mistweaver',
+  MONK_WINDWALKER: 'monk-windwalker',
+  PALADIN_HOLY: 'paladin-holy',
+  PALADIN_PROTECTION: 'paladin-protection',
+  PALADIN_RETRIBUTION: 'paladin-retribution',
+  PRIEST_DISCIPLINE: 'priest-discipline',
+  PRIEST_HOLY: 'priest-holy',
+  PRIEST_SHADOW: 'priest-shadow',
+  ROGUE_ASSASSINATION: 'rogue-assassination',
+  ROGUE_OUTLAW: 'rogue-outlaw',
+  ROGUE_SUBTLETY: 'rogue-subtlety',
+  SHAMAN_ELEMENTAL: 'shaman-elemental',
+  SHAMAN_ENHANCEMENT: 'shaman-enhancement',
+  SHAMAN_RESTORATION: 'shaman-restoration',
+  WARLOCK_AFFLICTION: 'warlock-affliction',
+  WARLOCK_DEMONOLOGY: 'warlock-demonology',
+  WARLOCK_DESTRUCTION: 'warlock-destruction',
+  WARRIOR_ARMS: 'warrior-arms',
+  WARRIOR_FURY: 'warrior-fury',
+  WARRIOR_PROTECTION: 'warrior-protection',
+} as const;
+export const wowSpecSchema = z.nativeEnum(SPECS);
 export type WowSpec = z.infer<typeof wowSpecSchema>;
 
 /**
@@ -126,47 +163,50 @@ export type WowSpec = z.infer<typeof wowSpecSchema>;
  * `demon-hunter-havoc` quebrariam qualquer regra de "corta no primeiro hífen",
  * e a que funciona hoje passa a errar calada quando nascer uma classe com nome
  * composto novo.
+ *
+ * As chaves referenciam `SPECS`; os valores ainda são literais porque `CLASSES`
+ * segue como tupla. Vira `CLASSES.DEATH_KNIGHT` quando a TIT-78 converter.
  */
 export const SPEC_CLASS: Record<WowSpec, WowClass> = {
-  'death-knight-blood': 'death-knight',
-  'death-knight-frost': 'death-knight',
-  'death-knight-unholy': 'death-knight',
-  'demon-hunter-havoc': 'demon-hunter',
-  'demon-hunter-vengeance': 'demon-hunter',
-  'druid-balance': 'druid',
-  'druid-feral': 'druid',
-  'druid-guardian': 'druid',
-  'druid-restoration': 'druid',
-  'evoker-augmentation': 'evoker',
-  'evoker-devastation': 'evoker',
-  'evoker-preservation': 'evoker',
-  'hunter-beast-mastery': 'hunter',
-  'hunter-marksmanship': 'hunter',
-  'hunter-survival': 'hunter',
-  'mage-arcane': 'mage',
-  'mage-fire': 'mage',
-  'mage-frost': 'mage',
-  'monk-brewmaster': 'monk',
-  'monk-mistweaver': 'monk',
-  'monk-windwalker': 'monk',
-  'paladin-holy': 'paladin',
-  'paladin-protection': 'paladin',
-  'paladin-retribution': 'paladin',
-  'priest-discipline': 'priest',
-  'priest-holy': 'priest',
-  'priest-shadow': 'priest',
-  'rogue-assassination': 'rogue',
-  'rogue-outlaw': 'rogue',
-  'rogue-subtlety': 'rogue',
-  'shaman-elemental': 'shaman',
-  'shaman-enhancement': 'shaman',
-  'shaman-restoration': 'shaman',
-  'warlock-affliction': 'warlock',
-  'warlock-demonology': 'warlock',
-  'warlock-destruction': 'warlock',
-  'warrior-arms': 'warrior',
-  'warrior-fury': 'warrior',
-  'warrior-protection': 'warrior',
+  [SPECS.DEATH_KNIGHT_BLOOD]: 'death-knight',
+  [SPECS.DEATH_KNIGHT_FROST]: 'death-knight',
+  [SPECS.DEATH_KNIGHT_UNHOLY]: 'death-knight',
+  [SPECS.DEMON_HUNTER_HAVOC]: 'demon-hunter',
+  [SPECS.DEMON_HUNTER_VENGEANCE]: 'demon-hunter',
+  [SPECS.DRUID_BALANCE]: 'druid',
+  [SPECS.DRUID_FERAL]: 'druid',
+  [SPECS.DRUID_GUARDIAN]: 'druid',
+  [SPECS.DRUID_RESTORATION]: 'druid',
+  [SPECS.EVOKER_AUGMENTATION]: 'evoker',
+  [SPECS.EVOKER_DEVASTATION]: 'evoker',
+  [SPECS.EVOKER_PRESERVATION]: 'evoker',
+  [SPECS.HUNTER_BEAST_MASTERY]: 'hunter',
+  [SPECS.HUNTER_MARKSMANSHIP]: 'hunter',
+  [SPECS.HUNTER_SURVIVAL]: 'hunter',
+  [SPECS.MAGE_ARCANE]: 'mage',
+  [SPECS.MAGE_FIRE]: 'mage',
+  [SPECS.MAGE_FROST]: 'mage',
+  [SPECS.MONK_BREWMASTER]: 'monk',
+  [SPECS.MONK_MISTWEAVER]: 'monk',
+  [SPECS.MONK_WINDWALKER]: 'monk',
+  [SPECS.PALADIN_HOLY]: 'paladin',
+  [SPECS.PALADIN_PROTECTION]: 'paladin',
+  [SPECS.PALADIN_RETRIBUTION]: 'paladin',
+  [SPECS.PRIEST_DISCIPLINE]: 'priest',
+  [SPECS.PRIEST_HOLY]: 'priest',
+  [SPECS.PRIEST_SHADOW]: 'priest',
+  [SPECS.ROGUE_ASSASSINATION]: 'rogue',
+  [SPECS.ROGUE_OUTLAW]: 'rogue',
+  [SPECS.ROGUE_SUBTLETY]: 'rogue',
+  [SPECS.SHAMAN_ELEMENTAL]: 'shaman',
+  [SPECS.SHAMAN_ENHANCEMENT]: 'shaman',
+  [SPECS.SHAMAN_RESTORATION]: 'shaman',
+  [SPECS.WARLOCK_AFFLICTION]: 'warlock',
+  [SPECS.WARLOCK_DEMONOLOGY]: 'warlock',
+  [SPECS.WARLOCK_DESTRUCTION]: 'warlock',
+  [SPECS.WARRIOR_ARMS]: 'warrior',
+  [SPECS.WARRIOR_FURY]: 'warrior',
+  [SPECS.WARRIOR_PROTECTION]: 'warrior',
 };
 
 /** Marcas diacríticas combinantes (Unicode Combining Diacritical Marks). */

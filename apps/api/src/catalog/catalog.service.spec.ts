@@ -1,3 +1,5 @@
+import { RaidDifficulty, WowSpec } from '@prisma/client';
+import { PRIMARY_STATS, RAID_DIFFICULTIES, SPECS } from '@titan/shared';
 import type { CatalogRepository } from './catalog.repository';
 import { CatalogService } from './catalog.service';
 
@@ -39,8 +41,8 @@ const raidRow = (over: Record<string, unknown> = {}) => ({
       name: 'Boss A',
       position: 0,
       drops: [
-        { difficulty: 'mythic' as const, item: itemRow(249276) },
-        { difficulty: 'heroic' as const, item: itemRow(249276) },
+        { difficulty: RaidDifficulty.mythic, item: itemRow(249276) },
+        { difficulty: RaidDifficulty.heroic, item: itemRow(249276) },
       ],
     },
     {
@@ -77,8 +79,8 @@ describe('CatalogService', () => {
     expect(raid).toMatchObject({ slug: 'the-voidspire', seasonId: null });
     expect(raid.encounters.map((e) => e.drops)).toEqual([
       [
-        { difficulty: 'mythic', item: item(249276) },
-        { difficulty: 'heroic', item: item(249276) },
+        { difficulty: RAID_DIFFICULTIES.MYTHIC, item: item(249276) },
+        { difficulty: RAID_DIFFICULTIES.HEROIC, item: item(249276) },
       ],
       [],
     ]);
@@ -90,7 +92,7 @@ describe('CatalogService', () => {
     // não existe na raid.
     repo.findRaids.mockResolvedValue([raidRow()]);
 
-    const raid = primeira(await service.listRaids({ difficulty: 'mythic' }));
+    const raid = primeira(await service.listRaids({ difficulty: RAID_DIFFICULTIES.MYTHIC }));
 
     expect(raid.encounters.map((e) => e.name)).toEqual(['Boss A', 'Boss B']);
     expect(raid.encounters.map((e) => e.drops.length)).toEqual([2, 0]);
@@ -99,9 +101,12 @@ describe('CatalogService', () => {
   it('repassa o filtro para o repository em vez de filtrar em memória', async () => {
     repo.findRaids.mockResolvedValue([]);
 
-    await service.listRaids({ seasonId: 17, difficulty: 'heroic' });
+    await service.listRaids({ seasonId: 17, difficulty: RAID_DIFFICULTIES.HEROIC });
 
-    expect(repo.findRaids).toHaveBeenCalledWith({ seasonId: 17, difficulty: 'heroic' });
+    expect(repo.findRaids).toHaveBeenCalledWith({
+      seasonId: 17,
+      difficulty: RAID_DIFFICULTIES.HEROIC,
+    });
   });
 
   it('distingue "sem season" de "todas as seasons"', async () => {
@@ -135,11 +140,14 @@ describe('CatalogService', () => {
             position: 0,
             drops: [
               {
-                difficulty: 'mythic' as const,
+                difficulty: RaidDifficulty.mythic,
                 item: itemRow(249276, {
-                  primaryStats: ['strength'],
+                  primaryStats: [PRIMARY_STATS.STRENGTH],
                   specsCuratedAt: new Date('2026-08-09T00:00:00.000Z'),
-                  usableBySpecs: [{ spec: 'warrior_fury' }, { spec: 'paladin_protection' }],
+                  usableBySpecs: [
+                    { spec: WowSpec.warrior_fury },
+                    { spec: WowSpec.paladin_protection },
+                  ],
                 }),
               },
             ],
@@ -151,8 +159,8 @@ describe('CatalogService', () => {
     const raid = primeira(await service.listRaids());
     const drop = primeira(primeira(raid.encounters).drops);
 
-    expect(drop.item.usableBySpecs).toEqual(['warrior-fury', 'paladin-protection']);
-    expect(drop.item.primaryStats).toEqual(['strength']);
+    expect(drop.item.usableBySpecs).toEqual([SPECS.WARRIOR_FURY, SPECS.PALADIN_PROTECTION]);
+    expect(drop.item.primaryStats).toEqual([PRIMARY_STATS.STRENGTH]);
     expect(drop.item.specsCuratedAt).toBe('2026-08-09T00:00:00.000Z');
   });
 

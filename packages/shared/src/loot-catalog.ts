@@ -1,29 +1,5 @@
 import { z } from 'zod';
-import { primaryStatSchema, wowSpecSchema } from './wow.js';
-
-/**
- * Dificuldade de raid como o catálogo a define.
- *
- * É **contexto da entrada do catálogo**, não algo derivado do item. Foi testado
- * nos 445 registros da season passada: dos 112 itens de raid, 75 aparecem em
- * mais de uma dificuldade, e só um bonus ID separa limpo. Quem cadastra está
- * lendo a loot table Mítica no Wowhead e já sabe que é mítica — não há o que
- * reverter.
- *
- * Os valores são **identidade estável**, nunca posição. Isso é deliberado: o
- * `responseID` do RCLootCouncil é posicional, e no export real o id `2` aparece
- * como "Big" e como "Banking" porque alguém reordenou os botões. A armadilha não
- * se repete em casa.
- *
- * NÃO CONFUNDIR com o `raidDifficultySchema` de `raid-progress.ts`. Aquele é a
- * dificuldade **numerada pelo Warcraft Logs** (`{ id: 5, name: 'Mythic' }`), um
- * identificador de fonte externa que a gente recebe e repassa. Este é o nosso
- * enum canônico, que a gente escolhe e controla. São conceitos diferentes com o
- * mesmo nome em português, e o sufixo `Level` existe só para não deixar os dois
- * se confundirem no autocomplete.
- */
-export const raidDifficultyLevelSchema = z.enum(['normal', 'heroic', 'mythic']);
-export type RaidDifficultyLevel = z.infer<typeof raidDifficultyLevelSchema>;
+import { primaryStatSchema, raidDifficultyLevelSchema, wowSpecSchema } from './wow.js';
 
 /**
  * Item do dicionário — "o que é o item 249276".

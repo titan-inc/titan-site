@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { CLASSES, SPEC_CLASS, SPECS, toCharacterKey, toSlug, wowSpecSchema } from './wow.js';
+import {
+  CLASSES,
+  RAID_DIFFICULTIES,
+  raidDifficultyLevelSchema,
+  SPEC_CLASS,
+  SPECS,
+  toCharacterKey,
+  toSlug,
+  wowSpecSchema,
+} from './wow.js';
+
+const TODAS_AS_SPECS = Object.values(SPECS);
 
 describe('SPECS', () => {
   it('tem uma classe mapeada para cada spec', () => {
     // O Record já obriga isso no typecheck; o teste pega o caso em que alguém
     // acrescenta a spec na lista e "resolve" o erro com um valor errado.
-    for (const spec of SPECS) {
+    for (const spec of TODAS_AS_SPECS) {
       expect(CLASSES).toContain(SPEC_CLASS[spec]);
     }
   });
@@ -13,31 +24,52 @@ describe('SPECS', () => {
   it('cobre todas as classes', () => {
     // Classe sem nenhuma spec significa spec esquecida na lista — e um item
     // dessa classe ficaria sem ninguém elegível, sem erro nenhum.
-    const comSpec = new Set(SPECS.map((s) => SPEC_CLASS[s]));
+    const comSpec = new Set(TODAS_AS_SPECS.map((s) => SPEC_CLASS[s]));
     expect([...CLASSES].filter((c) => !comSpec.has(c))).toEqual([]);
   });
 
   it('não tem slug repetido', () => {
-    expect(new Set(SPECS).size).toBe(SPECS.length);
+    expect(new Set(TODAS_AS_SPECS).size).toBe(TODAS_AS_SPECS.length);
   });
 
   it('prefixa a classe, porque o nome sozinho colide', () => {
     // Os quatro pares que justificam o prefixo.
     for (const spec of [
-      'druid-restoration',
-      'shaman-restoration',
-      'paladin-holy',
-      'priest-holy',
-      'mage-frost',
-      'death-knight-frost',
-      'paladin-protection',
-      'warrior-protection',
+      SPECS.DRUID_RESTORATION,
+      SPECS.SHAMAN_RESTORATION,
+      SPECS.PALADIN_HOLY,
+      SPECS.PRIEST_HOLY,
+      SPECS.MAGE_FROST,
+      SPECS.DEATH_KNIGHT_FROST,
+      SPECS.PALADIN_PROTECTION,
+      SPECS.WARRIOR_PROTECTION,
     ]) {
       expect(wowSpecSchema.safeParse(spec).success).toBe(true);
     }
 
     // E o nome cru não é aceito.
     expect(wowSpecSchema.safeParse('restoration').success).toBe(false);
+  });
+});
+
+describe('raidDifficultyLevelSchema', () => {
+  it('aceita as três dificuldades que a guilda joga', () => {
+    for (const d of Object.values(RAID_DIFFICULTIES)) {
+      expect(raidDifficultyLevelSchema.parse(d)).toBe(d);
+    }
+  });
+
+  it('recusa dificuldade não cadastrada', () => {
+    // LFR ficou de fora de propósito. Aparecer aqui significa que alguém mandou
+    // um valor que o resto do sistema não sabe tratar.
+    expect(raidDifficultyLevelSchema.safeParse('lfr').success).toBe(false);
+  });
+
+  it('recusa valor posicional', () => {
+    // A identidade é o rótulo, nunca o índice. O `responseID` do RCLootCouncil é
+    // posicional e por isso o id 2 aparece como "Big" e como "Banking" no mesmo
+    // export — a armadilha não se repete aqui.
+    expect(raidDifficultyLevelSchema.safeParse(2).success).toBe(false);
   });
 });
 
