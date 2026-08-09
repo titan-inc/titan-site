@@ -8,6 +8,7 @@ import { BlizzardModule } from './blizzard/blizzard.module';
 import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
+import { OfficersModule } from './officers/officers.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RaidProgressModule } from './raidprogress/raidprogress.module';
 import { RosterModule } from './roster/roster.module';
@@ -27,6 +28,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     RaidProgressModule,
     AttendanceModule,
     MembershipModule,
+    OfficersModule,
     HealthModule,
   ],
   controllers: [AppController],

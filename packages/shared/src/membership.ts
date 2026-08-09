@@ -134,6 +134,25 @@ export function canApply(user: Pick<SessionUser, 'membership'>): boolean {
   return user.membership === 'not-member';
 }
 
+/** Só o que as permissões de oficial têm em comum. */
+type OfficerCheck = Pick<SessionUser, 'hasInternalAccess' | 'isOfficer'>;
+
+/**
+ * Precondição de **qualquer** ação de oficial: estar na área interna e ter a
+ * flag manual.
+ *
+ * Existe para o guard genérico do Nest ter o que chamar sem escolher uma das
+ * permissões específicas abaixo — um guard de oficial que checasse
+ * `canSeeOthersHistory` para proteger a lista de oficiais passaria a mentir no
+ * dia em que as duas divergissem.
+ *
+ * Exigir membership junto é o que faz sair da guilda derrubar o acesso mesmo
+ * que ninguém lembre de revogar a concessão.
+ */
+export function isActingOfficer(user: OfficerCheck): boolean {
+  return user.hasInternalAccess && user.isOfficer;
+}
+
 /**
  * Acesso a dado pessoal de candidatos. Nunca inferido de rank.
  *
@@ -141,10 +160,20 @@ export function canApply(user: Pick<SessionUser, 'membership'>): boolean {
  * da guilda ou por cair abaixo do corte — derruba o painel junto, mesmo que
  * ninguém lembre de desligar a flag.
  */
-export function canReviewApplications(
-  user: Pick<SessionUser, 'hasInternalAccess' | 'isOfficer'>,
-): boolean {
-  return user.hasInternalAccess && user.isOfficer;
+export function canReviewApplications(user: OfficerCheck): boolean {
+  return isActingOfficer(user);
+}
+
+/**
+ * Conceder e revogar o próprio status de oficial.
+ *
+ * A mais perigosa das três: quem pode isto pode se dar todas as outras. Por
+ * isso a tela é gated por ela mesma — só oficial promove oficial — e o serviço
+ * recusa revogar o último, para não existir estado em que ninguém consegue
+ * mais entrar.
+ */
+export function canManageOfficers(user: OfficerCheck): boolean {
+  return isActingOfficer(user);
 }
 
 /**
@@ -155,13 +184,14 @@ export function canReviewApplications(
  * entrar na guilda, e ranking de falta entre pares gera treta sem ajudar o raid
  * leader a decidir nada — ele já tem o detalhe.
  *
- * Tem o mesmo corpo de `canReviewApplications` e mesmo assim é uma função
+ * Dá no mesmo que `canReviewApplications` hoje e mesmo assim é uma função
  * separada, de propósito: são decisões diferentes sobre dados diferentes, e
  * uma pode mudar sem a outra. Colapsar as duas hoje é criar o acoplamento que
  * amanhã libera a caixa de recrutamento junto com o histórico de raid.
+ *
+ * Delegar a `isActingOfficer` não é o mesmo que colapsar: mudar esta permissão
+ * é substituir o corpo desta função, sem tocar nas outras duas.
  */
-export function canSeeOthersHistory(
-  user: Pick<SessionUser, 'hasInternalAccess' | 'isOfficer'>,
-): boolean {
-  return user.hasInternalAccess && user.isOfficer;
+export function canSeeOthersHistory(user: OfficerCheck): boolean {
+  return isActingOfficer(user);
 }

@@ -18,13 +18,24 @@ const ITENS = [
   { segment: 'presenca', href: '/interno/presenca', label: 'Presença' },
 ] as const;
 
-export function SidebarNav() {
+/**
+ * Seção de liderança. Fora de ITENS porque não é para todo mundo.
+ *
+ * Esconder o link é cortesia, não proteção: quem digitar a URL é barrado pela
+ * página, e quem chamar a API é barrado pelo OfficerGuard — Regra 5.
+ */
+const ITENS_OFICIAL = [
+  { segment: 'oficiais', href: '/interno/oficiais', label: 'Oficiais' },
+] as const;
+
+export function SidebarNav({ oficial = false }: { oficial?: boolean }) {
   // Hook de client component: o layout é server component e importa este.
   const atual = useSelectedLayoutSegment();
+  const itens = oficial ? [...ITENS, ...ITENS_OFICIAL] : ITENS;
 
   return (
     <nav aria-label="Área interna" className="flex gap-1 md:flex-col">
-      {ITENS.map((item) => {
+      {itens.map((item) => {
         const ativo = item.segment === atual;
 
         return (

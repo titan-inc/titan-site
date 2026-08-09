@@ -36,9 +36,12 @@ model User {
 
   membership Membership @default(not_member)
 
-  /// Acesso a dado pessoal de candidatos. Atribuído à MÃO, deliberadamente não
-  /// derivado do rank do jogo — ver Regra 4 do CLAUDE.md.
-  isOfficer Boolean @default(false)
+  /// NÃO existe coluna `isOfficer` aqui, e isso é decisão, não esquecimento.
+  ///
+  /// Ser oficial é derivado de `OfficerGrant` a cada leitura de sessão, porque
+  /// a permissão precisa poder ser dada ANTES do primeiro login — e conta só
+  /// existe depois do OAuth. Guardar uma cópia aqui criaria duas verdades e um
+  /// jeito silencioso de revogar um oficial sem ele perder o acesso.
 
   /// MELHOR rank entre os personagens da conta no roster — menor número é mais
   /// alto, e rank 0 é o guild master. Derivado de `characters`, desnormalizado
@@ -105,6 +108,44 @@ model GuildCharacter {
   /// nome ocupado registra uma variação acentuada dele.
   @@unique([userId, realmSlug, nameKey])
   @@index([userId])
+  @@index([realmSlug, nameKey])
+}
+
+/// Personagem que a liderança marcou como oficial.
+///
+/// É a lista MANUAL da Regra 4 — a única fonte de verdade sobre quem é oficial.
+/// Deliberadamente não derivada de rank: rank é posicional, e reordenar rank no
+/// jogo não pode promover ninguém a ver Discord tag e Battle.tag de candidato.
+///
+/// A concessão é por PERSONAGEM, e não por conta, porque conta só existe depois
+/// do primeiro login e a liderança precisa poder preparar a lista antes disso.
+/// O casamento com a conta acontece na leitura da sessão, via
+/// `isOfficerByGrants()` do shared: qualquer personagem da conta que case com
+/// qualquer grant basta — a mesma agregação por pessoa do resto da Regra 4.
+///
+/// Revogar é apagar a linha, e o efeito é imediato na próxima requisição: nada
+/// fica em cache no User. Mesma lógica da sessão com estado no banco.
+model OfficerGrant {
+  id String @id @default(cuid())
+
+  /// Identidade do personagem via toCharacterKey(): minúsculas em NFC, COM
+  /// acento — Shrëwd e Shrêwd são pessoas diferentes. Ver Regra 6.
+  nameKey String
+
+  /// Realm via toSlug(), igual ao GuildCharacter, para os dois casarem.
+  realmSlug String
+
+  /// Nome e realm como a Blizzard exibe. Só para a tela.
+  name  String
+  realm String
+
+  /// Battletag de quem concedeu, e quando. Promover alguém a ver dado pessoal
+  /// de centenas de candidatos não pode ser uma ação anônima.
+  grantedBy String
+  grantedAt DateTime @default(now())
+
+  /// Um grant por personagem. Conceder duas vezes atualiza, não duplica.
+  @@unique([realmSlug, nameKey])
   @@index([realmSlug, nameKey])
 }
 

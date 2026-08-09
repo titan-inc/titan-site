@@ -3,12 +3,14 @@ import 'server-only';
 import {
   attendanceReportSchema,
   myAttendanceSchema,
+  officerListSchema,
   progressReportSchema,
   raidProgressReportSchema,
   rosterSchema,
   sessionUserSchema,
   type AttendanceReport,
   type MyAttendance,
+  type OfficerList,
   type ProgressReport,
   type RaidProgressReport,
   type Roster,
@@ -185,6 +187,31 @@ export async function getAttendanceReport(): Promise<AttendanceReport | null> {
     if (!res.ok) return null;
 
     const parsed = attendanceReportSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lista de oficiais. **Só oficial** — quem tem acesso a dado pessoal de
+ * candidato não é informação pública da guilda.
+ *
+ * Null quando a API recusa (403) ou está fora do ar.
+ */
+export async function getOfficers(): Promise<OfficerList | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/officers`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      // Generoso porque a lista busca o roster da Blizzard para mostrar o rank
+      // de cada grant; com o cache do Nest frio isso é uma chamada externa.
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = officerListSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

@@ -5,7 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { canSeeOthersHistory, type SessionUser } from '@titan/shared';
+import { isActingOfficer, type SessionUser } from '@titan/shared';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { SESSION_COOKIE } from './auth.controller';
@@ -28,7 +28,7 @@ export class MemberGuard implements CanActivate {
     const user = await this.auth.resolveSession(sessionId);
     if (!user) throw new UnauthorizedException('Sem sessão válida');
 
-    const sessionUser = this.auth.toSessionUser(user);
+    const sessionUser = await this.auth.toSessionUser(user);
     if (!sessionUser.hasInternalAccess) {
       // Duas mensagens distintas de propósito: "não achamos seu personagem" e
       // "seu rank não alcança" pedem ações opostas de quem recebe. Mandar a
@@ -53,10 +53,12 @@ export class MemberGuard implements CanActivate {
 /**
  * Exige tudo do MemberGuard **mais** a flag de oficial.
  *
- * É o gate da Regra 7 para histórico de outra pessoa: presença e loot são dados
- * sobre gente real, e membro não vê o histórico de membro. Exige a área interna
- * junto, então sair da guilda derruba o acesso mesmo que ninguém lembre de
- * desligar a flag.
+ * Protege hoje duas coisas diferentes — o histórico de outras pessoas (Regra 7)
+ * e a própria lista de oficiais — então checa a precondição comum,
+ * `isActingOfficer`, e não uma das permissões específicas. Um guard que
+ * checasse `canSeeOthersHistory` para proteger a lista de oficiais passaria a
+ * mentir no dia em que as duas divergissem, e o jeito de descobrir seria pelo
+ * acesso indevido.
  *
  * Herda do MemberGuard de propósito: um guard de oficial que esquecesse de
  * checar membership seria um jeito silencioso de ex-oficial continuar lendo
@@ -68,8 +70,8 @@ export class OfficerGuard extends MemberGuard {
     await super.canActivate(context);
 
     const req = context.switchToHttp().getRequest<Request & { user: SessionUser }>();
-    if (!canSeeOthersHistory(req.user)) {
-      throw new ForbiddenException('Só oficial vê o histórico de outras pessoas');
+    if (!isActingOfficer(req.user)) {
+      throw new ForbiddenException('Esta área é restrita a oficiais');
     }
 
     return true;

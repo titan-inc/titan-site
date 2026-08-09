@@ -1,5 +1,5 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import type { SessionUser } from '@titan/shared';
+import { canReviewApplications, type SessionUser } from '@titan/shared';
 import type { Request } from 'express';
 import { MemberGuard } from '../auth/session.guard';
 
@@ -32,7 +32,11 @@ export class InternalController {
       guildRank: user.guildRank,
       // Ainda não há painel de candidaturas; o campo mostra o que a permissão
       // permitiria. Ver TIT-23.
-      canReviewApplications: user.isOfficer,
+      //
+      // Pela função do shared, não por `user.isOfficer` cru: hoje o endpoint
+      // está sob MemberGuard e os dois dariam o mesmo resultado, mas ler a flag
+      // direto perde a exigência de membership no dia em que o guard mudar.
+      canReviewApplications: canReviewApplications(user),
     };
   }
 }

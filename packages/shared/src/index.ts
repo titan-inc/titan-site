@@ -3,6 +3,7 @@ export * from './application.js';
 export * from './attendance.js';
 export * from './health.js';
 export * from './membership.js';
+export * from './officers.js';
 export * from './progress.js';
 export * from './raid-progress.js';
 export * from './roster.js';
