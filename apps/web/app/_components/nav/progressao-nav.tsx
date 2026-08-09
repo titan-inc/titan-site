@@ -18,8 +18,8 @@ function MarcasProgressao({ progressao }: { progressao: ResumoProgressaoNav }) {
           key={indice}
           className={
             vencido
-              ? 'bg-accent h-3 w-0.5 shrink-0 opacity-70'
-              : 'bg-bronze-deep h-1.5 w-px shrink-0'
+              ? 'haste-acesa bg-accent h-3 w-0.5 shrink-0 opacity-70'
+              : 'bg-pedra-deep h-1.5 w-px shrink-0'
           }
         />
       ))}
@@ -35,8 +35,15 @@ export function ProgressaoNav({
   rolada: boolean;
 }) {
   const descricao = descricaoProgressao(progressao);
+  // Sulco nos dois lados: a régua é um bloco de leitura, não um item de menu.
+  // O sulco de fecho existe porque sem ele a contagem encostava no primeiro
+  // link — `ml-auto` no grupo de links não garante folga quando o nome da raid
+  // trunca ocupando a largura máxima.
   return (
-    <div className="ml-5 hidden h-11 max-w-[124px] min-w-0 items-center gap-3 lg:flex xl:max-w-[310px]">
+    <div
+      title={progressao ? `${progressao.raidNome} · ${progressao.dificuldadeNome}` : undefined}
+      className="mr-6 ml-5 hidden h-11 min-w-0 items-center gap-3 lg:flex xl:mr-8"
+    >
       <span
         aria-hidden="true"
         className={`bg-groove h-5 w-px shrink-0 ${rolada ? 'opacity-100' : 'opacity-70'}`}
@@ -44,8 +51,13 @@ export function ProgressaoNav({
       <span aria-hidden="true" className="contents">
         {progressao ? (
           <>
-            <span className="text-fg-muted hidden max-w-[18ch] min-w-0 truncate font-mono text-[10px] tracking-[0.12em] uppercase xl:block">
-              {progressao.raidNome} · {progressao.dificuldadeNome}
+            {/* Sigla, não o nome inteiro: "Complexo Meridian · Mítico" truncava
+                em "Complexo Merid…", que não informa nada. `CM · M` é como
+                jogador escreve progressão, cabe a partir do lg e dispensa o
+                truncamento. O nome completo fica no `title`, no painel do
+                mobile e na descrição do leitor de tela. */}
+            <span className="text-fg-muted shrink-0 font-mono text-[10px] tracking-[0.12em] whitespace-nowrap uppercase">
+              {progressao.raidSigla} · {progressao.dificuldadeSigla}
             </span>
             <span className={rolada ? 'opacity-100' : 'opacity-70'}>
               <MarcasProgressao progressao={progressao} />
@@ -56,8 +68,8 @@ export function ProgressaoNav({
           </>
         ) : (
           <>
-            <span className="text-fg-muted hidden font-mono text-[10px] tracking-[0.12em] whitespace-nowrap uppercase xl:block">
-              Progressão · Sem leitura
+            <span className="text-fg-muted shrink-0 font-mono text-[10px] tracking-[0.12em] whitespace-nowrap uppercase">
+              Sem leitura
             </span>
             <span className="text-fg shrink-0 font-mono text-[11px] font-semibold tabular-nums">
               —/—
@@ -66,6 +78,10 @@ export function ProgressaoNav({
         )}
       </span>
       <span className="sr-only">{descricao}</span>
+      <span
+        aria-hidden="true"
+        className={`bg-groove ml-1 h-5 w-px shrink-0 ${rolada ? 'opacity-100' : 'opacity-70'}`}
+      />
     </div>
   );
 }
