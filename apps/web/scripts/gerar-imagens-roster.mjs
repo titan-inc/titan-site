@@ -10,7 +10,15 @@ const arquivos = (await readdir(diretorio, { withFileTypes: true }))
   .map((entrada) => entrada.name)
   .sort();
 
+// Emitido já no formato do Prettier, um item por linha com aspas simples e
+// vírgula final. O arquivo é versionado — `JSON.stringify` em uma linha só
+// passava no `format:check` do CI (que roda antes do build) mas sujava a
+// árvore de quem rodasse `pnpm build` localmente.
+const corpo = arquivos.length
+  ? `[\n${arquivos.map((nome) => `  '${nome}',`).join('\n')}\n]`
+  : '[]';
+
 await writeFile(
   destino,
-  `// Gerado por scripts/gerar-imagens-roster.mjs durante o prebuild.\nexport const imagensRoster: readonly string[] = ${JSON.stringify(arquivos)};\n`,
+  `// Gerado por scripts/gerar-imagens-roster.mjs durante o prebuild.\nexport const imagensRoster: readonly string[] = ${corpo};\n`,
 );
