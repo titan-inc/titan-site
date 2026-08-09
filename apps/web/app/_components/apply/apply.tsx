@@ -24,8 +24,8 @@ export function Apply() {
             Entrar para o <span className="letra-fel">registro</span>
           </h2>
           <p className="text-fg-muted mt-6 text-[17px] leading-[1.6] text-pretty">
-            Se o horário bate com o seu, vale conversar. Deixe o essencial; o restante a gente
-            resolve em conversa.
+            Se você acha que temos a sua cara, preencha o formulário. Entraremos em contato com você
+            em breve.
           </p>
           <ApplyForm />
         </div>
