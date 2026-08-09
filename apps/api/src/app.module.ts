@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
@@ -25,6 +26,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     SnapshotsModule,
     RaidProgressModule,
     MembershipModule,
+    CatalogModule,
     HealthModule,
   ],
   controllers: [AppController],

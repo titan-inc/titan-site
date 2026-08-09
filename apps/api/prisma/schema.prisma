@@ -156,6 +156,10 @@ model GameSeason {
 
   snapshots CharacterSnapshot[]
 
+  /// Raids cadastradas no catálogo desta season. A ligação é OPCIONAL do outro
+  /// lado — ver o comentário em `CatalogRaid.seasonId`.
+  catalogRaids CatalogRaid[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 }
@@ -219,4 +223,164 @@ model CharacterSnapshot {
   @@unique([period, realmSlug, nameKey])
   @@index([seasonId])
   @@index([realmSlug, nameKey])
+}
+
+/// Dificuldade de raid, como contexto do catálogo.
+///
+/// NÃO é derivada do `itemString`. Isso foi testado nos 445 registros da season
+/// passada: dos 112 itens de raid, 75 aparecem em mais de uma dificuldade, e só
+/// UM bonus ID (`13786`, Flexible Raiding) separa limpo. O mesmo item 249276 em
+/// Heroic e Normal compartilha os bonus `13333` e `12786` — o conjunto varia por
+/// socket, terciário, track de upgrade e caminho de aquisição, não por
+/// dificuldade.
+///
+/// E não precisa ser derivada: quem cadastra está lendo a loot table Mítica no
+/// Wowhead e já sabe que é mítica.
+///
+/// LFR ficou de fora porque a guilda não roda. Acrescentar valor a enum depois é
+/// migration barata; o inverso, não.
+enum RaidDifficulty {
+  normal
+  heroic
+  mythic
+}
+
+/// Dicionário de itens: "o que é o item 249276".
+///
+/// NÃO é a loot table da raid — isso é `EncounterDrop`. A distinção importa: dos
+/// 445 registros do histórico, 17 são de Mythic Keystone e 86 são bonus roll,
+/// itens que nunca vão estar em `EncounterDrop`. Se o dicionário só cobrisse
+/// item de raid, o explorador exibiria M+ com o nome localizado que ele existe
+/// para eliminar.
+///
+/// Por isso a tabela é COMPARTILHADA: o cadastro manual do catálogo escreve
+/// aqui, e o import do histórico também.
+///
+/// Cresce para sempre e nunca apaga: linha de loot e sessão guardam `itemId`, e
+/// apagar um item apagaria o significado de histórico já gravado.
+model CatalogItem {
+  /// Id da Blizzard, chave natural. Sem surrogate: o import já chega com o
+  /// `itemID` na mão, e PK natural transforma o import em upsert direto.
+  /// Mesmo precedente do `GameSeason.id`.
+  itemId Int @id
+
+  /// Nome canônico em **en_US**, escolhido por casar com Wowhead, WarcraftLogs
+  /// e Raider.IO — as fontes que a gente confere contra.
+  ///
+  /// A TELA SEMPRE LÊ DAQUI, nunca o `itemName` da linha de loot: aquele vem
+  /// localizado pelo cliente de quem era loot master na noite, então o mesmo
+  /// item aparece em dois idiomas na mesma lista.
+  ///
+  /// Nulo até o enriquecimento rodar. É nulável de propósito: item de patch não
+  /// lançado responde 404 na API live, e o cadastro precisa funcionar antes
+  /// disso — a season começa em 18/08/2026 e o patch só entra em 11/08.
+  name String?
+
+  /// Slug do ícone (`inv_helm_plate_raidwarrior_a_01`), não URL.
+  /// URL de CDN muda de host e formato; o slug é estável há mais de uma década
+  /// e a URL se compõe na hora de exibir.
+  icon String?
+
+  /// `INVTYPE_*` da Blizzard — o slot. Constante, e **não** localizado.
+  ///
+  /// Deliberadamente não é o `subType` do export do RCLootCouncil, que vem
+  /// traduzido pelo cliente e reintroduziria o problema do nome localizado.
+  equipLoc String?
+
+  /// Tipo do item (subclasse: `Plate`, `Trinket`, `One-Handed Sword`).
+  itemSubclass String?
+
+  /// Quando a API da Blizzard preencheu os campos acima. Nulo = nunca
+  /// enriquecido, e é isso que o job procura para tentar de novo.
+  enrichedAt DateTime?
+
+  drops EncounterDrop[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// O job de enriquecimento varre por aqui.
+  @@index([enrichedAt])
+}
+
+/// Uma raid do catálogo.
+model CatalogRaid {
+  id String @id @default(cuid())
+
+  /// Identidade estável para referenciar de fora sem depender do cuid.
+  slug String @unique
+
+  /// "The Voidspire".
+  name String
+
+  /// Season da Blizzard, **opcional de propósito**.
+  ///
+  /// `GameSeason` é populada pelo job de snapshot a partir de
+  /// `getCurrentSeason()`, então a linha da season nova só existe depois que ela
+  /// COMEÇA. Como o catálogo precisa estar pronto ANTES disso — é o motivo de
+  /// ele ser a primeira coisa a construir — uma FK obrigatória impediria
+  /// cadastrar justamente na janela em que o cadastro serve para algo.
+  ///
+  /// Chutar o id também não é opção: o índice da Blizzard devolveu 1..15 e 17,
+  /// e a season 16 não existe.
+  ///
+  /// Fica nulo no cadastro e é preenchido quando a season aparece.
+  seasonId Int?
+  season   GameSeason? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+
+  encounters CatalogEncounter[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([seasonId])
+}
+
+/// Um boss da raid.
+model CatalogEncounter {
+  id String @id @default(cuid())
+
+  raidId String
+  raid   CatalogRaid @relation(fields: [raidId], references: [id], onDelete: Cascade)
+
+  name String
+
+  /// Ordem do boss na raid, para a tela listar na sequência em que se mata.
+  position Int
+
+  drops EncounterDrop[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([raidId, position])
+  @@index([raidId])
+}
+
+/// A loot table: este boss solta este item nesta dificuldade.
+///
+/// A dificuldade é atributo DESTA linha, e não da raid nem do boss, porque a
+/// loot table muda entre dificuldades. Os "28 pares boss+dificuldade" da season
+/// passada saem como `DISTINCT (encounterId, difficulty)` — o par não vira
+/// tabela porque não tem atributo próprio.
+///
+/// MODIFICADORES NÃO ENTRAM AQUI. Socket, terciário e track variam por drop, não
+/// por entrada de catálogo; enumerar combinações seria explosão combinatória sem
+/// ganho. Eles vivem no `itemString` cru da linha de loot.
+model EncounterDrop {
+  encounterId String
+  encounter   CatalogEncounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  difficulty RaidDifficulty
+
+  itemId Int
+  item   CatalogItem @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// Sem id próprio: a trinca já é a identidade, e nada referencia um drop.
+  /// A sessão ao vivo e a linha de loot guardam `itemId`, não esta linha — que é
+  /// o que faz editar o catálogo nunca corromper histórico já gravado.
+  @@id([encounterId, difficulty, itemId])
+  @@index([itemId])
 }
