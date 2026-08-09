@@ -1,5 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { toCharacterKey, toSlug } from './wow.js';
+import { CLASSES, SPEC_CLASS, SPECS, toCharacterKey, toSlug, wowSpecSchema } from './wow.js';
+
+describe('SPECS', () => {
+  it('tem uma classe mapeada para cada spec', () => {
+    // O Record já obriga isso no typecheck; o teste pega o caso em que alguém
+    // acrescenta a spec na lista e "resolve" o erro com um valor errado.
+    for (const spec of SPECS) {
+      expect(CLASSES).toContain(SPEC_CLASS[spec]);
+    }
+  });
+
+  it('cobre todas as classes', () => {
+    // Classe sem nenhuma spec significa spec esquecida na lista — e um item
+    // dessa classe ficaria sem ninguém elegível, sem erro nenhum.
+    const comSpec = new Set(SPECS.map((s) => SPEC_CLASS[s]));
+    expect([...CLASSES].filter((c) => !comSpec.has(c))).toEqual([]);
+  });
+
+  it('não tem slug repetido', () => {
+    expect(new Set(SPECS).size).toBe(SPECS.length);
+  });
+
+  it('prefixa a classe, porque o nome sozinho colide', () => {
+    // Os quatro pares que justificam o prefixo.
+    for (const spec of [
+      'druid-restoration',
+      'shaman-restoration',
+      'paladin-holy',
+      'priest-holy',
+      'mage-frost',
+      'death-knight-frost',
+      'paladin-protection',
+      'warrior-protection',
+    ]) {
+      expect(wowSpecSchema.safeParse(spec).success).toBe(true);
+    }
+
+    // E o nome cru não é aceito.
+    expect(wowSpecSchema.safeParse('restoration').success).toBe(false);
+  });
+});
 
 describe('toSlug', () => {
   it('normaliza caixa e espaços', () => {

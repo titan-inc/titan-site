@@ -27,6 +27,9 @@ const itemSelect = {
   icon: true,
   equipLoc: true,
   itemSubclass: true,
+  primaryStats: true,
+  specsCuratedAt: true,
+  usableBySpecs: { select: { spec: true } },
 } as const;
 
 /**

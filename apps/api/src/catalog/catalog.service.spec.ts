@@ -1,12 +1,30 @@
 import type { CatalogRepository } from './catalog.repository';
 import { CatalogService } from './catalog.service';
 
-const item = (itemId: number) => ({
+/** Linha crua do Prisma: specs vêm como enum do banco, com underscore. */
+const itemRow = (itemId: number, over: Record<string, unknown> = {}) => ({
   itemId,
   name: null,
   icon: null,
   equipLoc: null,
   itemSubclass: null,
+  primaryStats: [],
+  specsCuratedAt: null,
+  usableBySpecs: [],
+  ...over,
+});
+
+/** O mesmo item já traduzido para o contrato do shared. */
+const item = (itemId: number, over: Record<string, unknown> = {}) => ({
+  itemId,
+  name: null,
+  icon: null,
+  equipLoc: null,
+  itemSubclass: null,
+  primaryStats: [],
+  usableBySpecs: [],
+  specsCuratedAt: null,
+  ...over,
 });
 
 /** Uma raid com dois bosses, o segundo cadastrado fora de ordem no array. */
@@ -21,8 +39,8 @@ const raidRow = (over: Record<string, unknown> = {}) => ({
       name: 'Boss A',
       position: 0,
       drops: [
-        { difficulty: 'mythic' as const, item: item(249276) },
-        { difficulty: 'heroic' as const, item: item(249276) },
+        { difficulty: 'mythic' as const, item: itemRow(249276) },
+        { difficulty: 'heroic' as const, item: itemRow(249276) },
       ],
     },
     {
@@ -103,5 +121,51 @@ describe('CatalogService', () => {
     repo.findRaidBySlug.mockResolvedValue(null);
 
     expect(await service.getRaid('nao-existe')).toBeNull();
+  });
+
+  it('traduz o enum de spec do banco para o slug do contrato', async () => {
+    // O banco não aceita hífen em enum, então guarda `warrior_fury`. Se a
+    // tradução vazar, o front recebe um valor que o schema do shared recusa.
+    repo.findRaids.mockResolvedValue([
+      raidRow({
+        encounters: [
+          {
+            id: 'ckboss0',
+            name: 'Boss A',
+            position: 0,
+            drops: [
+              {
+                difficulty: 'mythic' as const,
+                item: itemRow(249276, {
+                  primaryStats: ['strength'],
+                  specsCuratedAt: new Date('2026-08-09T00:00:00.000Z'),
+                  usableBySpecs: [{ spec: 'warrior_fury' }, { spec: 'paladin_protection' }],
+                }),
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+
+    const raid = primeira(await service.listRaids());
+    const drop = primeira(primeira(raid.encounters).drops);
+
+    expect(drop.item.usableBySpecs).toEqual(['warrior-fury', 'paladin-protection']);
+    expect(drop.item.primaryStats).toEqual(['strength']);
+    expect(drop.item.specsCuratedAt).toBe('2026-08-09T00:00:00.000Z');
+  });
+
+  it('não confunde "ninguém revisou" com "nenhuma spec usa"', async () => {
+    // Item recém-cadastrado: lista vazia e carimbo nulo. Quem consome precisa
+    // conseguir distinguir isso de um item revisado que de fato não serve a
+    // ninguém — senão o cadastro novo aparece como inútil para todo mundo.
+    repo.findRaids.mockResolvedValue([raidRow()]);
+
+    const raid = primeira(await service.listRaids());
+    const drop = primeira(primeira(raid.encounters).drops);
+
+    expect(drop.item.usableBySpecs).toEqual([]);
+    expect(drop.item.specsCuratedAt).toBeNull();
   });
 });

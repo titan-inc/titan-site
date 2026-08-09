@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { CatalogRaid, RaidDifficultyLevel } from '@titan/shared';
+import type { CatalogItem, CatalogRaid, RaidDifficultyLevel } from '@titan/shared';
 import { CatalogRepository, type RaidFilter } from './catalog.repository';
+import { SPEC_FROM_DB } from './spec-map';
 
 /** O que o repository devolve, antes de virar o contrato do shared. */
 type RaidRow = Awaited<ReturnType<CatalogRepository['findRaids']>>[number];
+type ItemRow = RaidRow['encounters'][number]['drops'][number]['item'];
 
 /**
  * Leitura do catálogo de loot.
@@ -47,8 +49,28 @@ function toCatalogRaid(raid: RaidRow): CatalogRaid {
       position: encounter.position,
       drops: encounter.drops.map((drop) => ({
         difficulty: drop.difficulty,
-        item: drop.item,
+        item: toCatalogItem(drop.item),
       })),
     })),
+  };
+}
+
+/**
+ * Traduz o item, achatando as specs e convertendo o enum do banco para o slug.
+ *
+ * `usableBySpecs` vazio com `specsCuratedAt` nulo significa "ninguém revisou",
+ * não "nenhuma spec usa". Quem consome precisa tratar os dois casos diferente —
+ * é o mesmo cuidado da Regra 7 com lacuna e zero.
+ */
+function toCatalogItem(item: ItemRow): CatalogItem {
+  return {
+    itemId: item.itemId,
+    name: item.name,
+    icon: item.icon,
+    equipLoc: item.equipLoc,
+    itemSubclass: item.itemSubclass,
+    primaryStats: item.primaryStats,
+    usableBySpecs: item.usableBySpecs.map((s) => SPEC_FROM_DB[s.spec]),
+    specsCuratedAt: item.specsCuratedAt?.toISOString() ?? null,
   };
 }

@@ -44,6 +44,131 @@ export const ROLES = ['tank', 'healer', 'melee-dps', 'ranged-dps'] as const;
 export const roleSchema = z.enum(ROLES);
 export type Role = z.infer<typeof roleSchema>;
 
+/**
+ * Stat primário de uma peça.
+ *
+ * É atributo da **peça**, não da spec: qual stat a spec usa é conhecimento
+ * estático (Fury é força, sempre), enquanto o da peça varia item a item e
+ * precisa ser cadastrado.
+ *
+ * Sempre um CONJUNTO, nunca um valor. Cobre os quatro casos reais com uma forma
+ * só:
+ *
+ * - `[strength]` — peça de stat fixo, o caso comum de armadura de raid
+ * - `[strength, agility]` — peça restrita a um grupo, comum em trinket
+ * - `[strength, agility, intellect]` — peça totalmente adaptativa
+ * - `[]` — peça sem primário nenhum, como trinket que é só efeito
+ */
+export const PRIMARY_STATS = ['strength', 'agility', 'intellect'] as const;
+export const primaryStatSchema = z.enum(PRIMARY_STATS);
+export type PrimaryStat = z.infer<typeof primaryStatSchema>;
+
+/**
+ * Specs do jogo.
+ *
+ * O slug é prefixado pela classe porque o nome sozinho colide: `restoration` é
+ * de druida e de xamã, `holy` é de paladino e de sacerdote, `frost` é de mago e
+ * de death knight, `protection` é de paladino e de guerreiro.
+ *
+ * **Identidade estável, nunca posição.** Mesmo cuidado do enum de dificuldade e
+ * pelo mesmo motivo: o `responseID` do RCLootCouncil é posicional, e por isso o
+ * id `2` aparece como "Big" e como "Banking" no mesmo export. Spec muda entre
+ * expansões — some, nasce, é renomeada — então o valor tem que ser o rótulo.
+ */
+export const SPECS = [
+  'death-knight-blood',
+  'death-knight-frost',
+  'death-knight-unholy',
+  'demon-hunter-havoc',
+  'demon-hunter-vengeance',
+  'druid-balance',
+  'druid-feral',
+  'druid-guardian',
+  'druid-restoration',
+  'evoker-augmentation',
+  'evoker-devastation',
+  'evoker-preservation',
+  'hunter-beast-mastery',
+  'hunter-marksmanship',
+  'hunter-survival',
+  'mage-arcane',
+  'mage-fire',
+  'mage-frost',
+  'monk-brewmaster',
+  'monk-mistweaver',
+  'monk-windwalker',
+  'paladin-holy',
+  'paladin-protection',
+  'paladin-retribution',
+  'priest-discipline',
+  'priest-holy',
+  'priest-shadow',
+  'rogue-assassination',
+  'rogue-outlaw',
+  'rogue-subtlety',
+  'shaman-elemental',
+  'shaman-enhancement',
+  'shaman-restoration',
+  'warlock-affliction',
+  'warlock-demonology',
+  'warlock-destruction',
+  'warrior-arms',
+  'warrior-fury',
+  'warrior-protection',
+] as const;
+export const wowSpecSchema = z.enum(SPECS);
+export type WowSpec = z.infer<typeof wowSpecSchema>;
+
+/**
+ * A classe de cada spec.
+ *
+ * Mapa explícito, e **não** um split do slug: `death-knight-frost` e
+ * `demon-hunter-havoc` quebrariam qualquer regra de "corta no primeiro hífen",
+ * e a que funciona hoje passa a errar calada quando nascer uma classe com nome
+ * composto novo.
+ */
+export const SPEC_CLASS: Record<WowSpec, WowClass> = {
+  'death-knight-blood': 'death-knight',
+  'death-knight-frost': 'death-knight',
+  'death-knight-unholy': 'death-knight',
+  'demon-hunter-havoc': 'demon-hunter',
+  'demon-hunter-vengeance': 'demon-hunter',
+  'druid-balance': 'druid',
+  'druid-feral': 'druid',
+  'druid-guardian': 'druid',
+  'druid-restoration': 'druid',
+  'evoker-augmentation': 'evoker',
+  'evoker-devastation': 'evoker',
+  'evoker-preservation': 'evoker',
+  'hunter-beast-mastery': 'hunter',
+  'hunter-marksmanship': 'hunter',
+  'hunter-survival': 'hunter',
+  'mage-arcane': 'mage',
+  'mage-fire': 'mage',
+  'mage-frost': 'mage',
+  'monk-brewmaster': 'monk',
+  'monk-mistweaver': 'monk',
+  'monk-windwalker': 'monk',
+  'paladin-holy': 'paladin',
+  'paladin-protection': 'paladin',
+  'paladin-retribution': 'paladin',
+  'priest-discipline': 'priest',
+  'priest-holy': 'priest',
+  'priest-shadow': 'priest',
+  'rogue-assassination': 'rogue',
+  'rogue-outlaw': 'rogue',
+  'rogue-subtlety': 'rogue',
+  'shaman-elemental': 'shaman',
+  'shaman-enhancement': 'shaman',
+  'shaman-restoration': 'shaman',
+  'warlock-affliction': 'warlock',
+  'warlock-demonology': 'warlock',
+  'warlock-destruction': 'warlock',
+  'warrior-arms': 'warrior',
+  'warrior-fury': 'warrior',
+  'warrior-protection': 'warrior',
+};
+
 /** Marcas diacríticas combinantes (Unicode Combining Diacritical Marks). */
 const COMBINING_MARKS = /[̀-ͯ]/g;
 const APOSTROPHES = /['’]/g;

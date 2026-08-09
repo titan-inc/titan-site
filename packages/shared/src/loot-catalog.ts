@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { primaryStatSchema, wowSpecSchema } from './wow.js';
 
 /**
  * Dificuldade de raid como o catálogo a define.
@@ -49,6 +50,38 @@ export const catalogItemSchema = z.object({
 
   /** Subclasse: `Plate`, `Trinket`, `One-Handed Sword`. */
   itemSubclass: z.string().nullable(),
+
+  /**
+   * Stats primários da peça. Cadastrado à mão — ver `primaryStatSchema`.
+   *
+   * Vazio é resposta legítima: existe trinket que é só efeito.
+   */
+  primaryStats: primaryStatSchema.array(),
+
+  /**
+   * Quais specs podem usar a peça.
+   *
+   * ESTA LISTA SUBSTITUI A DERIVAÇÃO, NUNCA SOMA A ELA. Derivar por armadura,
+   * stat e slot dá uma boa proposta, mas erra num caso que não é raro: o efeito
+   * do item restringe além do que o stat diz. Trinket com intelecto e proc de
+   * cura serve healer e não serve mago; trinket com força e redução de dano
+   * serve tank e não serve Fury.
+   *
+   * Como as restrições reais são de REMOÇÃO, um desenho "derivado + acréscimos"
+   * não conseguiria expressar nenhum desses casos. Por isso o que fica gravado é
+   * a resposta final do humano. Ver TIT-77.
+   */
+  usableBySpecs: wowSpecSchema.array(),
+
+  /**
+   * Quando um humano revisou `usableBySpecs`. Nulo = ninguém revisou ainda.
+   *
+   * Existe para separar duas coisas que a lista vazia confunde: "ainda não
+   * sabemos" e "nenhuma spec usa". Mesmo princípio da Regra 7 — falha de coleta
+   * é lacuna, nunca zero. Sem este campo, item recém-cadastrado apareceria como
+   * inútil para todo mundo.
+   */
+  specsCuratedAt: z.string().datetime().nullable(),
 });
 export type CatalogItem = z.infer<typeof catalogItemSchema>;
 

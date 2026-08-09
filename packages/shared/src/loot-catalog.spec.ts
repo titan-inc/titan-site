@@ -23,23 +23,58 @@ describe('raidDifficultyLevelSchema', () => {
 });
 
 describe('catalogItemSchema', () => {
+  const cru = {
+    itemId: 249276,
+    name: null,
+    icon: null,
+    equipLoc: null,
+    itemSubclass: null,
+    primaryStats: [],
+    usableBySpecs: [],
+    specsCuratedAt: null,
+  };
+
   it('aceita item ainda não enriquecido', () => {
     // Estado normal de item cadastrado antes do patch entrar: a API da Blizzard
     // responde 404 para item de patch não lançado, e o cadastro não pode esperar.
-    const item = catalogItemSchema.parse({
-      itemId: 249276,
-      name: null,
-      icon: null,
-      equipLoc: null,
-      itemSubclass: null,
-    });
+    const item = catalogItemSchema.parse(cru);
 
     expect(item.itemId).toBe(249276);
     expect(item.name).toBeNull();
   });
 
   it('recusa itemId zero ou negativo', () => {
-    expect(catalogItemSchema.safeParse({ itemId: 0 }).success).toBe(false);
+    expect(catalogItemSchema.safeParse({ ...cru, itemId: 0 }).success).toBe(false);
+  });
+
+  it('aceita conjunto de stat primário, não só um valor', () => {
+    // O trinket com força E agilidade é o caso que derruba "um stat por peça".
+    const item = catalogItemSchema.parse({
+      ...cru,
+      primaryStats: ['strength', 'agility'],
+    });
+
+    expect(item.primaryStats).toEqual(['strength', 'agility']);
+  });
+
+  it('distingue "ninguém revisou" de "nenhuma spec usa"', () => {
+    // As duas têm usableBySpecs vazio, e significam coisas opostas. Sem o
+    // carimbo, item recém-cadastrado apareceria como inútil para todo mundo.
+    const naoRevisado = catalogItemSchema.parse(cru);
+    const revisadoSemNinguem = catalogItemSchema.parse({
+      ...cru,
+      specsCuratedAt: '2026-08-09T00:00:00.000Z',
+    });
+
+    expect(naoRevisado.usableBySpecs).toEqual([]);
+    expect(naoRevisado.specsCuratedAt).toBeNull();
+    expect(revisadoSemNinguem.usableBySpecs).toEqual([]);
+    expect(revisadoSemNinguem.specsCuratedAt).not.toBeNull();
+  });
+
+  it('recusa spec que não existe', () => {
+    const r = catalogItemSchema.safeParse({ ...cru, usableBySpecs: ['warrior-holy'] });
+    expect(r.success).toBe(false);
   });
 });
 
@@ -63,6 +98,9 @@ describe('catalogRaidSchema', () => {
               icon: 'inv_helm_plate_raidwarrior_a_01',
               equipLoc: 'INVTYPE_HEAD',
               itemSubclass: 'Plate',
+              primaryStats: ['strength'],
+              usableBySpecs: ['warrior-fury', 'paladin-protection'],
+              specsCuratedAt: '2026-08-09T00:00:00.000Z',
             },
           },
         ],
