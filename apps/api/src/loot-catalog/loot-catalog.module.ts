@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { WarcraftLogsModule } from '../warcraftlogs/warcraftlogs.module';
 import { LootCatalogRepository } from './loot-catalog.repository';
 import { LootCatalogService } from './loot-catalog.service';
 
@@ -15,6 +16,10 @@ import { LootCatalogService } from './loot-catalog.service';
  * só, que é o que a Regra 3 pede.
  */
 @Module({
+  // O WarcraftLogs entra pela conferência de `dungeonEncounterId` na carga: o
+  // WCL responde o nome do boss a partir do mesmo id que o jogo usa, e é isso
+  // que transforma id errado em erro detectável.
+  imports: [WarcraftLogsModule],
   providers: [LootCatalogService, LootCatalogRepository],
   exports: [LootCatalogService, LootCatalogRepository],
 })

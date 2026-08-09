@@ -1,5 +1,6 @@
 import { RaidDifficulty, WowSpec } from '@prisma/client';
-import { PRIMARY_STATS, RAID_DIFFICULTIES, SPECS } from '@titan/shared';
+import { PRIMARY_STATS, RAID_DIFFICULTIES, SPECS, type CatalogFile } from '@titan/shared';
+import type { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import type { LootCatalogRepository } from './loot-catalog.repository';
 import { LootCatalogService } from './loot-catalog.service';
 
@@ -66,13 +67,54 @@ function primeira<T>(itens: T[]): T {
   return primeiro;
 }
 
+/** Arquivo mínimo válido, com um boss e um item. */
+const arquivo = (over: Record<string, unknown> = {}): CatalogFile => ({
+  version: 1,
+  slug: 'the-voidspire',
+  name: 'The Voidspire',
+  bosses: [
+    {
+      name: 'Imperator Averzian',
+      position: 0,
+      dungeonEncounterId: 2900,
+      difficulties: [RAID_DIFFICULTIES.NORMAL, RAID_DIFFICULTIES.HEROIC, RAID_DIFFICULTIES.MYTHIC],
+      items: [{ itemId: 249344 }],
+    },
+  ],
+  ...over,
+});
+
+/** Catálogo do WCL com o boss que o arquivo declara. */
+const catalogoWcl = (nome = 'Imperator Averzian') => ({
+  encounters: new Map([[2900, { id: 2900, name: nome, zoneId: 46, zoneName: 'Tier', order: 0 }]]),
+  zones: new Map(),
+  difficultyNames: new Map(),
+});
+
 describe('LootCatalogService', () => {
-  const repo = { findRaids: jest.fn(), findRaidBySlug: jest.fn() };
+  const repo = {
+    findRaids: jest.fn(),
+    findRaidBySlug: jest.fn(),
+    upsertRaid: jest.fn(),
+    upsertEncounter: jest.fn(),
+    upsertItem: jest.fn(),
+    replaceDrops: jest.fn(),
+  };
+  const wcl = { getRaidCatalog: jest.fn() };
   let service: LootCatalogService;
 
   beforeEach(() => {
     jest.resetAllMocks();
-    service = new LootCatalogService(repo as unknown as LootCatalogRepository);
+    repo.upsertRaid.mockResolvedValue({ id: 'ckraid' });
+    repo.upsertEncounter.mockResolvedValue({ id: 'ckboss' });
+    repo.upsertItem.mockResolvedValue(undefined);
+    repo.replaceDrops.mockResolvedValue(undefined);
+    wcl.getRaidCatalog.mockResolvedValue(catalogoWcl());
+
+    service = new LootCatalogService(
+      repo as unknown as LootCatalogRepository,
+      wcl as unknown as WarcraftLogsService,
+    );
   });
 
   it('traduz a raid para o contrato do shared', async () => {
@@ -133,6 +175,76 @@ describe('LootCatalogService', () => {
     repo.findRaidBySlug.mockResolvedValue(null);
 
     expect(await service.getRaid('nao-existe')).toBeNull();
+  });
+
+  describe('carregarArquivo', () => {
+    it('expande item por dificuldade', async () => {
+      // O journal da Blizzard dá uma lista de itens e um conjunto de
+      // dificuldades, sem dizer quais itens existem em quais. O padrão é o
+      // produto cartesiano: um item em três dificuldades vira três drops.
+      const r = await service.carregarArquivo(arquivo());
+
+      expect(repo.replaceDrops).toHaveBeenCalledWith('ckboss', [
+        { difficulty: RAID_DIFFICULTIES.NORMAL, itemId: 249344 },
+        { difficulty: RAID_DIFFICULTIES.HEROIC, itemId: 249344 },
+        { difficulty: RAID_DIFFICULTIES.MYTHIC, itemId: 249344 },
+      ]);
+      expect(r.drops).toBe(3);
+    });
+
+    it('deixa o item sobrepor as dificuldades do boss', async () => {
+      // O escape para peça exclusiva de mítico, que o produto cartesiano
+      // superestimaria.
+      const so_mitico = arquivo();
+      so_mitico.bosses[0].items[0]!.difficulties = [RAID_DIFFICULTIES.MYTHIC];
+
+      await service.carregarArquivo(so_mitico);
+
+      expect(repo.replaceDrops).toHaveBeenCalledWith('ckboss', [
+        { difficulty: RAID_DIFFICULTIES.MYTHIC, itemId: 249344 },
+      ]);
+    });
+
+    it('para sem gravar nada quando o id do boss não bate no WCL', async () => {
+      // O cenário que isto evita: id errado não quebra a carga, e o sintoma só
+      // apareceria semanas depois como "a colagem não casa com boss nenhum".
+      wcl.getRaidCatalog.mockResolvedValue(catalogoWcl('Outro Boss'));
+
+      await expect(service.carregarArquivo(arquivo())).rejects.toThrow(/Outro Boss/);
+
+      expect(repo.upsertRaid).not.toHaveBeenCalled();
+      expect(repo.replaceDrops).not.toHaveBeenCalled();
+    });
+
+    it('para quando o WCL não conhece o id', async () => {
+      wcl.getRaidCatalog.mockResolvedValue({
+        encounters: new Map(),
+        zones: new Map(),
+        difficultyNames: new Map(),
+      });
+
+      await expect(service.carregarArquivo(arquivo())).rejects.toThrow(/não conhece/);
+      expect(repo.upsertRaid).not.toHaveBeenCalled();
+    });
+
+    it('carrega sem consultar o WCL quando a conferência é desligada', async () => {
+      // Saída de emergência para o WCL fora do ar.
+      await service.carregarArquivo(arquivo(), { semConferencia: true });
+
+      expect(wcl.getRaidCatalog).not.toHaveBeenCalled();
+      expect(repo.upsertRaid).toHaveBeenCalled();
+    });
+
+    it('não consulta o WCL quando nenhum boss tem id', async () => {
+      const semId = arquivo();
+      delete semId.bosses[0].dungeonEncounterId;
+
+      const r = await service.carregarArquivo(semId);
+
+      expect(wcl.getRaidCatalog).not.toHaveBeenCalled();
+      // E avisa, porque boss sem id não casa com a colagem do addon.
+      expect(r.semDungeonEncounterId).toEqual(['Imperator Averzian']);
+    });
   });
 
   it('traduz o enum de spec do banco para o slug do contrato', async () => {

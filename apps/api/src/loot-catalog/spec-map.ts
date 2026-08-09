@@ -55,3 +55,18 @@ export const SPEC_FROM_DB: Record<PrismaWowSpec, WowSpec> = {
   warrior_fury: SPECS.WARRIOR_FURY,
   warrior_protection: SPECS.WARRIOR_PROTECTION,
 };
+
+/**
+ * O caminho inverso: slug do contrato para o enum do banco.
+ *
+ * Derivado do `SPEC_FROM_DB`, e não escrito à mão de novo. Duas listas de 39
+ * entradas mantidas em paralelo divergem, e a segunda não teria como ser
+ * verificada pelo compilador — enquanto esta é a inversão de um mapa que o
+ * `Record<PrismaWowSpec, WowSpec>` já obriga a estar completo, e cujos valores
+ * são slugs distintos entre si.
+ *
+ * Precisa vir DEPOIS do `SPEC_FROM_DB`: ele é lido em tempo de carga do módulo.
+ */
+export const SPEC_TO_DB = Object.fromEntries(
+  Object.entries(SPEC_FROM_DB).map(([doBanco, slug]) => [slug, doBanco]),
+) as Record<WowSpec, PrismaWowSpec>;

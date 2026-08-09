@@ -1,7 +1,34 @@
-import { Injectable } from '@nestjs/common';
-import type { WowItem, LootCatalogRaid, RaidDifficultyLevel } from '@titan/shared';
+import { Injectable, Logger } from '@nestjs/common';
+import type {
+  CatalogFile,
+  CatalogFileBoss,
+  LootCatalogRaid,
+  RaidDifficultyLevel,
+  WowItem,
+} from '@titan/shared';
+import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { LootCatalogRepository, type RaidFilter } from './loot-catalog.repository';
 import { SPEC_FROM_DB } from './spec-map';
+
+/** O que a carga fez, para o comando conseguir relatar. */
+export interface ResultadoDaCarga {
+  raid: string;
+  bosses: number;
+  drops: number;
+  itens: number;
+  semDungeonEncounterId: string[];
+}
+
+export interface OpcoesDaCarga {
+  /**
+   * Pula a conferência dos ids contra o Warcraft Logs.
+   *
+   * Existe para o WCL fora do ar não impedir uma carga. É saída de emergência,
+   * não o caminho normal — sem a conferência, id errado volta a ser falha
+   * silenciosa.
+   */
+  semConferencia?: boolean;
+}
 
 /** O que o repository devolve, antes de virar o contrato do shared. */
 type RaidRow = Awaited<ReturnType<LootCatalogRepository['findRaids']>>[number];
@@ -17,7 +44,12 @@ type ItemRow = RaidRow['encounters'][number]['drops'][number]['item'];
  */
 @Injectable()
 export class LootCatalogService {
-  constructor(private readonly repo: LootCatalogRepository) {}
+  private readonly logger = new Logger(LootCatalogService.name);
+
+  constructor(
+    private readonly repo: LootCatalogRepository,
+    private readonly wcl: WarcraftLogsService,
+  ) {}
 
   async listRaids(filtro: RaidFilter = {}): Promise<LootCatalogRaid[]> {
     const raids = await this.repo.findRaids(filtro);
@@ -28,6 +60,120 @@ export class LootCatalogService {
     const raid = await this.repo.findRaidBySlug(slug, difficulty);
     return raid ? toLootCatalogRaid(raid) : null;
   }
+
+  /**
+   * Aplica um arquivo de catálogo ao banco.
+   *
+   * Orquestra em três tempos: confere, grava, relata. A conferência vem antes de
+   * qualquer escrita de propósito — carga que grava metade e para deixa o
+   * catálogo num estado que ninguém pediu.
+   */
+  async carregarArquivo(
+    arquivo: CatalogFile,
+    opcoes: OpcoesDaCarga = {},
+  ): Promise<ResultadoDaCarga> {
+    if (!opcoes.semConferencia) {
+      await this.conferirIdsContraWcl(arquivo);
+    }
+
+    const { id: raidId } = await this.repo.upsertRaid({
+      slug: arquivo.slug,
+      name: arquivo.name,
+      seasonId: arquivo.seasonId,
+      instanceMapId: arquivo.instanceMapId,
+    });
+
+    let drops = 0;
+    const itens = new Set<number>();
+
+    for (const boss of arquivo.bosses) {
+      const { id: encounterId } = await this.repo.upsertEncounter({
+        raidId,
+        name: boss.name,
+        position: boss.position,
+        dungeonEncounterId: boss.dungeonEncounterId,
+      });
+
+      for (const item of boss.items) {
+        await this.repo.upsertItem(item);
+        itens.add(item.itemId);
+      }
+
+      const doBoss = dropsDoBoss(boss);
+      await this.repo.replaceDrops(encounterId, doBoss);
+      drops += doBoss.length;
+    }
+
+    return {
+      raid: arquivo.slug,
+      bosses: arquivo.bosses.length,
+      drops,
+      itens: itens.size,
+      semDungeonEncounterId: arquivo.bosses
+        .filter((b) => b.dungeonEncounterId === undefined)
+        .map((b) => b.name),
+    };
+  }
+
+  /**
+   * Pergunta ao Warcraft Logs o nome de cada boss e compara com o arquivo.
+   *
+   * O `dungeonEncounterId` é a chave que casa a colagem do addon com o boss. Se
+   * ele estiver errado, nada quebra na carga — o sintoma aparece semanas depois,
+   * como "a colagem não casa com boss nenhum", no meio de uma raid.
+   *
+   * Como o WCL responde nome a partir do mesmo id que o jogo usa, dá para
+   * transformar isso num erro detectável. Verificado com sete ids reais de duas
+   * expansões, todos batendo — ver TIT-46.
+   */
+  private async conferirIdsContraWcl(arquivo: CatalogFile): Promise<void> {
+    const comId = arquivo.bosses.filter((b) => b.dungeonEncounterId !== undefined);
+    if (comId.length === 0) return;
+
+    const catalogoWcl = await this.wcl.getRaidCatalog();
+    const divergencias: string[] = [];
+
+    for (const boss of comId) {
+      const noWcl = catalogoWcl.encounters.get(boss.dungeonEncounterId as number);
+
+      if (!noWcl) {
+        divergencias.push(`${boss.name}: o WCL não conhece o encounter ${boss.dungeonEncounterId}`);
+      } else if (noWcl.name !== boss.name) {
+        divergencias.push(`${boss.name}: o id ${boss.dungeonEncounterId} é "${noWcl.name}" no WCL`);
+      }
+    }
+
+    if (divergencias.length > 0) {
+      throw new Error(
+        `Conferência contra o Warcraft Logs falhou, nada foi gravado:\n  ${divergencias.join('\n  ')}`,
+      );
+    }
+
+    this.logger.log(`${comId.length} boss(es) conferidos contra o Warcraft Logs`);
+  }
+}
+
+/**
+ * Expande item × dificuldade.
+ *
+ * O journal da Blizzard dá uma lista de itens e um conjunto de dificuldades, sem
+ * dizer quais itens existem em quais — então o padrão é o produto cartesiano.
+ * Item que declara as próprias dificuldades sobrepõe as do boss, que é o escape
+ * para peça exclusiva de mítico.
+ */
+function dropsDoBoss(boss: CatalogFileBoss): Array<{
+  difficulty: RaidDifficultyLevel;
+  itemId: number;
+}> {
+  const linhas: Array<{ difficulty: RaidDifficultyLevel; itemId: number }> = [];
+
+  for (const item of boss.items) {
+    for (const difficulty of item.difficulties ?? boss.difficulties) {
+      linhas.push({ difficulty, itemId: item.itemId });
+    }
+  }
+
+  return linhas;
 }
 
 /**
