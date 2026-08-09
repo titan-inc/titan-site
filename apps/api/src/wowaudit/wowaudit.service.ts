@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { toCharacterKey, toSlug } from '@titan/shared';
+import { signupStatusSchema, toCharacterKey, toSlug, type SignupStatus } from '@titan/shared';
 
 /** Personagem do time, já traduzido do formato do WoWAudit. */
 export interface TeamCharacter {
@@ -27,6 +27,29 @@ export interface WeeklyKeys {
   count: number | null;
   /** Maior nível. Distingue 3 keys +10 de 3 keys +2. */
   highest: number | null;
+}
+
+/** Noite de raid marcada no calendário da guilda. */
+export interface PlannedRaid {
+  /** Id no WoWAudit. */
+  id: number;
+  /** Data de calendário, "2026-07-28". Já vem no fuso da guilda. */
+  date: string;
+  title: string;
+  instance: string;
+  difficulty: string;
+  /** Run extra / de alt. Conta separado da raid do core. */
+  optional: boolean;
+  seasonId: number | null;
+}
+
+/** Quem respondeu o quê no signup de uma noite. */
+export interface RaidSignup {
+  name: string;
+  realm: string;
+  nameKey: string;
+  realmSlug: string;
+  status: SignupStatus;
 }
 
 /** TTL do cache. O raid leader mexe no time raramente. */
@@ -91,6 +114,102 @@ export class WowAuditService {
     this.cache = { characters, fetchedAt: Date.now() };
     this.logger.log(`Time do WoWAudit atualizado: ${characters.length} personagens`);
     return characters;
+  }
+
+  /**
+   * Noites de raid marcadas, incluindo as passadas.
+   *
+   * `?include_past=true` é obrigatório: sem ele o endpoint devolve **só as
+   * futuras**, e a sondagem conclui que não há histórico. Com ele vêm 158 raids
+   * desde 2024-09-24 — dá para backfillar quase dois anos de presença.
+   *
+   * `status` vem `"Planned"` em 100% das raids, inclusive nas de 2024. O campo
+   * nunca é atualizado; **não usar como sinal de "essa raid aconteceu"**. Quem
+   * responde isso é a existência do log.
+   */
+  async getPlannedRaids(): Promise<PlannedRaid[]> {
+    const body = await this.get<{
+      raids: Array<{
+        id: number;
+        title: string;
+        date: string;
+        instance: string;
+        difficulty: string;
+        optional: boolean;
+        season_id: number | null;
+      }>;
+    }>('raids?include_past=true');
+
+    return body.raids.map((r) => ({
+      id: r.id,
+      date: r.date,
+      title: r.title,
+      instance: r.instance,
+      difficulty: r.difficulty,
+      optional: r.optional,
+      seasonId: r.season_id,
+    }));
+  }
+
+  /**
+   * Signups de uma noite.
+   *
+   * O status é **auto-declarado** e não binário: `Standby` é o banco que a
+   * própria pessoa marcou, e `Late` é ela avisando que chega atrasada. Isso
+   * encolhe o trabalho manual do raid leader para um caso só.
+   */
+  async getRaidSignups(raidId: number): Promise<RaidSignup[]> {
+    const body = await this.get<{
+      signups?: Array<{
+        character: { name: string; realm: string };
+        status: string;
+      }>;
+    }>(`raids/${raidId}`);
+
+    return (body.signups ?? []).map((s) => {
+      const parsed = signupStatusSchema.safeParse(s.status);
+
+      if (!parsed.success) {
+        // Status novo no WoWAudit. Cair em Unknown mantém a pessoa fora do
+        // quadrante ambíguo — errar para "não prometeu nada" não acusa
+        // ninguém de furar. Mas o log tem que aparecer, senão um status
+        // significativo (um "Bench" novo, por exemplo) vira rotação para sempre.
+        this.logger.warn(
+          `Status de signup desconhecido no WoWAudit: "${s.status}" — tratado como Unknown`,
+        );
+      }
+
+      return {
+        name: s.character.name,
+        realm: s.character.realm,
+        nameKey: toCharacterKey(s.character.name),
+        realmSlug: toSlug(s.character.realm),
+        status: parsed.success ? parsed.data : 'Unknown',
+      };
+    });
+  }
+
+  /** GET autenticado que devolve JSON, ou lança. */
+  private async get<T>(path: string): Promise<T> {
+    const key = process.env.WOW_AUDIT_KEY;
+    if (!key) throw new Error('WOW_AUDIT_KEY não configurada. Ver .env.example.');
+
+    const res = await fetch(`${WowAuditService.BASE}/${path}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!res.ok) throw new Error(`WoWAudit HTTP ${res.status} em /${path}`);
+
+    // A página de marketing responde 200 em HTML para qualquer caminho. Sem
+    // esta checagem, `res.json()` falharia com erro de parse que não sugere
+    // que a URL é que está errada.
+    const tipo = res.headers.get('content-type') ?? '';
+    if (!tipo.includes('json')) {
+      throw new Error(`WoWAudit devolveu ${tipo} em /${path} — isso é a página, não a API`);
+    }
+
+    return (await res.json()) as T;
   }
 
   private fallback(reason: string): TeamCharacter[] {

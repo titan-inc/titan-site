@@ -16,6 +16,22 @@ export interface GuildConfig {
   realm: string;
 
   /**
+   * Fuso em que a noite de raid é datada (IANA).
+   *
+   * Não é enfeite de exibição: é o que decide a **data** de uma noite, e a data
+   * é a chave que casa o log do Warcraft Logs com a raid planejada no WoWAudit.
+   *
+   * A raid começa 21:00 BRT, que é 00:00 UTC do dia seguinte. Medido em
+   * 04/08/2026 nos 20 logs mais recentes: por data UTC, só **12** caem numa data
+   * com raid planejada; pelo fuso da guilda, **19** (o vigésimo é o log de
+   * 18/07, que de fato não tem raid marcada). Datar em UTC jogaria 40% das
+   * noites para o dia errado, sem erro nenhum.
+   *
+   * Região é US mas o horário é o da guilda — as duas coisas não têm relação.
+   */
+  timezone: string;
+
+  /**
    * Corte de rank para a área interna — ver Regra 4 do CLAUDE.md.
    *
    * Rank 0 é o guild master, então o teste é `rank <= corte`. Fica em
@@ -60,7 +76,39 @@ export function loadGuildConfig(env: NodeJS.ProcessEnv = process.env): GuildConf
     );
   }
 
-  return { region: region.data, name, realm, rankAccessMax: parseRankAccessMax(env) };
+  return {
+    region: region.data,
+    name,
+    realm,
+    timezone: parseTimezone(env),
+    rankAccessMax: parseRankAccessMax(env),
+  };
+}
+
+/** Fuso padrão quando `GUILD_TIMEZONE` não está definida. */
+const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
+
+/**
+ * Fuso da guilda, validado contra o banco de fusos do runtime.
+ *
+ * Valida **lançando**, porque fuso inválido não falha em `Intl` — ele
+ * lança um `RangeError` bem longe daqui, dentro do job de presença, com
+ * mensagem que não menciona configuração. Melhor morrer no boot.
+ */
+function parseTimezone(env: NodeJS.ProcessEnv): string {
+  const raw = env.GUILD_TIMEZONE?.trim();
+  if (!raw) return DEFAULT_TIMEZONE;
+
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: raw });
+  } catch {
+    throw new Error(
+      `GUILD_TIMEZONE inválido: "${raw}". Esperado um identificador IANA, ` +
+        `como "${DEFAULT_TIMEZONE}".`,
+    );
+  }
+
+  return raw;
 }
 
 /**

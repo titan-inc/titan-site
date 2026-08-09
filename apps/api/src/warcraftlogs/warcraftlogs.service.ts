@@ -53,6 +53,38 @@ export interface WclReport {
   fights: WclFight[];
 }
 
+/** Participação de um personagem num relatório. */
+export interface PlayerParticipation {
+  name: string;
+  /** Como o WCL escreve: `Area52`, sem separador. Ver `toRealmMatchKey`. */
+  realm: string;
+  /** Em que pull de boss entrou (1 = a primeira da noite). */
+  firstPull: number;
+  /** Em quantas pulls de boss apareceu. */
+  pulls: number;
+}
+
+/** Uma noite de log, do ponto de vista de quem estava nela. */
+export interface ReportParticipation {
+  code: string;
+  startedAt: number;
+  /** Pulls de boss de RAID. Trash e dungeon já fora. */
+  bossPulls: number;
+  players: PlayerParticipation[];
+}
+
+/** Relatório com os campos necessários para presença. */
+interface WclParticipationReport {
+  code: string;
+  startTime: number;
+  masterData: { actors: Array<{ id: number; name: string; server: string }> };
+  fights: Array<{
+    encounterID: number;
+    difficulty: number | null;
+    friendlyPlayers: number[] | null;
+  }>;
+}
+
 /**
  * Fica com as pulls de boss de **raid** e descarta o resto.
  *
@@ -131,6 +163,34 @@ export class WarcraftLogsService {
   private static readonly TOKEN_URL = 'https://www.warcraftlogs.com/oauth/token';
   private static readonly API_URL = 'https://www.warcraftlogs.com/api/v2/client';
 
+  /** Campos para progressão: o que aconteceu com o boss. */
+  private static readonly CAMPOS_PULL = `code
+    startTime
+    fights {
+      encounterID
+      name
+      difficulty
+      kill
+      fightPercentage
+      startTime
+      gameZone { id name }
+    }`;
+
+  /**
+   * Campos para presença: quem estava em cada pull.
+   *
+   * `friendlyPlayers` devolve **ids de ator**, que só viram nome via
+   * `masterData.actors` — daí os dois virem juntos.
+   */
+  private static readonly CAMPOS_PARTICIPACAO = `code
+    startTime
+    masterData { actors(type: "Player") { id name server } }
+    fights {
+      encounterID
+      difficulty
+      friendlyPlayers
+    }`;
+
   private token: { value: string; expiresAt: number } | null = null;
   private guildId: number | null = null;
   private catalogo: { data: RaidCatalog; fetchedAt: number } | null = null;
@@ -207,21 +267,106 @@ export class WarcraftLogsService {
   /** Todas as pulls de boss de raid da guilda numa janela de tempo. */
   async getRaidPulls(from: Date, to: Date | null): Promise<RaidPull[]> {
     const catalogo = await this.getRaidCatalog();
-    return toRaidPulls(await this.fetchReports(from, to), catalogo);
+    return toRaidPulls(
+      await this.fetchReports(from, to, WarcraftLogsService.CAMPOS_PULL),
+      catalogo,
+    );
+  }
+
+  /**
+   * Quem estava em cada pull, por relatório.
+   *
+   * `masterData.actors` lista quem aparece no relatório **inteiro**, o que não
+   * responde presença: quem só passou pelo trash entraria como se tivesse
+   * raidado. Quem responde por pull é `fights.friendlyPlayers`, que devolve os
+   * ids dos atores daquela luta.
+   *
+   * O filtro de boss de raid é o mesmo da progressão, e por um motivo que
+   * importa aqui: sem ele, um log de M+ na mesma data marcaria o time inteiro
+   * como presente numa noite de raid.
+   */
+  /**
+   * @param interessa filtro sobre o **início** do relatório, aplicado antes de
+   *   baixar o detalhe. Existe por economia real: a guilda sobe muito log de
+   *   M+, e o backfill de presença só precisa dos relatórios que caem numa data
+   *   com raid marcada. Sem ele, o histórico inteiro estoura os 3600
+   *   pontos/hora — a query de participação é bem mais cara que a de pulls,
+   *   porque traz `masterData` e `friendlyPlayers` de cada luta.
+   */
+  async getRaidParticipation(
+    from: Date,
+    to: Date | null,
+    interessa?: (startedAt: number) => boolean,
+  ): Promise<ReportParticipation[]> {
+    const catalogo = await this.getRaidCatalog();
+    const relatorios = await this.fetchReports<WclParticipationReport>(
+      from,
+      to,
+      WarcraftLogsService.CAMPOS_PARTICIPACAO,
+      interessa,
+    );
+
+    return relatorios.map((rel) => {
+      const atores = new Map(rel.masterData.actors.map((a) => [a.id, a]));
+
+      const pulls = rel.fights.filter(
+        (f) =>
+          f.encounterID !== 0 && f.difficulty !== null && catalogo.encounters.has(f.encounterID),
+      );
+
+      /** actorId → { primeira pull, quantas }. */
+      const porAtor = new Map<number, { firstPull: number; pulls: number }>();
+
+      pulls.forEach((f, i) => {
+        for (const id of f.friendlyPlayers ?? []) {
+          const atual = porAtor.get(id);
+          if (atual) atual.pulls++;
+          else porAtor.set(id, { firstPull: i + 1, pulls: 1 });
+        }
+      });
+
+      const players: PlayerParticipation[] = [];
+      for (const [id, dados] of porAtor) {
+        const ator = atores.get(id);
+        if (!ator) continue;
+        players.push({ name: ator.name, realm: ator.server, ...dados });
+      }
+
+      return { code: rel.code, startedAt: rel.startTime, bossPulls: pulls.length, players };
+    });
   }
 
   /** Lista os relatórios da janela e busca o detalhe de cada um. */
-  private async fetchReports(from: Date, to: Date | null): Promise<WclReport[]> {
-    const codes = await this.listReportCodes(from, to);
+  private async fetchReports<T extends { code: string }>(
+    from: Date,
+    to: Date | null,
+    campos: string,
+    interessa?: (startedAt: number) => boolean,
+  ): Promise<T[]> {
+    const listados = await this.listReports(from, to);
+
+    // Filtrar aqui, e não depois de baixar, é o que mantém o backfill dentro
+    // da cota: a listagem custa ~1 ponto por página, o detalhe custa por
+    // relatório.
+    const escolhidos = interessa ? listados.filter((r) => interessa(r.startTime)) : listados;
+    const codes = escolhidos.map((r) => r.code);
+
+    if (codes.length < listados.length) {
+      this.logger.log(
+        `Relatórios: ${listados.length} na janela, ${codes.length} interessam — ` +
+          `${listados.length - codes.length} pulados sem baixar`,
+      );
+    }
+
     if (codes.length === 0) return [];
 
     const lotes: string[][] = [];
     for (let i = 0; i < codes.length; i += LOTE) lotes.push(codes.slice(i, i + LOTE));
 
-    const relatorios: WclReport[] = [];
+    const relatorios: T[] = [];
     for (let i = 0; i < lotes.length; i += CONCORRENCIA) {
       const respostas = await Promise.all(
-        lotes.slice(i, i + CONCORRENCIA).map((lote) => this.fetchReportBatch(lote)),
+        lotes.slice(i, i + CONCORRENCIA).map((lote) => this.fetchReportBatch<T>(lote, campos)),
       );
       for (const r of respostas) relatorios.push(...r);
     }
@@ -229,22 +374,28 @@ export class WarcraftLogsService {
     return relatorios;
   }
 
-  /** Códigos dos relatórios da guilda na janela, paginando até o fim. */
-  private async listReportCodes(from: Date, to: Date | null): Promise<string[]> {
+  /** Relatórios da guilda na janela (código e início), paginando até o fim. */
+  private async listReports(
+    from: Date,
+    to: Date | null,
+  ): Promise<Array<{ code: string; startTime: number }>> {
     const guildId = await this.getGuildId();
-    const codes: string[] = [];
+    const relatorios: Array<{ code: string; startTime: number }> = [];
 
     for (let page = 1; ; page++) {
       const data = await this.query<{
         reportData: {
-          reports: { has_more_pages: boolean; data: Array<{ code: string }> };
+          reports: {
+            has_more_pages: boolean;
+            data: Array<{ code: string; startTime: number }>;
+          };
         };
       }>(
         `query($guild:Int!, $start:Float!, $end:Float, $page:Int!) {
           reportData {
             reports(guildID: $guild, startTime: $start, endTime: $end, limit: 100, page: $page) {
               has_more_pages
-              data { code }
+              data { code startTime }
             }
           }
         }`,
@@ -252,11 +403,11 @@ export class WarcraftLogsService {
       );
 
       const pagina = data.reportData.reports;
-      for (const r of pagina.data) codes.push(r.code);
+      relatorios.push(...pagina.data);
       if (!pagina.has_more_pages) break;
     }
 
-    return codes;
+    return relatorios;
   }
 
   /**
@@ -265,7 +416,7 @@ export class WarcraftLogsService {
    * Um request por relatório levaria ~30s para uma season; em lotes de 25 são
    * ~1s. Vale a query montada à mão.
    */
-  private async fetchReportBatch(codes: string[]): Promise<WclReport[]> {
+  private async fetchReportBatch<T>(codes: string[], campos: string): Promise<T[]> {
     // O código vai concatenado na query (alias não aceita variável), então
     // nada que não seja código de relatório pode passar daqui.
     const seguros = codes.filter((c) => /^[A-Za-z0-9]+$/.test(c));
@@ -274,26 +425,14 @@ export class WarcraftLogsService {
     }
     if (seguros.length === 0) return [];
 
-    const campos = `code
-      startTime
-      fights {
-        encounterID
-        name
-        difficulty
-        kill
-        fightPercentage
-        startTime
-        gameZone { id name }
-      }`;
-
-    const data = await this.query<{ reportData: Record<string, WclReport | null> }>(
+    const data = await this.query<{ reportData: Record<string, T | null> }>(
       `query { reportData {
         ${seguros.map((c, i) => `r${i}: report(code: "${c}") { ${campos} }`).join('\n')}
       } }`,
     );
 
     // Relatório apagado entre a listagem e o detalhe volta null. Não é erro.
-    return Object.values(data.reportData).filter((r): r is WclReport => r !== null);
+    return Object.values(data.reportData).filter((r): r is T => r !== null);
   }
 
   /**
@@ -378,6 +517,16 @@ export class WarcraftLogsService {
       body: JSON.stringify({ query, variables }),
       signal: AbortSignal.timeout(30_000),
     });
+
+    if (res.status === 429) {
+      // O limite é por PONTOS (3600/hora), não por número de requests, então
+      // "espere um pouco" não descreve o problema: uma consulta grande gasta
+      // muito de uma vez. Backfill de histórico é o caso que estoura.
+      throw new Error(
+        'Warcraft Logs recusou por rate limit (HTTP 429). O limite é de 3600 pontos/hora e ' +
+          'reseta sozinho — refaça o backfill daqui a pouco, em janelas menores (--dias).',
+      );
+    }
 
     if (!res.ok) throw new Error(`Warcraft Logs HTTP ${res.status}`);
 
