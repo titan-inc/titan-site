@@ -12,8 +12,8 @@ import { SESSION_COOKIE } from './auth.controller';
 /**
  * Exige sessão válida, personagem no roster E rank dentro do corte.
  *
- * Este guard é a segurança de verdade — ver Regra 5 do CLAUDE.md. O middleware
- * do Next que protege /interno é só UX; sem este guard, qualquer pessoa chama a
+ * Este guard é a segurança de verdade — ver Regra 5 do CLAUDE.md. O proxy do
+ * Next que protege /interno é só UX; sem este guard, qualquer pessoa chama a
  * API com `curl` e recebe os dados.
  */
 @Injectable()

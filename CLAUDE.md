@@ -132,9 +132,11 @@ Use `canReviewApplications()`. Ela exige membership **e** a flag — sair da gui
 
 ## Regra 5 — Autorização é no Nest, sempre
 
-O middleware do Next que protege `/interno/*` é **UX, não segurança**. Ele evita tela quebrada.
+O proxy do Next que protege `/interno/*` é **UX, não segurança**. Ele evita tela quebrada.
 
-Todo endpoint interno precisa do seu próprio guard no Nest. Um endpoint que depende só do middleware do Next é chamável com `curl` por qualquer pessoa.
+Todo endpoint interno precisa do seu próprio guard no Nest. Um endpoint que depende só do proxy do Next é chamável com `curl` por qualquer pessoa.
+
+O arquivo é `apps/web/proxy.ts`. Chamava-se `middleware.ts` até o Next 16 renomear a convenção — e renomeou justamente porque gente demais usava middleware como camada de autorização. A doc do Next agora diz, com todas as letras, que proxy "should not be used as a full session management or authorization solution". É esta regra, dita por eles.
 
 Ao criar endpoint interno, o teste não é "a UI esconde?" — é "chamado sem cookie devolve 401?".
 
