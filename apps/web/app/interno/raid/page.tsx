@@ -18,7 +18,7 @@ export default async function RaidPage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const user = await getSessionUser();
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
   if (!user.hasInternalAccess) redirect('/interno');
 
   const { season } = await searchParams;
@@ -27,8 +27,10 @@ export default async function RaidPage({
   return (
     <main className="flex flex-1 flex-col gap-6">
       <div>
-        <p className="text-bronze font-mono text-xs tracking-widest uppercase">Time de raid</p>
-        <h1 className="text-fg mt-2 text-2xl font-semibold tracking-tight">Progressão de raid</h1>
+        <p className="text-pedra font-mono text-xs tracking-widest uppercase">Time de raid</p>
+        <h1 className="text-fg mt-2 text-[34px] leading-[1.05] font-extrabold tracking-[-0.02em]">
+          Progressão de raid
+        </h1>
         <p className="text-fg-muted mt-2 text-sm">
           Kill de cada boss do tier, direto dos logs. Onde ainda não houve kill, o número é o melhor
           wipe — a vida que sobrou para o boss na melhor tentativa.

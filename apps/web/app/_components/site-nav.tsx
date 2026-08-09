@@ -2,6 +2,7 @@
 
 import type { SessionUser } from '@titan/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { API_URL } from '../../lib/config';
 import type { ResumoProgressaoNav } from '../../lib/progressao/resumo-nav';
 import { LoginButton } from './login-button';
 import { descricaoProgressao, ProgressaoNav } from './nav/progressao-nav';
@@ -75,6 +76,19 @@ export function SiteNav({
                 {secao.texto}
               </a>
             ))}
+            {/* O botão de login é client component e depende de JS para abrir o
+                popup. Sem este link, quem navega sem JavaScript não teria como
+                entrar — era o papel que a página `/entrar` cumpria de verdade,
+                e ele precisa sobreviver à remoção dela. Vai direto ao início do
+                OAuth no Nest, em navegação de página inteira. */}
+            {!sessao && (
+              <a
+                href={`${API_URL}/auth/battlenet`}
+                className="text-accent inline-flex min-h-11 shrink-0 items-center"
+              >
+                Entrar
+              </a>
+            )}
           </div>
         </noscript>
         <a
@@ -104,12 +118,11 @@ export function SiteNav({
               </a>
             );
           })}
-          <a
-            href="#candidatura"
-            className="border-border text-fg-muted hover:text-fg inline-flex min-h-11 items-center rounded-[3px] border px-4 font-mono text-[11px] tracking-[0.14em] uppercase"
-          >
-            Candidatar-se
-          </a>
+          {/* O botão "Candidatar-se" saiu daqui: ele repetia o link "Candidatura"
+              que está logo ao lado, apontando para a mesma âncora. A ação primária
+              da página continua sendo o CTA da hero. Sem ele a barra respira e o
+              único elemento sólido passa a ser o login, que é o que de fato leva
+              para outro lugar. */}
           <LoginButton sessao={sessao} />
         </div>
 

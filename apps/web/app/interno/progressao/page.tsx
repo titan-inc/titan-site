@@ -18,7 +18,7 @@ export default async function ProgressaoPage({
   searchParams: Promise<{ season?: string }>;
 }) {
   const user = await getSessionUser();
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
   if (!user.hasInternalAccess) redirect('/interno');
 
   const { season } = await searchParams;
@@ -27,8 +27,10 @@ export default async function ProgressaoPage({
   return (
     <main className="flex flex-1 flex-col gap-6">
       <div>
-        <p className="text-bronze font-mono text-xs tracking-widest uppercase">Time de raid</p>
-        <h1 className="text-fg mt-2 text-2xl font-semibold tracking-tight">Progressão</h1>
+        <p className="text-pedra font-mono text-xs tracking-widest uppercase">Time de raid</p>
+        <h1 className="text-fg mt-2 text-[34px] leading-[1.05] font-extrabold tracking-[-0.02em]">
+          Progressão
+        </h1>
         <p className="text-fg-muted mt-2 text-sm">
           Chaves feitas e evolução de item level. O número ao lado de cada valor é a distância para
           a média do time.

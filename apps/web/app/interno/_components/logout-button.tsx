@@ -17,7 +17,7 @@ export function LogoutButton() {
         method: 'POST',
         credentials: 'include',
       });
-      router.replace('/entrar');
+      router.replace('/');
       router.refresh();
     } finally {
       setSaindo(false);

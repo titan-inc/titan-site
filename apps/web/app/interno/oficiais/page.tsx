@@ -16,7 +16,7 @@ export const metadata = { title: 'Oficiais — Titan Inc' };
  */
 export default async function OficiaisPage() {
   const user = await getSessionUser();
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
   if (!user.hasInternalAccess) redirect('/interno');
   if (!canManageOfficers(user)) redirect('/interno');
 

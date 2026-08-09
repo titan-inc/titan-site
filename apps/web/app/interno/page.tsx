@@ -21,17 +21,17 @@ export default async function InternoPage() {
   const user = await getSessionUser();
 
   // Estado 1: sem sessão.
-  if (!user) redirect('/entrar');
+  if (!user) redirect('/?erro=sessao');
 
   // Estado 2: é da guilda, mas o rank não alcança a área interna.
   if (user.membership === 'member' && !user.hasInternalAccess) {
     return (
       <main className="flex w-full max-w-xl flex-1 flex-col justify-center gap-6 py-8">
         <div>
-          <p className="text-bronze font-mono text-xs tracking-widest uppercase">
+          <p className="text-pedra font-mono text-xs tracking-widest uppercase">
             Acesso não liberado
           </p>
-          <h1 className="text-fg mt-3 text-3xl font-semibold tracking-tight">
+          <h1 className="text-fg mt-3 text-[34px] leading-[1.05] font-extrabold tracking-[-0.02em]">
             Achamos você no roster, mas a área interna é do time de raid
           </h1>
         </div>
@@ -50,7 +50,16 @@ export default async function InternoPage() {
           </p>
         </div>
 
+        {/* Estado sem saída: sem isto, quem não tem acesso só pode sair pelo
+            botão do navegador. A volta para a landing é a ação principal aqui —
+            não há nada a fazer nesta página. */}
         <div className="border-border flex flex-wrap items-center gap-4 border-t pt-5">
+          <Link
+            href="/"
+            className="border-border text-fg-muted hover:border-fg-subtle hover:text-fg focus-visible:outline-accent inline-flex min-h-11 items-center rounded-[3px] border px-4 font-mono text-[11px] tracking-[0.14em] uppercase transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            ← Voltar para a landing
+          </Link>
           <LogoutButton />
         </div>
       </main>
@@ -62,10 +71,10 @@ export default async function InternoPage() {
     return (
       <main className="flex w-full max-w-xl flex-1 flex-col justify-center gap-6 py-8">
         <div>
-          <p className="text-bronze font-mono text-xs tracking-widest uppercase">
+          <p className="text-pedra font-mono text-xs tracking-widest uppercase">
             Acesso não liberado
           </p>
-          <h1 className="text-fg mt-3 text-3xl font-semibold tracking-tight">
+          <h1 className="text-fg mt-3 text-[34px] leading-[1.05] font-extrabold tracking-[-0.02em]">
             Você entrou, mas não achamos seu personagem
           </h1>
         </div>
@@ -98,10 +107,16 @@ export default async function InternoPage() {
               logout não encerra a sessão da Blizzard. */}
           <a
             href={`${API_URL}/auth/battlenet?trocar=1`}
-            className="bg-accent text-bg hover:bg-accent/90 rounded-md px-4 py-2 text-sm font-medium transition-colors"
+            className="bg-accent text-bg hover:bg-accent/90 focus-visible:outline-accent inline-flex min-h-11 items-center rounded-md px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             Entrar com outra conta Battle.net
           </a>
+          <Link
+            href="/"
+            className="border-border text-fg-muted hover:border-fg-subtle hover:text-fg focus-visible:outline-accent inline-flex min-h-11 items-center rounded-[3px] border px-4 font-mono text-[11px] tracking-[0.14em] uppercase transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+          >
+            ← Voltar para a landing
+          </Link>
           <LogoutButton />
         </div>
       </main>
@@ -116,7 +131,7 @@ export default async function InternoPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-accent font-mono text-xs tracking-widest uppercase">Área de membros</p>
-          <h1 className="text-fg mt-2 text-3xl font-semibold tracking-tight">
+          <h1 className="text-fg mt-2 text-[34px] leading-[1.05] font-extrabold tracking-[-0.02em]">
             {summary?.greeting ?? `Bem-vindo, ${user.battletag}`}
           </h1>
         </div>
