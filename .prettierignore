@@ -11,3 +11,12 @@ apps/web/AGENTS.md
 
 # Contrato aprovado: formatação é conteúdo e só muda com autorização explícita
 docs/landing/04-implementation-spec.md
+
+# Fora do git, mas dentro do glob do Prettier — que não lê .gitignore nem
+# .git/info/exclude. Sem estas linhas o `format:check` reprova mesmo com o
+# repositório limpo, e um comando que sempre falha deixa de verificar.
+#
+# O escopo em .claude/ é estreito de propósito: um settings.json versionado e
+# compartilhado deve continuar sendo formatado como qualquer JSON do repo.
+localdocs/
+.claude/settings.local.json
