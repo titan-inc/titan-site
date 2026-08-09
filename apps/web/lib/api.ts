@@ -2,9 +2,11 @@ import 'server-only';
 
 import {
   progressReportSchema,
+  raidProgressReportSchema,
   rosterSchema,
   sessionUserSchema,
   type ProgressReport,
+  type RaidProgressReport,
   type Roster,
   type SessionUser,
 } from '@titan/shared';
@@ -125,6 +127,37 @@ export async function getProgress(season?: string): Promise<ProgressReport | nul
     if (body === null) return null;
 
     const parsed = progressReportSchema.safeParse(body);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Progressão de raid do tier, do Warcraft Logs.
+ *
+ * Null cobre três casos que a página trata igual: API recusou, nenhuma season
+ * gravada ainda, e Warcraft Logs fora do ar sem cache. Nenhum deles é tela de
+ * erro — Regra 6 manda degradar, não quebrar.
+ */
+export async function getRaidProgress(season?: string): Promise<RaidProgressReport | null> {
+  const query = season ? `?season=${encodeURIComponent(season)}` : '';
+
+  try {
+    const res = await fetch(`${API_URL}/internal/raid-progress${query}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      // Generoso: na primeira leitura da season o Nest lê ~134 relatórios do
+      // Warcraft Logs antes de o cache dele esquentar.
+      signal: AbortSignal.timeout(25000),
+    });
+
+    if (!res.ok) return null;
+
+    const body: unknown = await res.json();
+    if (body === null) return null;
+
+    const parsed = raidProgressReportSchema.safeParse(body);
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

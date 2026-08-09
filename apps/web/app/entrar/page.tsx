@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '../../lib/api';
@@ -30,15 +29,9 @@ export default async function EntrarPage({
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-8 px-6 py-16">
       <div>
-        <Image
-          src="/titan-inc-logo.png"
-          alt="Titan Inc"
-          width={200}
-          height={83}
-          priority
-          className="h-auto w-[200px] max-w-full"
-        />
-        <h1 className="text-fg mt-8 text-3xl font-semibold tracking-tight">Área de membros</h1>
+        {/* Sem a logo raster (§13 etapa 1 do doc 05). O wordmark tipográfico da
+            nav já identifica a página; aqui a h1 basta. */}
+        <h1 className="text-fg text-3xl font-semibold tracking-tight">Área de membros</h1>
         <p className="text-fg-muted mt-3">
           Entre com sua conta Battle.net. Verificamos automaticamente se você tem personagem no
           roster da guilda.
@@ -48,7 +41,7 @@ export default async function EntrarPage({
       {mensagem && (
         <div
           role="alert"
-          className="border-highlight-soft bg-highlight-soft text-fg rounded-lg border px-4 py-3 text-sm"
+          className="border-danger-soft bg-danger-soft text-fg rounded-lg border px-4 py-3 text-sm"
         >
           {mensagem}
         </div>
@@ -58,7 +51,7 @@ export default async function EntrarPage({
           para o domínio da Blizzard. */}
       <a
         href={`${API_URL}/auth/battlenet`}
-        className="bg-accent hover:bg-accent/90 flex items-center justify-center gap-2 rounded-lg px-5 py-3 font-medium text-[#0b0d12] transition-colors"
+        className="bg-accent text-bg hover:bg-accent/90 flex items-center justify-center gap-2 rounded-lg px-5 py-3 font-medium transition-colors"
       >
         Entrar com Battle.net
       </a>

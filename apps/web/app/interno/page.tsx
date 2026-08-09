@@ -28,7 +28,7 @@ export default async function InternoPage() {
     return (
       <main className="flex w-full max-w-xl flex-1 flex-col justify-center gap-6 py-8">
         <div>
-          <p className="text-highlight font-mono text-xs tracking-widest uppercase">
+          <p className="text-bronze font-mono text-xs tracking-widest uppercase">
             Acesso não liberado
           </p>
           <h1 className="text-fg mt-3 text-3xl font-semibold tracking-tight">
@@ -62,7 +62,7 @@ export default async function InternoPage() {
     return (
       <main className="flex w-full max-w-xl flex-1 flex-col justify-center gap-6 py-8">
         <div>
-          <p className="text-highlight font-mono text-xs tracking-widest uppercase">
+          <p className="text-bronze font-mono text-xs tracking-widest uppercase">
             Acesso não liberado
           </p>
           <h1 className="text-fg mt-3 text-3xl font-semibold tracking-tight">
@@ -98,7 +98,7 @@ export default async function InternoPage() {
               logout não encerra a sessão da Blizzard. */}
           <a
             href={`${API_URL}/auth/battlenet?trocar=1`}
-            className="bg-accent hover:bg-accent/90 rounded-md px-4 py-2 text-sm font-medium text-[#0b0d12] transition-colors"
+            className="bg-accent text-bg hover:bg-accent/90 rounded-md px-4 py-2 text-sm font-medium transition-colors"
           >
             Entrar com outra conta Battle.net
           </a>

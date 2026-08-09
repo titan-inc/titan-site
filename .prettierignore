@@ -8,3 +8,6 @@ next-env.d.ts
 
 # Gerado pelo create-next-app, com marcadores próprios
 apps/web/AGENTS.md
+
+# Contrato aprovado: formatação é conteúdo e só muda com autorização explícita
+docs/landing/04-implementation-spec.md

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { characterInputSchema, roleSchema, wowClassSchema } from './wow.js';
 
 /**
  * Contrato da candidatura (apply).
@@ -12,28 +11,10 @@ import { characterInputSchema, roleSchema, wowClassSchema } from './wow.js';
  * esses campos em nenhum dos apps.
  */
 export const createApplicationSchema = z.object({
-  // Sem região: a guilda é US-only e o servidor preenche isso. Ver
-  // characterInputSchema em wow.ts.
-  character: characterInputSchema,
-  class: wowClassSchema,
-  mainRole: roleSchema,
-  offRole: roleSchema.optional(),
-
-  discordTag: z.string().min(2).max(37),
-  battleTag: z
-    .string()
-    .regex(/^.{2,12}#\d{4,5}$/, 'Formato esperado: Nome#1234')
-    .optional(),
-
-  /** Progresso anterior, guildas anteriores, o que a pessoa já matou. */
-  experience: z.string().min(1).max(4000),
-
-  /** Quais dias da semana a pessoa consegue raidar (0 = domingo). */
-  availableDays: z.array(z.number().int().min(0).max(6)).min(1),
-
-  motivation: z.string().min(1).max(4000),
-
-  warcraftLogsUrl: z.string().url().optional(),
+  characterRealm: z.string().min(2).max(80),
+  roleSpec: z.string().min(2).max(80),
+  contact: z.string().min(2).max(100),
+  additionalInfo: z.string().max(2000).optional(),
 
   /**
    * Honeypot anti-spam: campo escondido no form. Humano deixa vazio; bot que

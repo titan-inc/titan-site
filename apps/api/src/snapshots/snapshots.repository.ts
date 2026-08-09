@@ -100,7 +100,14 @@ export class SnapshotsRepository {
     return this.prisma.gameSeason.findMany({
       orderBy: { startedAt: 'desc' },
       take: limite,
-      select: { id: true, patch: true, name: true, firstPeriod: true, periodCount: true },
+      select: {
+        id: true,
+        patch: true,
+        name: true,
+        firstPeriod: true,
+        periodCount: true,
+        startedAt: true,
+      },
     });
   }
 
@@ -108,7 +115,14 @@ export class SnapshotsRepository {
   findSeason(id: number) {
     return this.prisma.gameSeason.findUnique({
       where: { id },
-      select: { id: true, patch: true, name: true, firstPeriod: true, periodCount: true },
+      select: {
+        id: true,
+        patch: true,
+        name: true,
+        firstPeriod: true,
+        periodCount: true,
+        startedAt: true,
+      },
     });
   }
 

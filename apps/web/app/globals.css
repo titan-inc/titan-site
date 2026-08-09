@@ -1,43 +1,260 @@
 @import 'tailwindcss';
 
 /**
- * Tokens de tema, derivados da logo da guilda (public/titan-inc-logo.png).
+ * Tokens de tema, derivados da linguagem visual Fel controlada.
  *
- * A logo é uma âncora em aquarela com o wordmark em gradiente azul → roxo →
- * rosa, e turquesa no topo da âncora. As cores abaixo foram extraídas dos
- * pixels da própria logo, não escolhidas a olho.
+ * A procedência anterior — pixels da logo em aquarela (public/titan-inc-logo.png)
+ * — não existe mais: a logo saiu do projeto e a metáfora náutica que ela ancorava
+ * saiu junto. As cores abaixo vêm das fotografias Fel da hero e do recruit:
+ * carvão esverdeado, ferro-oliva e energia Fel correndo nos sulcos.
+ *
+ * R1 — FERRO-OLIVA É ESTRUTURA, FEL É ENERGIA.
+ * O que é estrutura permanece mineral e dessaturado; o que está aceso usa Fel.
+ *
+ * R2 — Fel é sinal, nunca preenchimento de grandes áreas e nunca glow.
  *
  * Nenhuma página deve hardcodar cor — sempre via token.
+ *
+ * EXCEÇÃO ÚNICA E AUTORIZADA: cor de classe do WoW, em `lib/wow/classe.ts`.
+ * O valor vem de dado (`RosterEntry.wowClass`), não de design, então não pode
+ * ser classe Tailwind e vai em `style` inline — só na borda esquerda da placa
+ * do roster e no arco do retrato editorial. Nunca como texto (três das treze
+ * cores reprovam 4,5:1) e nunca como preenchimento de área. Se você encontrar
+ * um hex inline em outro lugar, a regra não caiu: aquilo é bug.
  */
 @theme {
-  --color-bg: #0b0d12;
-  --color-surface: #14171f;
-  --color-border: #232733;
+  --color-bg: #080b08;
+  --color-surface: #111611;
+  --color-border: #293329;
 
-  --color-fg: #e8eaf0;
-  --color-fg-muted: #9aa1b1;
-  --color-fg-subtle: #6b7280;
+  --color-fg: #edf2e8;
+  --color-fg-muted: #a5aea0;
+  /* Metadado pequeno preserva contraste sem competir com o texto corrido. */
+  --color-fg-subtle: #838d7e;
 
-  /* Turquesa da âncora. É a cor da logo com melhor legibilidade sobre o
-     fundo escuro, então virou o destaque principal. */
-  --color-accent: #78d8c0;
-  --color-accent-soft: #14332c;
+  /* Energia Fel: ação, foco, progresso vencido e o INC da marca. */
+  --color-accent: #8eea45;
+  --color-accent-soft: #193311;
 
-  /* Rosa do "INC" no wordmark. Destaque secundário. */
-  --color-highlight: #d86078;
-  --color-highlight-soft: #331a20;
+  /* Aliases legados `bronze*`, agora ferro-oliva estrutural. Mantidos para que
+     a migração cromática não force uma troca cosmética de todas as classes. */
+  --color-bronze: #87945f;
+  /* Aresta do bisel que pega luz. */
+  --color-bronze-lit: #b4c27c;
+  /* Sombra do bisel, corpo do parafuso, runa apagada. */
+  --color-bronze-deep: #3d472f;
 
-  /* Azul do "TITAN" no wordmark. */
-  --color-brand-blue: #4878c0;
+  /* A luz superior e o sulco inferior formam o par obrigatório de toda chapa. */
+  --color-edge: rgba(237, 242, 232, 0.08);
+  --color-groove: rgba(0, 0, 0, 0.52);
 
-  --color-ok: #4ade80;
-  --color-danger: #f87171;
+  /* Campo atmosférico da landing. O núcleo claro só aparece em gradientes. */
+  --color-deep: #0b100c;
+  --color-deep-lit: #19331c;
 
-  --font-sans: var(--font-geist-sans);
+  /* Sucesso é mais frio e menos luminoso que o Fel de ação. */
+  --color-ok: #63d18b;
+  --color-danger: #ff8178;
+  --color-danger-soft: #351b19;
+
+  --font-sans: var(--font-archivo);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
   background-color: var(--color-bg);
   color: var(--color-fg);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+section[id] {
+  scroll-margin-top: 4rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/**
+ * Toda superfície elevada recebe a mesma luz superior-direita e o mesmo
+ * sulco inferior. Centralizar isso impede que a direção da luz derive entre
+ * as seções quando a landing crescer.
+ */
+@utility chapa {
+  border-top: 1px solid var(--color-edge);
+  border-bottom: 1px solid var(--color-groove);
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface) 98%, var(--color-fg) 2%),
+    var(--color-surface)
+  );
+}
+
+/**
+ * Campo Fel da candidatura. Os veios usam polígonos angulados, sem glow:
+ * energia aparece como fratura na matéria, não como iluminação ambiente.
+ */
+.recrutamento-fel {
+  background:
+    radial-gradient(
+      ellipse at 18% 48%,
+      color-mix(in srgb, var(--color-accent) 8%, transparent),
+      transparent 36%
+    ),
+    radial-gradient(
+      ellipse at 76% 12%,
+      color-mix(in srgb, var(--color-bronze-deep) 24%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(118deg, var(--color-bg), var(--color-deep) 48%, var(--color-surface));
+}
+
+.recrutamento-fel::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, transparent 49.8%, var(--color-edge) 50%, transparent 50.2%),
+    linear-gradient(0deg, transparent 49.8%, var(--color-groove) 50%, transparent 50.2%);
+  background-size: 88px 88px;
+  content: '';
+  opacity: 0.28;
+  transform: skewX(-8deg);
+}
+
+.veios-fel {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.veios-fel span {
+  position: absolute;
+  left: -12%;
+  width: 78%;
+  height: 38px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-bronze-deep) 18%,
+    var(--color-accent) 48%,
+    var(--color-bronze-lit) 58%,
+    transparent 88%
+  );
+  clip-path: polygon(
+    0 52%,
+    14% 43%,
+    26% 56%,
+    39% 38%,
+    51% 54%,
+    64% 46%,
+    76% 61%,
+    89% 42%,
+    100% 50%,
+    89% 55%,
+    76% 68%,
+    63% 53%,
+    51% 61%,
+    39% 46%,
+    26% 63%,
+    14% 50%
+  );
+  opacity: 0.34;
+}
+
+.veios-fel span:nth-child(1) {
+  top: 16%;
+  transform: rotate(8deg) scaleX(1.15);
+}
+
+.veios-fel span:nth-child(2) {
+  top: 35%;
+  left: 4%;
+  width: 54%;
+  transform: rotate(-17deg) scaleY(0.65);
+  opacity: 0.22;
+}
+
+.veios-fel span:nth-child(3) {
+  top: 55%;
+  left: -18%;
+  width: 92%;
+  transform: rotate(14deg) scaleY(0.45);
+  opacity: 0.28;
+}
+
+.veios-fel span:nth-child(4) {
+  top: 74%;
+  left: 8%;
+  width: 48%;
+  transform: rotate(-9deg) scaleY(0.75);
+  opacity: 0.19;
+}
+
+.veios-fel span:nth-child(5) {
+  top: 87%;
+  left: -4%;
+  width: 68%;
+  transform: rotate(19deg) scaleY(0.4);
+  opacity: 0.25;
+}
+
+@media (max-width: 767px) {
+  .veios-fel span {
+    left: -28%;
+    width: 142%;
+    opacity: 0.22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :focus-visible {
+    outline-width: 3px;
+  }
+  nav {
+    border-color: var(--color-fg-subtle);
+  }
+}
+
+@keyframes assentar {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 767px) and (orientation: landscape) and (max-height: 620px) {
+  #topo > div:last-child {
+    min-height: auto;
+    grid-template-columns: minmax(0, 1fr) 200px;
+    align-items: center;
+    padding-block: 2rem;
+  }
+  #topo > div:last-child > div:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+    width: 200px;
+  }
 }

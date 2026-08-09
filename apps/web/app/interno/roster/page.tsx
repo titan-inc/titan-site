@@ -24,7 +24,7 @@ export default async function RosterPage() {
   return (
     <main className="flex flex-1 flex-col gap-6">
       <div>
-        <p className="text-highlight font-mono text-xs tracking-widest uppercase">Time de raid</p>
+        <p className="text-bronze font-mono text-xs tracking-widest uppercase">Time de raid</p>
         <h1 className="text-fg mt-2 text-2xl font-semibold tracking-tight">Roster</h1>
         <p className="text-fg-muted mt-2 text-sm">
           Quem está no time hoje, segundo o WoWAudit. Item level e score de M+ vêm do Raider.IO.

@@ -20,6 +20,7 @@
     "probe:roster": "node scripts/roster-probe.js",
     "probe:oauth": "node scripts/oauth-probe.js",
     "probe:snapshot": "node scripts/snapshot-probe.js",
+    "probe:raid": "node scripts/raid-probe.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

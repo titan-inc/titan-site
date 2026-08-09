@@ -17,6 +17,9 @@ import { SnapshotsService } from './snapshots.service';
   imports: [AuthModule, BlizzardModule, WowAuditModule, RaiderIoModule, GameVersionModule],
   controllers: [ProgressController],
   providers: [SnapshotsService, SnapshotsRepository, ProgressService],
-  exports: [SnapshotsService],
+  // O repository sai do módulo porque `GameSeason` é daqui e o seletor de
+  // season é o mesmo em toda a área interna — ver raidprogress. Prisma continua
+  // confinado a um repository só, que é o que a Regra 3 pede.
+  exports: [SnapshotsService, SnapshotsRepository],
 })
 export class SnapshotsModule {}

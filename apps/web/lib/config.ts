@@ -11,3 +11,4 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001
 
 /** Nome do cookie de sessão. Tem que casar com SESSION_COOKIE no Nest. */
 export const SESSION_COOKIE = 'titan_session';
+export const OAUTH_POPUP_HABILITADO = process.env.NEXT_PUBLIC_OAUTH_POPUP_ENABLED === 'true';

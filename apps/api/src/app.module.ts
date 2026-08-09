@@ -8,6 +8,7 @@ import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RaidProgressModule } from './raidprogress/raidprogress.module';
 import { RosterModule } from './roster/roster.module';
 import { SnapshotsModule } from './snapshots/snapshots.module';
 
@@ -22,6 +23,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     InternalModule,
     RosterModule,
     SnapshotsModule,
+    RaidProgressModule,
     MembershipModule,
     HealthModule,
   ],
