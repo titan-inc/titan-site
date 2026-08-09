@@ -178,9 +178,9 @@ export class LootCatalogGeneratorService {
       itemId,
       name: dados.name,
       ...(icon ? { icon } : {}),
-      // `inventory_type.type` da API: `TRINKET`, `HEAD`, `WEAPON`. NÃO é a grafia
-      // `INVTYPE_TRINKET` que o itemString do addon usa — são dois vocabulários
-      // para o mesmo conceito, e compará-los direto casa errado sem erro.
+      // `inventory_type.type` da REST: `TRINKET`, `HEAD`, `WEAPON`. A API Lua do
+      // cliente chama o mesmo slot de `INVTYPE_TRINKET`, porque lá a string é
+      // chave de localização. Comparar as duas grafias casa errado sem erro.
       ...(dados.inventory_type?.type ? { equipLoc: dados.inventory_type.type } : {}),
       ...(dados.item_subclass?.name ? { itemSubclass: dados.item_subclass.name } : {}),
       ...(primaryStats.length > 0 ? { primaryStats } : {}),

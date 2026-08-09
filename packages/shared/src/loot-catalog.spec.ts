@@ -80,7 +80,7 @@ describe('lootCatalogRaidSchema', () => {
               itemId: 249276,
               name: 'Item de Teste',
               icon: 'inv_helm_plate_raidwarrior_a_01',
-              equipLoc: 'INVTYPE_HEAD',
+              equipLoc: 'HEAD',
               itemSubclass: 'Plate',
               primaryStats: [PRIMARY_STATS.STRENGTH],
               usableBySpecs: [SPECS.WARRIOR_FURY, SPECS.PALADIN_PROTECTION],
