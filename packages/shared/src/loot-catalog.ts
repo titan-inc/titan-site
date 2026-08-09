@@ -12,7 +12,7 @@ import { primaryStatSchema, raidDifficultyLevelSchema, wowSpecSchema } from './w
  * Blizzard, e item de patch não lançado responde 404 — o cadastro precisa
  * funcionar antes disso.
  */
-export const catalogItemSchema = z.object({
+export const wowItemSchema = z.object({
   itemId: z.number().int().positive(),
 
   /** Canônico em en_US. A tela lê daqui, nunca o nome gravado na linha de loot. */
@@ -59,16 +59,16 @@ export const catalogItemSchema = z.object({
    */
   specsCuratedAt: z.string().datetime().nullable(),
 });
-export type CatalogItem = z.infer<typeof catalogItemSchema>;
+export type WowItem = z.infer<typeof wowItemSchema>;
 
 /** O que um boss solta numa dificuldade. */
 export const encounterDropSchema = z.object({
   difficulty: raidDifficultyLevelSchema,
-  item: catalogItemSchema,
+  item: wowItemSchema,
 });
 export type EncounterDrop = z.infer<typeof encounterDropSchema>;
 
-export const catalogEncounterSchema = z.object({
+export const lootCatalogEncounterSchema = z.object({
   id: z.string(),
   name: z.string(),
   /** Ordem em que se mata na raid. */
@@ -87,9 +87,9 @@ export const catalogEncounterSchema = z.object({
 
   drops: encounterDropSchema.array(),
 });
-export type CatalogEncounter = z.infer<typeof catalogEncounterSchema>;
+export type LootCatalogEncounter = z.infer<typeof lootCatalogEncounterSchema>;
 
-export const catalogRaidSchema = z.object({
+export const lootCatalogRaidSchema = z.object({
   id: z.string(),
   slug: z.string(),
   name: z.string(),
@@ -111,6 +111,6 @@ export const catalogRaidSchema = z.object({
    */
   instanceMapId: z.number().int().nullable(),
 
-  encounters: catalogEncounterSchema.array(),
+  encounters: lootCatalogEncounterSchema.array(),
 });
-export type CatalogRaid = z.infer<typeof catalogRaidSchema>;
+export type LootCatalogRaid = z.infer<typeof lootCatalogRaidSchema>;

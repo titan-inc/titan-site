@@ -2,7 +2,7 @@
 CREATE TYPE "RaidDifficulty" AS ENUM ('normal', 'heroic', 'mythic');
 
 -- CreateTable
-CREATE TABLE "CatalogItem" (
+CREATE TABLE "WowItem" (
     "itemId" INTEGER NOT NULL,
     "name" TEXT,
     "icon" TEXT,
@@ -12,11 +12,11 @@ CREATE TABLE "CatalogItem" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "CatalogItem_pkey" PRIMARY KEY ("itemId")
+    CONSTRAINT "WowItem_pkey" PRIMARY KEY ("itemId")
 );
 
 -- CreateTable
-CREATE TABLE "CatalogRaid" (
+CREATE TABLE "LootCatalogRaid" (
     "id" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -24,11 +24,11 @@ CREATE TABLE "CatalogRaid" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "CatalogRaid_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "LootCatalogRaid_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "CatalogEncounter" (
+CREATE TABLE "LootCatalogEncounter" (
     "id" TEXT NOT NULL,
     "raidId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE "CatalogEncounter" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "CatalogEncounter_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "LootCatalogEncounter_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -50,31 +50,31 @@ CREATE TABLE "EncounterDrop" (
 );
 
 -- CreateIndex
-CREATE INDEX "CatalogItem_enrichedAt_idx" ON "CatalogItem"("enrichedAt");
+CREATE INDEX "WowItem_enrichedAt_idx" ON "WowItem"("enrichedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CatalogRaid_slug_key" ON "CatalogRaid"("slug");
+CREATE UNIQUE INDEX "LootCatalogRaid_slug_key" ON "LootCatalogRaid"("slug");
 
 -- CreateIndex
-CREATE INDEX "CatalogRaid_seasonId_idx" ON "CatalogRaid"("seasonId");
+CREATE INDEX "LootCatalogRaid_seasonId_idx" ON "LootCatalogRaid"("seasonId");
 
 -- CreateIndex
-CREATE INDEX "CatalogEncounter_raidId_idx" ON "CatalogEncounter"("raidId");
+CREATE INDEX "LootCatalogEncounter_raidId_idx" ON "LootCatalogEncounter"("raidId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CatalogEncounter_raidId_position_key" ON "CatalogEncounter"("raidId", "position");
+CREATE UNIQUE INDEX "LootCatalogEncounter_raidId_position_key" ON "LootCatalogEncounter"("raidId", "position");
 
 -- CreateIndex
 CREATE INDEX "EncounterDrop_itemId_idx" ON "EncounterDrop"("itemId");
 
 -- AddForeignKey
-ALTER TABLE "CatalogRaid" ADD CONSTRAINT "CatalogRaid_seasonId_fkey" FOREIGN KEY ("seasonId") REFERENCES "GameSeason"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "LootCatalogRaid" ADD CONSTRAINT "LootCatalogRaid_seasonId_fkey" FOREIGN KEY ("seasonId") REFERENCES "GameSeason"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CatalogEncounter" ADD CONSTRAINT "CatalogEncounter_raidId_fkey" FOREIGN KEY ("raidId") REFERENCES "CatalogRaid"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "LootCatalogEncounter" ADD CONSTRAINT "LootCatalogEncounter_raidId_fkey" FOREIGN KEY ("raidId") REFERENCES "LootCatalogRaid"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "EncounterDrop" ADD CONSTRAINT "EncounterDrop_encounterId_fkey" FOREIGN KEY ("encounterId") REFERENCES "CatalogEncounter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "EncounterDrop" ADD CONSTRAINT "EncounterDrop_encounterId_fkey" FOREIGN KEY ("encounterId") REFERENCES "LootCatalogEncounter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "EncounterDrop" ADD CONSTRAINT "EncounterDrop_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "CatalogItem"("itemId") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "EncounterDrop" ADD CONSTRAINT "EncounterDrop_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "WowItem"("itemId") ON DELETE RESTRICT ON UPDATE CASCADE;

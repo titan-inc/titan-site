@@ -5,7 +5,7 @@ import { AppService } from './app.service';
 import { AttendanceModule } from './attendance/attendance.module';
 import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
-import { CatalogModule } from './catalog/catalog.module';
+import { LootCatalogModule } from './loot-catalog/loot-catalog.module';
 import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
@@ -30,7 +30,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     AttendanceModule,
     MembershipModule,
     OfficersModule,
-    CatalogModule,
+    LootCatalogModule,
     HealthModule,
   ],
   controllers: [AppController],

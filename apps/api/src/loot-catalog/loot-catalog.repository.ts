@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { RaidDifficultyLevel } from '@titan/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
-export interface CatalogItemInput {
+export interface WowItemInput {
   itemId: number;
   name?: string | null;
   icon?: string | null;
@@ -67,11 +67,11 @@ function raidSelect(difficulty?: RaidDifficultyLevel) {
  * Único lugar do módulo catálogo que fala com o Prisma — ver Regra 3.
  */
 @Injectable()
-export class CatalogRepository {
+export class LootCatalogRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   findRaids(filtro: RaidFilter = {}) {
-    return this.prisma.catalogRaid.findMany({
+    return this.prisma.lootCatalogRaid.findMany({
       where: 'seasonId' in filtro ? { seasonId: filtro.seasonId } : {},
       orderBy: { name: 'asc' },
       select: raidSelect(filtro.difficulty),
@@ -79,7 +79,7 @@ export class CatalogRepository {
   }
 
   findRaidBySlug(slug: string, difficulty?: RaidDifficultyLevel) {
-    return this.prisma.catalogRaid.findUnique({
+    return this.prisma.lootCatalogRaid.findUnique({
       where: { slug },
       select: raidSelect(difficulty),
     });
@@ -92,9 +92,9 @@ export class CatalogRepository {
    * nada mais, então sobrescrever com nulo apagaria nome e ícone já buscados na
    * API. Enriquecer é trabalho de outro fluxo.
    */
-  async ensureItems(itens: CatalogItemInput[]): Promise<void> {
+  async ensureItems(itens: WowItemInput[]): Promise<void> {
     for (const item of itens) {
-      await this.prisma.catalogItem.upsert({
+      await this.prisma.wowItem.upsert({
         where: { itemId: item.itemId },
         create: item,
         update: {},
@@ -111,7 +111,7 @@ export class CatalogRepository {
    * chave — a raid não precisa ser procurada.
    */
   findEncounterByDungeonId(dungeonEncounterId: number) {
-    return this.prisma.catalogEncounter.findUnique({
+    return this.prisma.lootCatalogEncounter.findUnique({
       where: { dungeonEncounterId },
       select: {
         id: true,
@@ -127,7 +127,7 @@ export class CatalogRepository {
 
   /** Itens que nunca foram enriquecidos — a fila do job que preenche nome e ícone. */
   findItemsToEnrich(limite: number) {
-    return this.prisma.catalogItem.findMany({
+    return this.prisma.wowItem.findMany({
       where: { enrichedAt: null },
       take: limite,
       select: { itemId: true },

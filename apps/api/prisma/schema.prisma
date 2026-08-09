@@ -198,8 +198,8 @@ model GameSeason {
   snapshots CharacterSnapshot[]
 
   /// Raids cadastradas no catálogo desta season. A ligação é OPCIONAL do outro
-  /// lado — ver o comentário em `CatalogRaid.seasonId`.
-  catalogRaids CatalogRaid[]
+  /// lado — ver o comentário em `LootCatalogRaid.seasonId`.
+  lootCatalogRaids LootCatalogRaid[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -476,7 +476,7 @@ enum WowSpec {
 ///
 /// Cresce para sempre e nunca apaga: linha de loot e sessão guardam `itemId`, e
 /// apagar um item apagaria o significado de histórico já gravado.
-model CatalogItem {
+model WowItem {
   /// Id da Blizzard, chave natural. Sem surrogate: o import já chega com o
   /// `itemID` na mão, e PK natural transforma o import em upsert direto.
   /// Mesmo precedente do `GameSeason.id`.
@@ -526,7 +526,7 @@ model CatalogItem {
   /// zero. Sem isto, item recém-cadastrado apareceria como inútil para todos.
   specsCuratedAt DateTime?
 
-  usableBySpecs CatalogItemSpec[]
+  usableBySpecs WowItemSpec[]
 
   drops EncounterDrop[]
 
@@ -553,9 +553,9 @@ model CatalogItem {
 ///
 /// É a Regra 7 ao pé da letra: derivar automático, humano corrige, guardar a
 /// correção. Ver TIT-77.
-model CatalogItemSpec {
+model WowItemSpec {
   itemId Int
-  item   CatalogItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade)
+  item   WowItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade)
 
   spec WowSpec
 
@@ -566,7 +566,7 @@ model CatalogItemSpec {
 }
 
 /// Uma raid do catálogo.
-model CatalogRaid {
+model LootCatalogRaid {
   id String @id @default(cuid())
 
   /// Identidade estável para referenciar de fora sem depender do cuid.
@@ -602,7 +602,7 @@ model CatalogRaid {
   seasonId Int?
   season   GameSeason? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
 
-  encounters CatalogEncounter[]
+  encounters LootCatalogEncounter[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -611,11 +611,11 @@ model CatalogRaid {
 }
 
 /// Um boss da raid.
-model CatalogEncounter {
+model LootCatalogEncounter {
   id String @id @default(cuid())
 
   raidId String
-  raid   CatalogRaid @relation(fields: [raidId], references: [id], onDelete: Cascade)
+  raid   LootCatalogRaid @relation(fields: [raidId], references: [id], onDelete: Cascade)
 
   name String
 
@@ -666,12 +666,12 @@ model CatalogEncounter {
 /// ganho. Eles vivem no `itemString` cru da linha de loot.
 model EncounterDrop {
   encounterId String
-  encounter   CatalogEncounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  encounter   LootCatalogEncounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
 
   difficulty RaidDifficulty
 
   itemId Int
-  item   CatalogItem @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
+  item   WowItem @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
 
   createdAt DateTime @default(now()) @map("created_at")
 

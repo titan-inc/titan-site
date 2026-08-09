@@ -1,7 +1,7 @@
 import { RaidDifficulty, WowSpec } from '@prisma/client';
 import { PRIMARY_STATS, RAID_DIFFICULTIES, SPECS } from '@titan/shared';
-import type { CatalogRepository } from './catalog.repository';
-import { CatalogService } from './catalog.service';
+import type { LootCatalogRepository } from './loot-catalog.repository';
+import { LootCatalogService } from './loot-catalog.service';
 
 /** Linha crua do Prisma: specs vêm como enum do banco, com underscore. */
 const itemRow = (itemId: number, over: Record<string, unknown> = {}) => ({
@@ -66,13 +66,13 @@ function primeira<T>(itens: T[]): T {
   return primeiro;
 }
 
-describe('CatalogService', () => {
+describe('LootCatalogService', () => {
   const repo = { findRaids: jest.fn(), findRaidBySlug: jest.fn() };
-  let service: CatalogService;
+  let service: LootCatalogService;
 
   beforeEach(() => {
     jest.resetAllMocks();
-    service = new CatalogService(repo as unknown as CatalogRepository);
+    service = new LootCatalogService(repo as unknown as LootCatalogRepository);
   });
 
   it('traduz a raid para o contrato do shared', async () => {

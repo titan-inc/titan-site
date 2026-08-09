@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { CatalogItem, CatalogRaid, RaidDifficultyLevel } from '@titan/shared';
-import { CatalogRepository, type RaidFilter } from './catalog.repository';
+import type { WowItem, LootCatalogRaid, RaidDifficultyLevel } from '@titan/shared';
+import { LootCatalogRepository, type RaidFilter } from './loot-catalog.repository';
 import { SPEC_FROM_DB } from './spec-map';
 
 /** O que o repository devolve, antes de virar o contrato do shared. */
-type RaidRow = Awaited<ReturnType<CatalogRepository['findRaids']>>[number];
+type RaidRow = Awaited<ReturnType<LootCatalogRepository['findRaids']>>[number];
 type ItemRow = RaidRow['encounters'][number]['drops'][number]['item'];
 
 /**
@@ -16,17 +16,17 @@ type ItemRow = RaidRow['encounters'][number]['drops'][number]['item'];
  * corromper histórico já gravado.
  */
 @Injectable()
-export class CatalogService {
-  constructor(private readonly repo: CatalogRepository) {}
+export class LootCatalogService {
+  constructor(private readonly repo: LootCatalogRepository) {}
 
-  async listRaids(filtro: RaidFilter = {}): Promise<CatalogRaid[]> {
+  async listRaids(filtro: RaidFilter = {}): Promise<LootCatalogRaid[]> {
     const raids = await this.repo.findRaids(filtro);
-    return raids.map(toCatalogRaid);
+    return raids.map(toLootCatalogRaid);
   }
 
-  async getRaid(slug: string, difficulty?: RaidDifficultyLevel): Promise<CatalogRaid | null> {
+  async getRaid(slug: string, difficulty?: RaidDifficultyLevel): Promise<LootCatalogRaid | null> {
     const raid = await this.repo.findRaidBySlug(slug, difficulty);
-    return raid ? toCatalogRaid(raid) : null;
+    return raid ? toLootCatalogRaid(raid) : null;
   }
 }
 
@@ -37,7 +37,7 @@ export class CatalogService {
  * `packages/shared`. Se um dia os dois divergirem, é este ponto que quebra no
  * typecheck — em vez de o front receber um valor que ele não sabe tratar.
  */
-function toCatalogRaid(raid: RaidRow): CatalogRaid {
+function toLootCatalogRaid(raid: RaidRow): LootCatalogRaid {
   return {
     id: raid.id,
     slug: raid.slug,
@@ -51,7 +51,7 @@ function toCatalogRaid(raid: RaidRow): CatalogRaid {
       dungeonEncounterId: encounter.dungeonEncounterId,
       drops: encounter.drops.map((drop) => ({
         difficulty: drop.difficulty,
-        item: toCatalogItem(drop.item),
+        item: toWowItem(drop.item),
       })),
     })),
   };
@@ -64,7 +64,7 @@ function toCatalogRaid(raid: RaidRow): CatalogRaid {
  * não "nenhuma spec usa". Quem consome precisa tratar os dois casos diferente —
  * é o mesmo cuidado da Regra 7 com lacuna e zero.
  */
-function toCatalogItem(item: ItemRow): CatalogItem {
+function toWowItem(item: ItemRow): WowItem {
   return {
     itemId: item.itemId,
     name: item.name,
