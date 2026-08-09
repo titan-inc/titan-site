@@ -1,4 +1,10 @@
-import { canSeeOthersHistory, needsReview, type RaidNightInfo } from '@titan/shared';
+import {
+  canSeeOthersHistory,
+  isPresent,
+  needsReview,
+  type AttendanceEntry,
+  type RaidNightInfo,
+} from '@titan/shared';
 import { redirect } from 'next/navigation';
 import { getAttendanceReport, getMyAttendance, getSessionUser } from '../../../lib/api';
 import { Estado } from './_components/estado';
@@ -12,7 +18,24 @@ function dataCurta(date: string): string {
   return `${dia}/${mes}`;
 }
 
-function Cabecalho({ night }: { night: RaidNightInfo }) {
+/**
+ * Cabeçalho da noite — o que se lê com a noite FECHADA.
+ *
+ * Carrega o resumo de propósito. Um accordion cujo cabeçalho só repete data e
+ * instância troca 1054 linhas de scroll por 60 cliques às cegas: você teria que
+ * abrir noite por noite só para descobrir onde há trabalho.
+ *
+ * O trabalho desta tela é um só — achar quem ficou em "Não Raidou" e anotar o
+ * motivo, porque é o único estado que o log não desambigua (Regra 7). Então é
+ * a contagem de pendências que fica em destaque, não a de presentes.
+ */
+function Cabecalho({ night, entries }: { night: RaidNightInfo; entries: AttendanceEntry[] }) {
+  const presentes = entries.filter((e) => isPresent(e.state)).length;
+
+  // Pendência é "precisa de motivo E ainda não tem". Contar as já anotadas
+  // deixaria o número parado depois do trabalho feito.
+  const semMotivo = entries.filter((e) => needsReview(e.state) && !e.note).length;
+
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <span className="text-fg font-mono tabular-nums">{dataCurta(night.date)}</span>
@@ -32,6 +55,14 @@ function Cabecalho({ night }: { night: RaidNightInfo }) {
       ) : (
         <span className="text-fg-subtle text-xs">{night.bossPulls} pulls</span>
       )}
+
+      {/* Noite sem log não afirma nada sobre quem estava lá, então mostrar
+          "0 presentes" ali seria mentira com cara de dado. */}
+      {night.bossPulls !== null && (
+        <span className="text-fg-subtle text-xs">{presentes} presentes</span>
+      )}
+
+      {semMotivo > 0 && <span className="text-danger text-xs">{semMotivo} sem motivo</span>}
     </div>
   );
 }
@@ -86,11 +117,32 @@ function VisaoOficial({ report }: { report: Awaited<ReturnType<typeof getAttenda
 
   return (
     <div className="flex flex-col gap-4">
-      {report.nights.map((night) => (
-        <section key={night.id} className="border-border overflow-hidden rounded-lg border">
-          <header className="border-border bg-surface border-b px-4 py-3">
-            <Cabecalho night={night} />
-          </header>
+      {report.nights.map((night, i) => (
+        // <details> nativo, e não accordion em JS: a página é server component,
+        // e o nativo já traz teclado, foco e Ctrl+F do navegador de graça.
+        //
+        // A noite mais recente abre por padrão — abrir a tela e ver a última
+        // raid é o caso comum. As outras 59 ficam a um clique.
+        <details
+          key={night.id}
+          open={i === 0}
+          className="border-border group overflow-hidden rounded-lg border"
+        >
+          {/* `list-none` resolve na maioria dos navegadores; o seletor webkit é
+              para o Safari, que ignora e desenha o triângulo dele por cima. */}
+          <summary className="border-border bg-surface hover:bg-surface/70 cursor-pointer list-none border-b px-4 py-3 transition-colors [&::-webkit-details-marker]:hidden">
+            <div className="flex items-baseline gap-2">
+              {/* Marcador próprio: o triângulo nativo não é estilizável de
+                  forma consistente entre navegadores. */}
+              <span
+                aria-hidden
+                className="text-fg-subtle mt-0.5 shrink-0 text-xs transition-transform group-open:rotate-90"
+              >
+                ▸
+              </span>
+              <Cabecalho night={night} entries={night.entries} />
+            </div>
+          </summary>
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">
@@ -146,7 +198,7 @@ function VisaoOficial({ report }: { report: Awaited<ReturnType<typeof getAttenda
               </tbody>
             </table>
           </div>
-        </section>
+        </details>
       ))}
     </div>
   );
