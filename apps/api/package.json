@@ -22,6 +22,7 @@
     "probe:snapshot": "node scripts/snapshot-probe.js",
     "probe:raid": "node scripts/raid-probe.js",
     "probe:attendance": "node scripts/attendance-probe.js",
+    "catalog:generate": "node scripts/catalog-generate.js",
     "catalog:load": "node scripts/catalog-load.js",
     "test": "jest",
     "test:watch": "jest --watch",
