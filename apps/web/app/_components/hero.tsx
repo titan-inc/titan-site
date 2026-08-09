@@ -66,11 +66,11 @@ export async function Hero() {
             id="hero-titulo"
             className="text-fg mt-6 text-[clamp(2rem,9vw,2.5rem)] leading-[1.05] font-extrabold tracking-[-0.02em] text-balance md:text-[40px] lg:text-[54px] xl:text-[72px]"
           >
-            Endgame sem abrir mão da vida real
+            Endgame para quem não abre mão da vida real
           </h1>
           <p className="text-fg-muted mt-6 max-w-[46ch] text-[17px] leading-[1.6] text-pretty">
-            Guilda de raid e Mythic+ desde 2009. Cinco horas por semana, para gente com trabalho,
-            família e faculdade — e ainda assim progredindo.
+            Cutting Edge Softcore Progression Guild. <br></br>Há mais de uma década reunindo
+            jogadores de alta performance com pouco tempo para jogar.
           </p>
           <Acao href="#candidatura" variante="solida" className="mt-8 w-full md:w-auto">
             Candidatar-se
