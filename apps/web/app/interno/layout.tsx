@@ -1,4 +1,6 @@
+import { canManageOfficers } from '@titan/shared';
 import Link from 'next/link';
+import { getSessionUser } from '../../lib/api';
 import { Wordmark } from '../_components/ui/wordmark';
 import { SidebarNav } from './_components/sidebar-nav';
 
@@ -11,7 +13,11 @@ import { SidebarNav } from './_components/sidebar-nav';
  * Isto é UX, não segurança — ver Regra 5. Quem esconde de verdade é o
  * MemberGuard no Nest; a barra só evita tela quebrada.
  */
-export default function InternoLayout({ children }: { children: React.ReactNode }) {
+export default async function InternoLayout({ children }: { children: React.ReactNode }) {
+  // Só para decidir se a seção de liderança aparece na barra. A página e o
+  // guard do Nest decidem o acesso de verdade.
+  const user = await getSessionUser();
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-8 md:flex-row md:gap-10">
       <aside className="md:w-44 md:shrink-0">
@@ -28,7 +34,7 @@ export default function InternoLayout({ children }: { children: React.ReactNode 
         <p className="text-fg-subtle mb-3 hidden font-mono text-xs tracking-widest uppercase md:block">
           Área interna
         </p>
-        <SidebarNav />
+        <SidebarNav oficial={user !== null && canManageOfficers(user)} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>

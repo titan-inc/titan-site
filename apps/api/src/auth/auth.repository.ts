@@ -55,8 +55,8 @@ export class AuthRepository {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.upsert({
         where: { battlenetId: input.battlenetId },
-        // isOfficer NÃO entra aqui de propósito: é atribuído à mão e um novo
-        // login não pode zerar nem conceder essa permissão.
+        // Não existe isOfficer para gravar: ser oficial mora em OfficerGrant e
+        // é derivado na leitura da sessão. Login não concede nem revoga nada.
         create: { battlenetId: input.battlenetId, ...data },
         update: data,
       });
@@ -73,6 +73,24 @@ export class AuthRepository {
         where: { id: user.id },
         include: { characters: true },
       });
+    });
+  }
+
+  /**
+   * Todos os grants de oficial.
+   *
+   * A tabela é minúscula por natureza — são as poucas pessoas da liderança —
+   * então ler inteira e casar em memória sai mais barato que montar um `WHERE`
+   * com N pares (realm, nome), e deixa a normalização da Regra 6 acontecer no
+   * código, em `isOfficerByGrants()`, em vez de dentro do SQL.
+   *
+   * Auth lê esta tabela mesmo ela sendo do domínio `officers` porque ela É o
+   * modelo de autorização, que auth resolve a cada sessão. Quem escreve nela é
+   * só o módulo officers.
+   */
+  async findOfficerGrants(): Promise<Array<{ nameKey: string; realmSlug: string }>> {
+    return this.prisma.officerGrant.findMany({
+      select: { nameKey: true, realmSlug: true },
     });
   }
 

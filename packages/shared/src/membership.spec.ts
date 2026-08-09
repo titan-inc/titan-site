@@ -3,6 +3,7 @@ import {
   canAccessInternalArea,
   canApply,
   canReviewApplications,
+  canSeeOthersHistory,
   type SessionUser,
 } from './membership.js';
 
@@ -91,5 +92,23 @@ describe('canReviewApplications', () => {
     // Os dois gates são independentes: passar do corte dá a área interna, não
     // a caixa de entrada do recrutamento.
     expect(canReviewApplications(user({ guildRank: 0, isOfficer: false }))).toBe(false);
+  });
+});
+
+describe('canSeeOthersHistory', () => {
+  const base = { hasInternalAccess: true, isOfficer: true };
+
+  it('exige a flag de oficial', () => {
+    expect(canSeeOthersHistory(base)).toBe(true);
+    expect(canSeeOthersHistory({ ...base, isOfficer: false })).toBe(false);
+  });
+
+  it('exige acesso à área interna junto', () => {
+    // Sair da guilda derruba o acesso mesmo que ninguém desligue a flag.
+    expect(canSeeOthersHistory({ ...base, hasInternalAccess: false })).toBe(false);
+  });
+
+  it('membro comum não vê o histórico de outro membro — Regra 7', () => {
+    expect(canSeeOthersHistory({ hasInternalAccess: true, isOfficer: false })).toBe(false);
   });
 });
