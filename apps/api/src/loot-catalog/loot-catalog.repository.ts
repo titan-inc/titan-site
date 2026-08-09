@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import type { RaidDifficultyLevel } from '@titan/shared';
+import type { PrimaryStat, RaidDifficultyLevel, WowSpec } from '@titan/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { SPEC_TO_DB } from './spec-map';
 
 export interface WowItemInput {
   itemId: number;
@@ -8,6 +9,21 @@ export interface WowItemInput {
   icon?: string | null;
   equipLoc?: string | null;
   itemSubclass?: string | null;
+}
+
+/**
+ * O que o carregador grava de um item.
+ *
+ * Tudo opcional menos o id: campo ausente é "não mexi nisso". Ver `upsertItem`.
+ */
+export interface WowItemUpsert {
+  itemId: number;
+  name?: string;
+  icon?: string;
+  equipLoc?: string;
+  itemSubclass?: string;
+  primaryStats?: PrimaryStat[];
+  usableBySpecs?: WowSpec[];
 }
 
 export interface RaidFilter {
@@ -123,6 +139,111 @@ export class LootCatalogRepository {
         },
       },
     });
+  }
+
+  /**
+   * Cria ou atualiza a raid, casando por `slug`.
+   *
+   * `slug` é a identidade estável do arquivo de catálogo, e é o que torna a
+   * recarga idempotente: rodar de novo atualiza a mesma linha.
+   */
+  upsertRaid(dados: { slug: string; name: string; seasonId?: number; instanceMapId?: number }) {
+    const { slug, ...resto } = dados;
+
+    return this.prisma.lootCatalogRaid.upsert({
+      where: { slug },
+      create: { slug, ...resto },
+      update: resto,
+      select: { id: true },
+    });
+  }
+
+  /**
+   * Cria ou atualiza o boss, casando por posição dentro da raid.
+   *
+   * A posição é a chave, e não o nome, porque nome muda com localização e com
+   * correção de digitação — a ordem em que se mata, não.
+   */
+  upsertEncounter(dados: {
+    raidId: string;
+    name: string;
+    position: number;
+    dungeonEncounterId?: number;
+  }) {
+    const { raidId, position, ...resto } = dados;
+
+    return this.prisma.lootCatalogEncounter.upsert({
+      where: { raidId_position: { raidId, position } },
+      create: { raidId, position, ...resto },
+      update: resto,
+      select: { id: true },
+    });
+  }
+
+  /**
+   * Deixa os drops do boss exatamente iguais aos da lista.
+   *
+   * Substitui em vez de acrescentar porque **o arquivo é a fonte da verdade**:
+   * item que saiu da loot table por hotfix precisa sair do banco também, e um
+   * carregador que só soma nunca esquece nada.
+   *
+   * Apagar drop é seguro: linha de loot e sessão guardam `itemId`, nunca a linha
+   * de drop. Editar o catálogo não alcança histórico já gravado.
+   */
+  async replaceDrops(
+    encounterId: string,
+    drops: Array<{ difficulty: RaidDifficultyLevel; itemId: number }>,
+  ): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.encounterDrop.deleteMany({ where: { encounterId } }),
+      this.prisma.encounterDrop.createMany({
+        data: drops.map((d) => ({ encounterId, ...d })),
+      }),
+    ]);
+  }
+
+  /**
+   * Grava o item do dicionário sem destruir o que já se sabia dele.
+   *
+   * Campo ausente no arquivo significa "não mexi nisso", nunca "apague". O
+   * arquivo pode ter sido digitado à mão com só o `itemId`, enquanto o banco já
+   * tem nome e ícone vindos da API — sobrescrever com nulo perderia isso.
+   *
+   * `usableBySpecs` segue a mesma regra e é ainda mais sensível: é curadoria
+   * humana. Lista vazia no arquivo é "não decidi", e um arquivo gerado
+   * automaticamente sempre vem assim.
+   */
+  async upsertItem(dados: WowItemUpsert): Promise<void> {
+    const { itemId, usableBySpecs, ...campos } = dados;
+
+    // Só o que veio. `undefined` é "não mexi nisso", e cair no update como nulo
+    // apagaria enriquecimento que a API já tinha trazido.
+    const preenchidos = Object.fromEntries(
+      Object.entries(campos).filter(([, valor]) => valor !== undefined),
+    );
+
+    const enriquecido = Object.keys(preenchidos).length > 0 ? { enrichedAt: new Date() } : {};
+
+    await this.prisma.wowItem.upsert({
+      where: { itemId },
+      create: { itemId, ...preenchidos, ...enriquecido },
+      update: { ...preenchidos, ...enriquecido },
+    });
+
+    // Lista vazia é "não decidi", nunca "ninguém usa" — arquivo gerado sempre
+    // vem assim, e apagar curadoria humana por causa disso seria destrutivo.
+    if (!usableBySpecs || usableBySpecs.length === 0) return;
+
+    await this.prisma.$transaction([
+      this.prisma.wowItemSpec.deleteMany({ where: { itemId } }),
+      this.prisma.wowItemSpec.createMany({
+        data: usableBySpecs.map((spec) => ({ itemId, spec: SPEC_TO_DB[spec] })),
+      }),
+      this.prisma.wowItem.update({
+        where: { itemId },
+        data: { specsCuratedAt: new Date() },
+      }),
+    ]);
   }
 
   /** Itens que nunca foram enriquecidos — a fila do job que preenche nome e ícone. */
