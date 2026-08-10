@@ -1,14 +1,14 @@
 {
-  "titulo": "O time de raid",
-  "descricao": "Quem senta na raid. A lista é curadoria do raid leader.",
+  "titulo": "Nosso time de raid",
+  "descricao": "Diversidade por um ambiente saudável e divertido para todos(as)",
   "membros": [
-    { "nome": "Vaelthorn", "imagem": "player-01.webp", "classe": "Death Knight" },
-    { "nome": "Sylvenne", "imagem": "player-02.webp", "classe": "Druid" },
-    { "nome": "Korrighan", "imagem": "player-03.webp", "classe": "Warrior" },
-    { "nome": "Mirethys", "imagem": "player-04.webp", "classe": "Mage" },
-    { "nome": "Draventh", "imagem": "player-05.webp", "classe": "Demon Hunter" },
-    { "nome": "Ashkarel", "imagem": "player-06.webp", "classe": "Paladin" },
-    { "nome": "Nyxaris", "imagem": "player-07.webp", "classe": "Rogue" },
-    { "nome": "Thalorien", "imagem": "player-08.webp", "classe": "Hunter" }
+    { "nome": "Maeliel", "imagem": "player-01.webp", "classe": "Demon Hunter" },
+    { "nome": "Cebøla", "imagem": "player-02.webp", "classe": "Paladin" },
+    { "nome": "Devunne", "imagem": "player-03.webp", "classe": "Paladin" },
+    { "nome": "Zenithus", "imagem": "player-04.webp", "classe": "Demon Hunter" },
+    { "nome": "Feisen", "imagem": "player-05.webp", "classe": "Mage" },
+    { "nome": "Dramarys", "imagem": "player-06.webp", "classe": "Evoker" },
+    { "nome": "Remmendo", "imagem": "player-07.webp", "classe": "Warlock" },
+    { "nome": "Wargyu", "imagem": "player-08.webp", "classe": "Warrior" }
   ]
 }
