@@ -124,6 +124,22 @@ export const catalogFileSchema = z.object({
   name: z.string().min(1),
 
   /**
+   * De qual instância do Encounter Journal este arquivo foi gerado.
+   *
+   * É **procedência**, não dado da raid: serve para regerar o arquivo depois de
+   * um hotfix mexer na loot table, sem redescobrir o número entre as 210
+   * instâncias do índice, procurando por nome.
+   *
+   * Fica no arquivo e **não** no banco de propósito. Chegou a ser cogitado
+   * persistir este id e o `journalEncounterId` de cada boss, e foi descartado: o
+   * casamento nunca foi por eles — o gerador usa o dump do cliente e o carregador
+   * casa boss por `raidId + position` — então virariam coluna sem leitor. E a
+   * Regra 7 manda gravar antes de exibir porque semana não gravada não volta;
+   * estes ids estão na API da Blizzard para sempre, então não são perecíveis.
+   */
+  journalInstanceId: z.number().int().positive().optional(),
+
+  /**
    * Season da Blizzard, ou ausente.
    *
    * Ausente é o estado normal de raid cadastrada antes da season começar: a

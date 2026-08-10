@@ -2,6 +2,7 @@
   "version": 1,
   "slug": "the-dreamrift",
   "name": "The Dreamrift",
+  "journalInstanceId": 1314,
   "instanceMapId": 2939,
   "bosses": [
     {

@@ -2,6 +2,7 @@
   "version": 1,
   "slug": "the-voidspire",
   "name": "The Voidspire",
+  "journalInstanceId": 1307,
   "instanceMapId": 2912,
   "bosses": [
     {

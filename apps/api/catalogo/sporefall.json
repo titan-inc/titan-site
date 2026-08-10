@@ -2,6 +2,7 @@
   "version": 1,
   "slug": "sporefall",
   "name": "Sporefall",
+  "journalInstanceId": 1305,
   "instanceMapId": 1592,
   "bosses": [
     {
