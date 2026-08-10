@@ -46,8 +46,12 @@ módulo existe pra evitar (Regra 8 do CLAUDE.md).
 7. **Documenta o `curl` equivalente** aqui embaixo, na seção certa.
 
 Antes de criar uma rota nova, confere se já não existe um caminho — foi o
-caso do `raid-probe.js`, que virou nota em vez de rota: já existia
-`GET /internal/raid-progress` fazendo a mesma coisa.
+caso do `raid-probe.js`: a chamada já existia como `GET /internal/raid-progress`.
+Ainda assim ganhou uma rota em `/internal/ops` (`raid-progress`, abaixo),
+porque o valor aqui não é só "existir o dado" — é poder pedir via `curl`/CLI
+sem precisar de cookie de sessão. Nem sempre vale a pena: se a rota que já
+existe for suficiente pro uso real, documentar o `curl` com cookie de
+sessão (como esta seção já fazia) pode ser a escolha mais simples.
 
 ## Snapshot semanal
 
@@ -79,11 +83,21 @@ curl -X POST "http://localhost:3001/internal/ops/attendance-sync?all=true" \
 
 ## Progressão de raid
 
-**Não tem rota em `/internal/ops`** — já existe `GET /internal/raid-progress`
-fazendo exatamente a mesma coisa (`RaidProgressService.getReport`), rodando,
-protegida por sessão de membro. Era `pnpm --filter api probe:raid [season]`;
-uma pessoa logada consegue o mesmo resultado abrindo a área interna, ou via
-`curl` com cookie de sessão válido.
+Era `pnpm --filter api probe:raid [season]`.
+
+```bash
+curl "http://localhost:3001/internal/ops/raid-progress" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"                        # season mais recente gravada
+
+curl "http://localhost:3001/internal/ops/raid-progress?season=17" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+Mesma chamada que `GET /internal/raid-progress` já faz (`RaidProgressService.getReport`)
+— uma pessoa logada consegue o mesmo resultado abrindo a área interna, ou
+via `curl` com cookie de sessão válido. Esta rota existe só pra não exigir
+login num `curl`/CLI; read-only, sem risco extra de expor nada que a área
+interna já não mostre.
 
 ## Catálogo — listar instâncias do journal
 
