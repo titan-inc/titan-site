@@ -1,0 +1,9 @@
+titaninc.com.br, www.titaninc.com.br {
+	handle_path /api/* {
+		reverse_proxy api:3001
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
