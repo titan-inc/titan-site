@@ -5,6 +5,7 @@ import {
   type CatalogFile,
   type CatalogFileBoss,
   type CatalogFileItem,
+  type JournalDump,
   type PrimaryStat,
   type RaidDifficultyLevel,
 } from '@titan/shared';
@@ -48,15 +49,20 @@ export class LootCatalogGeneratorService {
   /**
    * Gera o arquivo de uma raid do Encounter Journal.
    *
-   * Orquestra: lê a raid, resolve o id de cada boss contra o WCL, e enriquece
-   * cada item. Falha antes de produzir arquivo se algum boss não casar — arquivo
-   * pela metade é pior que arquivo nenhum, porque parece pronto.
+   * Orquestra: lê a raid, resolve o `dungeonEncounterId` de cada boss, e
+   * enriquece cada item. Falha antes de produzir arquivo se algum id for
+   * ambíguo — arquivo pela metade é pior que arquivo nenhum, porque parece
+   * pronto.
    */
-  async gerar(journalInstanceId: number, slug?: string): Promise<CatalogFile> {
+  async gerar(journalInstanceId: number, slug?: string, dump?: JournalDump): Promise<CatalogFile> {
     const instancia = await this.blizzard.getJournalInstance(journalInstanceId);
     this.logger.log(`${instancia.name}: ${instancia.encounters.length} boss(es) no journal`);
 
-    const idPorNome = await this.idsDoWcl(instancia.encounters.map((e) => e.name));
+    const idPorJournal = this.idsDoDump(journalInstanceId, dump);
+    const idPorNome = idPorJournal
+      ? new Map<string, number>()
+      : await this.idsDoWcl(instancia.encounters.map((e) => e.name));
+
     const cache = new Map<number, CatalogFileItem>();
     const bosses: CatalogFileBoss[] = [];
 
@@ -81,7 +87,9 @@ export class LootCatalogGeneratorService {
       bosses.push({
         name: encontro.name,
         position: posicao,
-        dungeonEncounterId: idPorNome.get(encontro.name),
+        dungeonEncounterId: idPorJournal
+          ? idPorJournal.get(resumo.id)
+          : idPorNome.get(encontro.name),
         difficulties: difficulties as CatalogFileBoss['difficulties'],
         items,
       });
@@ -97,8 +105,53 @@ export class LootCatalogGeneratorService {
       version: 1,
       slug: slug ?? toSlugSimples(instancia.name),
       name: instancia.name,
+      // Vinha vazio desde o TIT-46: o campo estava modelado nos dois schemas e
+      // ninguém preenchia, embora a Blizzard devolva de graça.
+      ...((dump?.instanceMapId ?? instancia.map?.id)
+        ? { instanceMapId: dump?.instanceMapId ?? instancia.map?.id }
+        : {}),
       bosses: bosses as CatalogFile['bosses'],
     };
+  }
+
+  /**
+   * `journalEncounterId` → `dungeonEncounterId`, direto do cliente do WoW.
+   *
+   * Quando existe dump, ele **substitui** o casamento por nome contra o WCL: o
+   * cliente é a única fonte que publica a ponte entre os dois espaços de id, e
+   * casar por id não sofre com nome repetido entre expansões nem com boss
+   * renomeado num patch.
+   *
+   * Devolve `undefined` quando não há dump, e aí o gerador cai no nome.
+   */
+  private idsDoDump(
+    journalInstanceId: number,
+    dump?: JournalDump,
+  ): Map<number, number> | undefined {
+    if (!dump) return undefined;
+
+    // Dump da raid errada é o erro fácil de cometer com dois arquivos abertos,
+    // e sem esta checagem ele produziria uma raid inteira sem id nenhum.
+    if (dump.journalInstanceId !== journalInstanceId) {
+      throw new Error(
+        `o dump é da instância ${dump.journalInstanceId} e você pediu a ${journalInstanceId}`,
+      );
+    }
+
+    const ids = new Map<number, number>();
+    const semId: number[] = [];
+
+    for (const boss of dump.bosses) {
+      if (boss.dungeonEncounterId) ids.set(boss.journalEncounterId, boss.dungeonEncounterId);
+      else semId.push(boss.journalEncounterId);
+    }
+
+    if (semId.length > 0) {
+      this.logger.warn(`${semId.length} boss(es) sem id no dump: ${semId.join(', ')}`);
+    }
+
+    this.logger.log(`Dump do cliente: ${ids.size} de ${dump.bosses.length} boss(es) com id`);
+    return ids;
   }
 
   /**

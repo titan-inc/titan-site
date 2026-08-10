@@ -7,9 +7,15 @@
  *   pnpm --filter api catalog:generate --lista voidspire  # filtra por nome
  *   pnpm --filter api catalog:generate 1307 --saida catalogo/the-voidspire.json
  *   pnpm --filter api catalog:generate 1307 --slug outro --saida x.json
+ *   pnpm --filter api catalog:generate 1307 --journal dump.txt --saida x.json
  *
  * O `journalInstanceId` é o id do Encounter Journal, que NÃO é o mesmo do jogo
  * nem do WCL — use `--lista` para descobrir o da raid.
+ *
+ * `--journal` recebe a colagem do `/tilc journal` do addon. Com ela o boss é
+ * casado por id em vez de por nome, o que resolve nome repetido entre expansões
+ * e boss renomeado em patch — e funciona no dia do patch, quando o WCL ainda não
+ * conhece a raid. Sem ela, o casamento por nome continua valendo.
  *
  * O que sai preenchido: bosses, ordem, dificuldades, `dungeonEncounterId`, e por
  * item nome, ícone, slot, subclasse e stats primários.
@@ -27,6 +33,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { NestFactory } = require('@nestjs/core');
+const { parseJournalDump } = require('@titan/shared');
 const { AppModule } = require('../dist/app.module');
 const { BlizzardService } = require('../dist/blizzard/blizzard.service');
 const {
@@ -61,10 +68,23 @@ async function listar(app, filtro) {
   console.log('\nUse o id com: pnpm --filter api catalog:generate <id> --saida <arquivo.json>');
 }
 
+/**
+ * Lê o dump do Encounter Journal colado do addon.
+ *
+ * Com ele o gerador para de casar boss por nome contra o Warcraft Logs: o
+ * cliente é a única fonte que publica a ponte entre `journalEncounterID` e
+ * `dungeonEncounterID`, e sabe disso no dia do patch.
+ */
+function lerDump(caminho) {
+  if (!caminho) return undefined;
+  return parseJournalDump(fs.readFileSync(path.resolve(process.cwd(), caminho), 'utf8'));
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const saida = valorDe(args, '--saida');
   const slug = valorDe(args, '--slug');
+  const dump = lerDump(valorDe(args, '--journal'));
   const id = args.find((a) => /^\d+$/.test(a));
   const querLista = args.includes('--lista');
 
@@ -94,7 +114,7 @@ async function main() {
 
   try {
     const inicio = Date.now();
-    const arquivo = await app.get(LootCatalogGeneratorService).gerar(Number(id), slug);
+    const arquivo = await app.get(LootCatalogGeneratorService).gerar(Number(id), slug, dump);
     const duracao = Date.now() - inicio;
 
     const itens = new Set(arquivo.bosses.flatMap((b) => b.items.map((i) => i.itemId)));

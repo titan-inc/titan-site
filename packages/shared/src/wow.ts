@@ -116,6 +116,7 @@ export const SPECS = {
   DEATH_KNIGHT_BLOOD: 'death-knight-blood',
   DEATH_KNIGHT_FROST: 'death-knight-frost',
   DEATH_KNIGHT_UNHOLY: 'death-knight-unholy',
+  DEMON_HUNTER_DEVOURER: 'demon-hunter-devourer',
   DEMON_HUNTER_HAVOC: 'demon-hunter-havoc',
   DEMON_HUNTER_VENGEANCE: 'demon-hunter-vengeance',
   DRUID_BALANCE: 'druid-balance',
@@ -171,6 +172,7 @@ export const SPEC_CLASS: Record<WowSpec, WowClass> = {
   [SPECS.DEATH_KNIGHT_BLOOD]: 'death-knight',
   [SPECS.DEATH_KNIGHT_FROST]: 'death-knight',
   [SPECS.DEATH_KNIGHT_UNHOLY]: 'death-knight',
+  [SPECS.DEMON_HUNTER_DEVOURER]: 'demon-hunter',
   [SPECS.DEMON_HUNTER_HAVOC]: 'demon-hunter',
   [SPECS.DEMON_HUNTER_VENGEANCE]: 'demon-hunter',
   [SPECS.DRUID_BALANCE]: 'druid',
@@ -207,6 +209,69 @@ export const SPEC_CLASS: Record<WowSpec, WowClass> = {
   [SPECS.WARRIOR_ARMS]: 'warrior',
   [SPECS.WARRIOR_FURY]: 'warrior',
   [SPECS.WARRIOR_PROTECTION]: 'warrior',
+};
+
+/**
+ * `specID` do jogo → nossa spec.
+ *
+ * O número é o id da Blizzard, o mesmo que `GetSpecializationInfoForClassID`
+ * devolve no cliente e que o dump do addon emite. É identidade estável, não
+ * posição: `62` é Arcane desde sempre, e continua sendo se a Blizzard reordenar
+ * a árvore de talentos.
+ *
+ * Existe para o dump do addon poder falar em número — o cliente só entrega nome
+ * de spec **localizado**, então casar por nome quebraria num cliente ptBR sem
+ * dar erro nenhum.
+ *
+ * Levantado do próprio cliente em 09/08/2026, iterando `GetNumClasses()` e
+ * `GetNumSpecializationsForClassID()`: **40 specs**. Nosso enum tinha 39 — a
+ * `demon-hunter-devourer` (1480) nasceu nesta expansão e faltava aqui.
+ *
+ * Id que não estiver neste mapa é **recusado**, nunca ignorado. Spec nova
+ * silenciosamente descartada viraria item com uma spec a menos na lista de quem
+ * pode dar need, e ninguém relacionaria as duas coisas.
+ */
+export const SPEC_BY_GAME_ID: Record<number, WowSpec> = {
+  71: SPECS.WARRIOR_ARMS,
+  72: SPECS.WARRIOR_FURY,
+  73: SPECS.WARRIOR_PROTECTION,
+  65: SPECS.PALADIN_HOLY,
+  66: SPECS.PALADIN_PROTECTION,
+  70: SPECS.PALADIN_RETRIBUTION,
+  253: SPECS.HUNTER_BEAST_MASTERY,
+  254: SPECS.HUNTER_MARKSMANSHIP,
+  255: SPECS.HUNTER_SURVIVAL,
+  259: SPECS.ROGUE_ASSASSINATION,
+  260: SPECS.ROGUE_OUTLAW,
+  261: SPECS.ROGUE_SUBTLETY,
+  256: SPECS.PRIEST_DISCIPLINE,
+  257: SPECS.PRIEST_HOLY,
+  258: SPECS.PRIEST_SHADOW,
+  250: SPECS.DEATH_KNIGHT_BLOOD,
+  251: SPECS.DEATH_KNIGHT_FROST,
+  252: SPECS.DEATH_KNIGHT_UNHOLY,
+  262: SPECS.SHAMAN_ELEMENTAL,
+  263: SPECS.SHAMAN_ENHANCEMENT,
+  264: SPECS.SHAMAN_RESTORATION,
+  62: SPECS.MAGE_ARCANE,
+  63: SPECS.MAGE_FIRE,
+  64: SPECS.MAGE_FROST,
+  265: SPECS.WARLOCK_AFFLICTION,
+  266: SPECS.WARLOCK_DEMONOLOGY,
+  267: SPECS.WARLOCK_DESTRUCTION,
+  268: SPECS.MONK_BREWMASTER,
+  269: SPECS.MONK_WINDWALKER,
+  270: SPECS.MONK_MISTWEAVER,
+  102: SPECS.DRUID_BALANCE,
+  103: SPECS.DRUID_FERAL,
+  104: SPECS.DRUID_GUARDIAN,
+  105: SPECS.DRUID_RESTORATION,
+  577: SPECS.DEMON_HUNTER_HAVOC,
+  581: SPECS.DEMON_HUNTER_VENGEANCE,
+  1480: SPECS.DEMON_HUNTER_DEVOURER,
+  1467: SPECS.EVOKER_DEVASTATION,
+  1468: SPECS.EVOKER_PRESERVATION,
+  1473: SPECS.EVOKER_AUGMENTATION,
 };
 
 /** Marcas diacríticas combinantes (Unicode Combining Diacritical Marks). */

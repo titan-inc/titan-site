@@ -66,6 +66,17 @@ export interface JournalInstance {
   id: number;
   name: string;
   encounters: Array<{ id: number; name: string }>;
+
+  /**
+   * O `instanceMapID` do cliente — 2569 para Aberrus, 2912 para The Voidspire.
+   *
+   * Conferido nos dois lados: é o mesmo número que o addon emite no cabeçalho
+   * da colagem e que o cliente devolve no oitavo retorno de
+   * `EJ_GetEncounterInfoByIndex`.
+   *
+   * NÃO é a zona do Warcraft Logs, que vive noutro espaço de id.
+   */
+  map?: { id: number; name: string };
 }
 
 export interface JournalEncounter {
