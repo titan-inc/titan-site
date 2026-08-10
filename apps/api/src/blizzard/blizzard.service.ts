@@ -56,6 +56,48 @@ export interface RosterSnapshot {
   stale: boolean;
 }
 
+/**
+ * Raid do Encounter Journal.
+ *
+ * O `id` dos encounters é o **journalEncounterID**, não o `dungeonEncounterID`
+ * do jogo. Ver `getJournalInstance`.
+ */
+export interface JournalInstance {
+  id: number;
+  name: string;
+  encounters: Array<{ id: number; name: string }>;
+
+  /**
+   * O `instanceMapID` do cliente — 2569 para Aberrus, 2912 para The Voidspire.
+   *
+   * Conferido nos dois lados: é o mesmo número que o addon emite no cabeçalho
+   * da colagem e que o cliente devolve no oitavo retorno de
+   * `EJ_GetEncounterInfoByIndex`.
+   *
+   * NÃO é a zona do Warcraft Logs, que vive noutro espaço de id.
+   */
+  map?: { id: number; name: string };
+}
+
+export interface JournalEncounter {
+  id: number;
+  name: string;
+  /** Loot table. Uma lista só, NÃO separada por dificuldade. */
+  items: Array<{ item: { id: number; name: string } }>;
+  /** `LFR`, `NORMAL`, `HEROIC`, `MYTHIC` — em quais o boss existe. */
+  modes: Array<{ type: string; name: string }>;
+}
+
+export interface BlizzardItem {
+  id: number;
+  name: string;
+  item_subclass?: { name?: string };
+  inventory_type?: { type?: string; name?: string };
+  preview_item?: {
+    stats?: Array<{ type?: { type?: string } }>;
+  };
+}
+
 interface TokenResponse {
   access_token: string;
   expires_in: number;
@@ -377,6 +419,96 @@ export class BlizzardService implements OnModuleInit {
     this.rosterCache = { members, fetchedAt: Date.now() };
     this.logger.log(`Roster atualizado: ${members.length} membros`);
     return { ...this.rosterCache, stale: false };
+  }
+
+  /**
+   * Todas as instâncias do Encounter Journal — raids e masmorras.
+   *
+   * Existe porque o `journalInstanceId` não é adivinhável: são mais de 200
+   * entradas, e o número não aparece em lugar nenhum do jogo nem do site.
+   */
+  async getJournalInstanceIndex(): Promise<Array<{ id: number; name: string }>> {
+    const token = await this.getClientToken();
+
+    const index = (await this.getJson(
+      `${this.apiHost}/data/wow/journal-instance/index${this.staticNs}`,
+      token,
+    )) as { instances: Array<{ id: number; name: string }> };
+
+    return index.instances;
+  }
+
+  /**
+   * Uma raid do Encounter Journal, com seus bosses.
+   *
+   * CUIDADO: o `id` de cada encounter aqui é o **journalEncounterID**, que é um
+   * espaço de id diferente do `dungeonEncounterID` que o jogo entrega no
+   * `ENCOUNTER_END` e que o Warcraft Logs usa. Aberrus é 2522/2529/2530 aqui e
+   * 2688/2687/2693 lá. Só o NOME casa entre as duas fontes.
+   */
+  async getJournalInstance(instanceId: number): Promise<JournalInstance> {
+    const token = await this.getClientToken();
+
+    return (await this.getJson(
+      `${this.apiHost}/data/wow/journal-instance/${instanceId}${this.staticNs}`,
+      token,
+    )) as JournalInstance;
+  }
+
+  /**
+   * Um boss do journal, com a loot table e as dificuldades em que existe.
+   *
+   * A lista de itens **não é separada por dificuldade** — o journal dá uma lista
+   * só e um conjunto de `modes`. Quem consome decide o que fazer com isso.
+   */
+  async getJournalEncounter(encounterId: number): Promise<JournalEncounter> {
+    const token = await this.getClientToken();
+
+    return (await this.getJson(
+      `${this.apiHost}/data/wow/journal-encounter/${encounterId}${this.staticNs}`,
+      token,
+    )) as JournalEncounter;
+  }
+
+  /** Nome, slot, subclasse e stats de um item. */
+  async getItem(itemId: number): Promise<BlizzardItem> {
+    const token = await this.getClientToken();
+
+    return (await this.getJson(
+      `${this.apiHost}/data/wow/item/${itemId}${this.staticNs}`,
+      token,
+    )) as BlizzardItem;
+  }
+
+  /**
+   * O slug do ícone do item, ou nulo.
+   *
+   * Devolve o slug (`inv_helm_plate_01`) e não a URL: URL de CDN muda de host e
+   * de formato, o slug é estável há mais de uma década e a URL se compõe na hora
+   * de exibir.
+   */
+  async getItemIcon(itemId: number): Promise<string | null> {
+    const token = await this.getClientToken();
+
+    const media = (await this.getJson(
+      `${this.apiHost}/data/wow/media/item/${itemId}${this.staticNs}`,
+      token,
+    )) as { assets?: Array<{ key: string; value: string }> };
+
+    const url = media.assets?.find((a) => a.key === 'icon')?.value;
+    if (!url) return null;
+
+    return (
+      url
+        .split('/')
+        .pop()
+        ?.replace(/\.[a-z]+$/i, '') ?? null
+    );
+  }
+
+  /** Namespace dos dados que não mudam com o servidor: item, journal, spec. */
+  private get staticNs(): string {
+    return `?namespace=static-${this.region}&locale=en_US`;
   }
 
   /**
