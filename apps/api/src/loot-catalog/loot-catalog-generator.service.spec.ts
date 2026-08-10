@@ -365,7 +365,7 @@ describe('LootCatalogGeneratorService', () => {
             {
               journalEncounterId: 10,
               dungeonEncounterId: 3176,
-              items: [{ itemId: 249344, filterType: 13, specs: [SPECS.WARRIOR_ARMS] }],
+              items: [{ itemId: 249344, specs: [SPECS.WARRIOR_ARMS] }],
             },
           ],
         }),

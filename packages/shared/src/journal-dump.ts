@@ -22,6 +22,17 @@ import { SPEC_BY_GAME_ID, type WowSpec } from './wow.js';
  * item   264497  14              71,72,73,65,...
  * ```
  *
+ * A terceira coluna de `item` é o `filterType` do cliente, e é **ignorada de
+ * propósito**. Ela parece um enum de slot útil e não é, por três razões: ninguém
+ * a consome; o balde 14 ("outros") junta Decor, reagente e receita com **token
+ * de tier**, que é o loot mais disputado da raid; e lida em massa ela nem chega,
+ * porque o cliente só a devolve para item que já está no cache — no dump real
+ * ela veio ausente na maioria das linhas e presente em algumas, sem padrão.
+ *
+ * A coluna continua sendo lida e descartada para os dumps já colhidos seguirem
+ * válidos. Quem separa peça de lixo é a lista de specs: token de placas sai com
+ * Warrior, Paladin e DK; Decor sai com as 40.
+ *
  * Linha e tab, e não JSON, pelo mesmo motivo da colagem de loot: colagem
  * truncada falha de forma **visível**, faltando linha, e cada linha é
  * independente. JSON cortado no meio vira erro de parse sem dizer quanto se
@@ -38,16 +49,6 @@ export const JOURNAL_DUMP_VERSION = 'TILCJ/1';
 
 export interface JournalDumpItem {
   itemId: number;
-
-  /**
-   * Enum de slot do cliente.
-   *
-   * **Não serve de filtro de lixo.** O balde 14 ("outros") junta Decor, reagente,
-   * receita **e token de tier** — e token de tier é o loot mais disputado da
-   * raid. O que separa um do outro é a lista de specs: token de placas sai com
-   * Warrior, Paladin e DK; Decor sai com as 40.
-   */
-  filterType: number;
 
   /** Specs que o journal mostra para esta peça. Proposta, nunca decisão. */
   specs: WowSpec[];
@@ -73,20 +74,6 @@ function inteiro(bruto: string | undefined, onde: string): number {
   const valor = Number(bruto);
   if (!bruto || !Number.isInteger(valor) || valor <= 0) {
     throw new Error(`${onde}: esperava um inteiro positivo, veio "${bruto ?? ''}"`);
-  }
-  return valor;
-}
-
-/**
- * Separado do positivo porque `filterType` **começa em zero** — 0 é Head.
- *
- * A primeira versão usava o validador positivo aqui, e recusava o dump real no
- * primeiro item de capacete.
- */
-function inteiroNaoNegativo(bruto: string | undefined, onde: string): number {
-  const valor = Number(bruto);
-  if (bruto === undefined || bruto === '' || !Number.isInteger(valor) || valor < 0) {
-    throw new Error(`${onde}: esperava um inteiro não negativo, veio "${bruto ?? ''}"`);
   }
   return valor;
 }
@@ -171,9 +158,9 @@ export function parseJournalDump(texto: string): JournalDump {
         else specsDesconhecidas.add(id);
       }
 
+      // `partes[2]` é o filterType, lido e descartado — ver o cabeçalho.
       bossCorrente.items.push({
         itemId: inteiro(partes[1], `${onde} (itemId)`),
-        filterType: inteiroNaoNegativo(partes[2], `${onde} (filterType)`),
         specs,
       });
       return;

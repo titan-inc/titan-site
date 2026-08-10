@@ -352,6 +352,39 @@ export function toRealmMatchKey(realm: string): string {
 }
 
 /**
+ * Chave de nome de BOSS para casar **fontes diferentes** entre si.
+ *
+ * Mesma natureza do `toRealmMatchKey()`, outro vocabulário: duas ferramentas
+ * escrevem o mesmo boss com pontuação diferente.
+ *
+ * | fonte             | boss                            |
+ * | ----------------- | ------------------------------- |
+ * | Encounter Journal | `Chimaerus the Undreamt God`    |
+ * | Warcraft Logs     | `Chimaerus, the Undreamt God`   |
+ *
+ * Uma vírgula. Em 09/08/2026 ela reprovou a carga de The Dreamrift com um
+ * `dungeonEncounterId` **correto**, vindo do cliente do WoW: a conferência
+ * comparava nome cru e virou falso negativo.
+ *
+ * Colapsar pontuação **não** enfraquece a verificação, que é o ponto todo:
+ *
+ * ```
+ * Kazzara, the Hellforged   → kazzarathehellforged
+ * The Forgotten Experiments → theforgottenexperiments   ainda reprova
+ * ```
+ *
+ * Id apontando para outro boss continua barrado, porque nomes diferentes de
+ * verdade não colidem sob normalização nenhuma.
+ *
+ * Use **só** para comparar boss entre fontes. O nome que vai para o banco e para
+ * a tela é o do Encounter Journal, sem passar por aqui — é ele que a Blizzard
+ * exibe.
+ */
+export function toEncounterMatchKey(name: string): string {
+  return toSlug(name).replace(/[^a-z0-9]/g, '');
+}
+
+/**
  * Identidade de um personagem vindo da API da Blizzard.
  *
  * **Preserva acento de propósito.** WoW não permite dois personagens com o mesmo

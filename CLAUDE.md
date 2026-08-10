@@ -215,16 +215,17 @@ Não existe "bloquear outras regiões" como código separado: a verificação de
 
 **Nunca inferir região de IP, idioma do navegador ou nacionalidade.** Região US não quer dizer jogadores americanos — realms brasileiros (Azralon, Goldrinn, Nemesis, Tol Barad) são região US, e um membro legítimo pode morar na Europa e jogar em US. Filtro por geolocalização barraria membros de verdade.
 
-### Normalização de nomes — três funções, não uma
+### Normalização de nomes — quatro funções, não uma
 
 Nunca compare string crua. Mas cada caso usa uma função diferente, e trocar uma pela outra é bug silencioso.
 
-| O quê                                 | Função              | Acento     | Separador  |
-| ------------------------------------- | ------------------- | ---------- | ---------- |
-| Realm (banco, URL da Blizzard)        | `toSlug()`          | remove     | mantém     |
-| Realm **comparado entre ferramentas** | `toRealmMatchKey()` | remove     | **remove** |
-| Personagem vindo da API               | `toCharacterKey()`  | **mantém** | —          |
-| Nome digitado por uma pessoa          | `toSlug()`          | remove     | mantém     |
+| O quê                                 | Função                  | Acento     | Separador  |
+| ------------------------------------- | ----------------------- | ---------- | ---------- |
+| Realm (banco, URL da Blizzard)        | `toSlug()`              | remove     | mantém     |
+| Realm **comparado entre ferramentas** | `toRealmMatchKey()`     | remove     | **remove** |
+| Boss **comparado entre ferramentas**  | `toEncounterMatchKey()` | remove     | **remove** |
+| Personagem vindo da API               | `toCharacterKey()`      | **mantém** | —          |
+| Nome digitado por uma pessoa          | `toSlug()`              | remove     | mantém     |
 
 **Realm** precisa de `toSlug()` porque a Blizzard devolve `area-52` em alguns endpoints e `Area 52` em outros.
 
@@ -240,6 +241,17 @@ Pelo `toSlug()` isso vira `area-52` de um lado e `area52` do outro, e o casament
 Não é caso de borda: **58 dos 344 realms US** têm hífen no slug, e o time é cross-realm.
 
 `toRealmMatchKey()` tira todo separador. Verificado contra o índice de realms da Blizzard: os 344 realms US geram 344 chaves distintas, **zero colisão** — colapsar separador não junta realms diferentes. O que vai para o banco e para a URL da Blizzard continua sendo `toSlug()`.
+
+**Nome de boss entre ferramentas tem o mesmo problema, com outra pontuação.**
+
+| fonte             | boss                          |
+| ----------------- | ----------------------------- |
+| Encounter Journal | `Chimaerus the Undreamt God`  |
+| Warcraft Logs     | `Chimaerus, the Undreamt God` |
+
+Uma vírgula. Em 09/08/2026 ela reprovou a carga de The Dreamrift com um `dungeonEncounterId` **correto**, vindo do cliente do WoW: a conferência do carregador comparava nome cru e virou falso negativo, travando a raid inteira.
+
+`toEncounterMatchKey()` colapsa pontuação, e isso **não** afrouxa a verificação — que é o ponto dela. `Kazzara, the Hellforged` e `The Forgotten Experiments` continuam diferentes sob qualquer normalização, então id apontando para outro boss continua barrado. O nome que vai para o banco e para a tela é o do Encounter Journal, sem passar por aqui.
 
 **Personagem vindo da API precisa manter o acento.** WoW não permite dois personagens com o mesmo nome no mesmo realm, então quem chega e encontra o nome ocupado registra uma variação acentuada dele. O acento não é enfeite — é como a pessoa conseguiu o nome que queria. São personagens diferentes, com ranks diferentes, e não é caso raro: no roster da Titan Inc existem 7 grupos assim.
 
