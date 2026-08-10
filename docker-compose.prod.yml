@@ -43,6 +43,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Loopback só, mesmo padrão do Postgres acima — não expõe nada pra
+    # internet (o Caddy já bloqueia /api/internal/ops/* no domínio público,
+    # ver Caddyfile), só habilita túnel SSH direto pro processo já rodando,
+    # sem passar pelo Caddy. Usado pelas rotas /internal/ops/* — TIT-109.
+    ports:
+      - '127.0.0.1:3001:3001'
 
   web:
     image: ghcr.io/titan-inc/titan-web:${IMAGE_TAG:-latest}

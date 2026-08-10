@@ -305,6 +305,22 @@ Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico:
 
 Presença, loot e evolução são dados sobre pessoas reais que ninguém combinou tornar públicos ao entrar na guilda. Ranking público de falta gera treta e não ajuda o RL a decidir nada — ele já tem o detalhe.
 
+## Regra 8 — Ferramenta de operação roda contra a app já rodando, nunca sobe instância própria
+
+Em 10/08/2026, `docker compose exec api node scripts/snapshot-probe.js` rodado em produção derrubou a instância inteira — OOM, SSH incluso, precisou reboot pelo console do Lightsail.
+
+Causa: o script chamava `NestFactory.createApplicationContext(AppModule, ...)`, que instancia **todos** os módulos da aplicação de novo, dentro do mesmo container que já roda essa árvore inteira como processo principal (`node dist/main`). Numa instância de 1GB de RAM compartilhada com Postgres, web e Caddy, isso dobrou o consumo de memória da api de uma hora pra outra.
+
+`apps/api/scripts/` tinha 5 arquivos desse tipo (`snapshot-probe.js`, `attendance-probe.js`, `raid-probe.js`, `catalog-generate.js`, `catalog-load.js`) — todos escritos como ferramenta de dev, todos sem fronteira nenhuma que os impedisse de acabar dentro da imagem Docker de produção. Foi exatamente o que aconteceu: `apps/api/scripts/` nunca foi excluída do `pnpm deploy --prod` do Dockerfile, só a pasta `/scripts` da raiz é ignorada no `.dockerignore`.
+
+**A regra:** qualquer operação que precise dos services da aplicação (banco, APIs externas configuradas) vira rota HTTP em `internal/ops/*`, chamando os services que já existem — nunca um script que sobe `NestFactory` por conta própria. As rotas de ops:
+
+- Ficam sob `OpsTokenGuard` (`apps/api/src/ops/ops-token.guard.ts`) — não `MemberGuard`/`OfficerGuard`, que exigem sessão de Battle.net e não servem pra automação/CLI. É um ator diferente do modelo de permissão da Regra 4.
+- São bloqueadas no domínio público pelo Caddyfile (`handle /api/internal/ops/* { respond 404 }`, antes do `handle_path /api/*` genérico) — só alcançáveis de dentro do container ou por túnel SSH, mesmo padrão do acesso direto ao Postgres.
+- Documentadas em `docs/ops.md`, com o `curl` equivalente a cada operação.
+
+Ver TIT-109 pro incidente e a migração completa.
+
 ## Comandos
 
 ```bash

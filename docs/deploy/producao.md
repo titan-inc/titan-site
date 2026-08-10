@@ -22,16 +22,17 @@ nunca é commitado, e é editado à mão via SSH quando precisa mudar.
 
 Mesma lista do `.env.example`, com estas diferenças:
 
-| Variável                | Diferença em produção                                                                                                                                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`          | **Não setar.** Fica sem efeito — o `docker-compose.prod.yml` sintetiza a URL a partir de `POSTGRES_USER/PASSWORD/DB`.                                                                                 |
-| `POSTGRES_USER`         | Novo em produção (o compose de dev hardcoda `titan`). Só existe aqui.                                                                                                                                 |
-| `POSTGRES_PASSWORD`     | Novo em produção. Senha forte, gerada — não reusar a de dev (`titan`). **Gerar com `openssl rand -hex 24`, nunca `-base64`** (ver seção abaixo).                                                      |
-| `POSTGRES_DB`           | Novo em produção. Pode ser `titan` mesmo, não é segredo.                                                                                                                                              |
-| `BLIZZARD_REDIRECT_URI` | Domínio de produção + path `/api` (ver Caddyfile): `https://titaninc.com.br/api/auth/battlenet/callback`. Precisa estar cadastrado assim, byte a byte, no portal da Blizzard antes do primeiro login. |
-| `WEB_URL`               | `https://titaninc.com.br`                                                                                                                                                                             |
-| `NEXT_PUBLIC_API_URL`   | **Não é lido daqui.** Inlinado no bundle do Next durante o build — vem do build-arg que o CI passa (TIT-100/101), não do `.env` da instância. Editar aqui e reiniciar o container não muda nada.      |
-| `SESSION_SECRET`        | Gerar um novo, não reusar o de dev.                                                                                                                                                                   |
+| Variável                | Diferença em produção                                                                                                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`          | **Não setar.** Fica sem efeito — o `docker-compose.prod.yml` sintetiza a URL a partir de `POSTGRES_USER/PASSWORD/DB`.                                                                                     |
+| `POSTGRES_USER`         | Novo em produção (o compose de dev hardcoda `titan`). Só existe aqui.                                                                                                                                     |
+| `POSTGRES_PASSWORD`     | Novo em produção. Senha forte, gerada — não reusar a de dev (`titan`). **Gerar com `openssl rand -hex 24`, nunca `-base64`** (ver seção abaixo).                                                          |
+| `POSTGRES_DB`           | Novo em produção. Pode ser `titan` mesmo, não é segredo.                                                                                                                                                  |
+| `BLIZZARD_REDIRECT_URI` | Domínio de produção + path `/api` (ver Caddyfile): `https://titaninc.com.br/api/auth/battlenet/callback`. Precisa estar cadastrado assim, byte a byte, no portal da Blizzard antes do primeiro login.     |
+| `WEB_URL`               | `https://titaninc.com.br`                                                                                                                                                                                 |
+| `NEXT_PUBLIC_API_URL`   | **Não é lido daqui.** Inlinado no bundle do Next durante o build — vem do build-arg que o CI passa (TIT-100/101), não do `.env` da instância. Editar aqui e reiniciar o container não muda nada.          |
+| `SESSION_SECRET`        | Gerar um novo, não reusar o de dev.                                                                                                                                                                       |
+| `OPS_TRIGGER_TOKEN`     | Gerar um novo, não reusar o de dev. Protege `/internal/ops/*` (ver `docs/ops.md` e TIT-109) — além disso, bloqueada no domínio público pelo Caddy, só alcançável de dentro do container ou por túnel SSH. |
 
 Todo o resto (`BLIZZARD_CLIENT_ID/SECRET`, `GUILD_*`, `DISCORD_APPLY_WEBHOOK_URL`,
 `WOW_AUDIT_KEY`, `WARCRAFTLOGS_*`, `API_PORT`) segue o mesmo significado do
