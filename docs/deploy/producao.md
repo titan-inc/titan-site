@@ -39,11 +39,16 @@ Todo o resto (`BLIZZARD_CLIENT_ID/SECRET`, `GUILD_*`, `DISCORD_APPLY_WEBHOOK_URL
 
 ## Backup (S3)
 
-Variáveis `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`
-e `BACKUP_S3_BUCKET` no `.env` da instância — credencial do usuário de
-serviço `titan-site-backup-bot` (TIT-89), restrita ao bucket
-`titan-site-db-backups`. Consumidas por
+Variáveis `BACKUP_AWS_ACCESS_KEY_ID`, `BACKUP_AWS_SECRET_ACCESS_KEY`,
+`BACKUP_AWS_REGION` e `BACKUP_S3_BUCKET` no `.env` da instância —
+credencial do usuário de serviço `titan-site-backup-bot` (TIT-89),
+restrita ao bucket `titan-site-db-backups`. Consumidas por
 `scripts/deploy/backup-postgres-to-s3.sh`.
+
+Nome escopado (`BACKUP_AWS_*`) de propósito, não o `AWS_ACCESS_KEY_ID`
+genérico que o `aws` CLI reconhece sozinho — essa credencial só tem
+permissão neste bucket, e uma futura chave AWS de outro escopo não deve
+colidir com o nome desta.
 
 ## Rodando migration depois de um deploy
 
