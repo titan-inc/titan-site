@@ -27,12 +27,12 @@ export async function Roster() {
                 id="tripulacao-titulo"
                 className="entalhe text-fg text-[30px] font-extrabold lg:text-[40px]"
               >
-                O time de <span className="letra-fel">raid</span>
+                Nosso time de <span className="letra-fel">raid</span>
               </h2>
               <p className="text-fg-muted mt-4 max-w-[48ch]">{conteudo.descricao}</p>
             </div>
             <p className="text-fg-subtle font-mono text-[11px] tracking-[0.14em] uppercase">
-              {total} {total === 1 ? 'tripulante' : 'tripulantes'} · nomes provisórios
+              {total} {total === 1 ? 'tripulante' : 'tripulantes'}
             </p>
           </div>
         </div>
