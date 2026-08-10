@@ -1,11 +1,17 @@
 import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { catalogFileSchema, parseJournalDump, type CatalogFile } from '@titan/shared';
+import {
+  catalogFileSchema,
+  parseJournalDump,
+  type CatalogFile,
+  type RaidProgressReport,
+} from '@titan/shared';
 import { z } from 'zod';
 import { AttendanceService, type SyncResult } from '../attendance/attendance.service';
 import { BlizzardService } from '../blizzard/blizzard.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
 import { LootCatalogService } from '../loot-catalog/loot-catalog.service';
+import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
 import { OpsTokenGuard } from './ops-token.guard';
 import { OpsService, type OauthCheckResult, type RosterProbeResult } from './ops.service';
@@ -65,6 +71,7 @@ export class OpsController {
     private readonly blizzard: BlizzardService,
     private readonly catalogGenerator: LootCatalogGeneratorService,
     private readonly catalogService: LootCatalogService,
+    private readonly raidProgress: RaidProgressService,
     private readonly ops: OpsService,
   ) {}
 
@@ -90,6 +97,19 @@ export class OpsController {
     @Query('all') all?: string,
   ): Promise<SyncResult> {
     return this.attendance.sync(parseJanela(dias, all));
+  }
+
+  /**
+   * Era `pnpm --filter api probe:raid [season]`.
+   *
+   * Mesma chamada que `GET /internal/raid-progress` já faz — existe aqui
+   * só pra não exigir cookie de sessão de membro num `curl`/CLI. Read-only,
+   * sem risco extra de expor nada que a área interna já não mostre.
+   */
+  @Get('raid-progress')
+  async getRaidProgress(@Query('season') season?: string): Promise<RaidProgressReport | null> {
+    const id = season && /^\d+$/.test(season) ? Number(season) : undefined;
+    return this.raidProgress.getReport(id);
   }
 
   /** Era `pnpm --filter api catalog:generate --lista [filtro]`. */

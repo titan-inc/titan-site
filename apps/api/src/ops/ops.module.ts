@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { BlizzardModule } from '../blizzard/blizzard.module';
 import { LootCatalogModule } from '../loot-catalog/loot-catalog.module';
+import { RaidProgressModule } from '../raidprogress/raidprogress.module';
 import { SnapshotsModule } from '../snapshots/snapshots.module';
 import { OpsController } from './ops.controller';
 import { OpsService } from './ops.service';
@@ -13,7 +14,13 @@ import { OpsService } from './ops.service';
  * `OpsService` (roster-probe e oauth-check nunca tiveram service próprio).
  */
 @Module({
-  imports: [SnapshotsModule, AttendanceModule, BlizzardModule, LootCatalogModule],
+  imports: [
+    SnapshotsModule,
+    AttendanceModule,
+    BlizzardModule,
+    LootCatalogModule,
+    RaidProgressModule,
+  ],
   controllers: [OpsController],
   providers: [OpsService],
 })

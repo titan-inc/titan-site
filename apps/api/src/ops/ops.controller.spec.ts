@@ -4,6 +4,7 @@ import type { AttendanceService } from '../attendance/attendance.service';
 import type { BlizzardService } from '../blizzard/blizzard.service';
 import type { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
 import type { LootCatalogService } from '../loot-catalog/loot-catalog.service';
+import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
 import { OpsController } from './ops.controller';
 import type { OpsService } from './ops.service';
@@ -30,6 +31,9 @@ describe('OpsController', () => {
   const catalogService = {
     carregarArquivo: jest.fn(() => Promise.resolve({ bosses: 8, itens: 40, drops: 120 })),
   };
+  const raidProgress = {
+    getReport: jest.fn(() => Promise.resolve({ season: { id: 17 } })),
+  };
   const ops = {
     probeRoster: jest.fn(() => Promise.resolve({ guild: 'Titan Inc' })),
     checkOauth: jest.fn(() => Promise.resolve({ ok: true, stale: false })),
@@ -45,6 +49,7 @@ describe('OpsController', () => {
       blizzard as unknown as BlizzardService,
       catalogGenerator as unknown as LootCatalogGeneratorService,
       catalogService as unknown as LootCatalogService,
+      raidProgress as unknown as RaidProgressService,
       ops as unknown as OpsService,
     );
   });
@@ -82,6 +87,21 @@ describe('OpsController', () => {
     if (!desde) throw new Error('attendance.sync não foi chamado');
     const esperado = Date.now() - 90 * 24 * 60 * 60 * 1000;
     expect(Math.abs(desde.getTime() - esperado)).toBeLessThan(5000);
+  });
+
+  it('raid-progress sem season passa undefined (season mais recente gravada)', async () => {
+    await controller.getRaidProgress();
+    expect(raidProgress.getReport).toHaveBeenCalledWith(undefined);
+  });
+
+  it('raid-progress com season numérica converte pra number', async () => {
+    await controller.getRaidProgress('17');
+    expect(raidProgress.getReport).toHaveBeenCalledWith(17);
+  });
+
+  it('raid-progress com season inválida (não numérica) ignora e passa undefined', async () => {
+    await controller.getRaidProgress('não-é-numero');
+    expect(raidProgress.getReport).toHaveBeenCalledWith(undefined);
   });
 
   it('catalog-instances sem filtro devolve as mais recentes por id desc', async () => {
