@@ -1,0 +1,39 @@
+# O que NAO entra no contexto de build.
+#
+# Vale para os dois Dockerfiles, porque os dois usam a raiz do monorepo como
+# contexto. Sem este arquivo, o `COPY` levaria o node_modules e o .next da
+# maquina de quem builda — lento, e pior que lento: artefato de outra
+# plataforma e de outro estado do codigo entrando na imagem em silencio.
+
+# Dependencias e artefatos: sao reconstruidos dentro da imagem.
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.tsbuildinfo
+
+# Segredo nunca entra em imagem. Em producao as variaveis vem do ambiente.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+.vscode
+.idea
+
+**/*.log
+**/npm-debug.log*
+
+# Documentacao nao influencia o build e so invalida camada de cache a toa.
+# Sem curinga de proposito: `**/*.md` pegaria arquivo que algum passo de build
+# leia, e a falha apareceria so na imagem.
+/docs
+/README.md
+/CLAUDE.md
+
+# Compose e scripts de banco sao ferramenta de desenvolvimento local.
+# A barra inicial ancora na raiz: `apps/web/scripts/` PRECISA entrar, porque o
+# prebuild do Next gera o manifesto de imagens do roster a partir de la.
+/docker-compose.yml
+/scripts
