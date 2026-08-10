@@ -1,11 +1,20 @@
 'use client';
-import { createApplicationSchema } from '@titan/shared';
-import { useState } from 'react';
+import { applyResultSchema, createApplicationSchema } from '@titan/shared';
+import { useEffect, useRef, useState, useTransition } from 'react';
+import { API_URL } from '../../../lib/config';
 import { Acao } from '../ui/acao';
 import { Chapa } from '../ui/chapa';
 import { Campo } from './campo';
 export function ApplyForm() {
   const [erros, setErros] = useState<Record<string, string>>({});
+  const [enviado, setEnviado] = useState(false);
+  const [pendente, startTransition] = useTransition();
+  const enviando = useRef(false);
+  const confirmacao = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (enviado) confirmacao.current?.focus();
+  }, [enviado]);
   function dados(form: FormData) {
     return {
       characterRealm: form.get('characterRealm'),
@@ -32,13 +41,73 @@ export function ApplyForm() {
       return novos;
     });
   }
+  function focarPrimeiro(campo?: string) {
+    if (campo) document.getElementById(campo)?.focus();
+  }
+
+  function erroDeEnvio(status: number): string {
+    if (status === 429) return 'Muitos envios. Tente novamente em alguns minutos.';
+    if (status === 502 || status === 503)
+      return 'Sua candidatura não chegou. Tente novamente em instantes ou fale com a guilda no Discord.';
+    return 'Não foi possível enviar sua candidatura. Seus dados foram preservados; tente novamente.';
+  }
+
   function submeter(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
+    if (enviando.current) return;
     const form = new FormData(evento.currentTarget);
     const resultado = createApplicationSchema.safeParse(dados(form));
     if (resultado.success) {
-      setErros({
-        envio: 'O envio pelo site ainda não está aberto. Seus dados não foram enviados.',
+      enviando.current = true;
+      setErros({});
+      startTransition(async () => {
+        try {
+          const response = await fetch(`${API_URL}/applications`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(resultado.data),
+          });
+
+          if (!response.ok) {
+            if (response.status === 400) {
+              const body: unknown = await response.json().catch(() => null);
+              const issues =
+                body && typeof body === 'object' && 'issues' in body && Array.isArray(body.issues)
+                  ? body.issues
+                  : [];
+              const novos: Record<string, string> = {};
+              for (const issue of issues) {
+                if (
+                  issue &&
+                  typeof issue === 'object' &&
+                  'path' in issue &&
+                  'message' in issue &&
+                  typeof issue.path === 'string'
+                ) {
+                  novos[issue.path] ??= mensagem(String(issue.message));
+                }
+              }
+              if (Object.keys(novos).length > 0) {
+                setErros(novos);
+                focarPrimeiro(Object.keys(novos)[0]);
+                return;
+              }
+            }
+            setErros({ envio: erroDeEnvio(response.status) });
+            return;
+          }
+
+          const parsed = applyResultSchema.safeParse(await response.json());
+          if (!parsed.success) {
+            setErros({ envio: erroDeEnvio(500) });
+            return;
+          }
+          setEnviado(true);
+        } catch {
+          setErros({ envio: erroDeEnvio(0) });
+        } finally {
+          enviando.current = false;
+        }
       });
       return;
     }
@@ -46,8 +115,21 @@ export function ApplyForm() {
     for (const issue of resultado.error.issues)
       novos[issue.path.join('.')] ??= mensagem(issue.message);
     setErros(novos);
-    const primeiro = resultado.error.issues[0]?.path.join('.');
-    if (primeiro) document.getElementById(primeiro)?.focus();
+    focarPrimeiro(resultado.error.issues[0]?.path.join('.'));
+  }
+
+  if (enviado) {
+    return (
+      <Chapa className="mt-10 p-6">
+        <div ref={confirmacao} role="status" tabIndex={-1}>
+          <p className="text-fg font-bold">Candidatura enviada</p>
+          <p className="text-fg-muted mt-2 text-sm leading-relaxed">
+            Sua mensagem chegou à equipe de recrutamento. Entraremos em contato pelo canal
+            informado.
+          </p>
+        </div>
+      </Chapa>
+    );
   }
   return (
     <form noValidate onSubmit={submeter} onBlur={validarAoSair} className="mt-10 space-y-7">
@@ -114,20 +196,14 @@ export function ApplyForm() {
         <label htmlFor="website">Website</label>
         <input id="website" name="website" tabIndex={-1} autoComplete="off" />
       </div>
-      <Chapa className="p-5">
-        <p id="envio-fechado" role="note" className="text-fg-muted text-sm leading-relaxed">
-          O envio pelo site ainda não está aberto. O canal de candidatura será informado aqui quando
-          estiver disponível.
-        </p>
-      </Chapa>
       <Acao
         variante="solida"
         type="submit"
-        disabled
-        aria-describedby="envio-fechado"
+        disabled={pendente}
+        aria-disabled={pendente}
         className="w-full md:w-auto"
       >
-        Registrar candidatura
+        {pendente ? 'Enviando…' : 'Registrar candidatura'}
       </Acao>
     </form>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createApplicationSchema } from './application.js';
+import { applyResultSchema, createApplicationSchema } from './application.js';
 
 const candidaturaValida = {
   characterRealm: 'Thrall — Azralon',
@@ -40,9 +40,17 @@ describe('createApplicationSchema', () => {
     expect(createApplicationSchema.safeParse(dados).success).toBe(false);
   });
 
-  it('rejeita honeypot preenchido', () => {
+  it('aceita honeypot preenchido para permitir o descarte silencioso na API', () => {
     expect(
       createApplicationSchema.safeParse({ ...candidaturaValida, website: 'spam' }).success,
-    ).toBe(false);
+    ).toBe(true);
+  });
+});
+
+describe('applyResultSchema', () => {
+  it('aceita apenas a confirmação de entrega verdadeira', () => {
+    expect(applyResultSchema.safeParse({ delivered: true }).success).toBe(true);
+    expect(applyResultSchema.safeParse({ delivered: false }).success).toBe(false);
+    expect(applyResultSchema.safeParse({}).success).toBe(false);
   });
 });

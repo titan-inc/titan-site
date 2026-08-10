@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Contrato da candidatura (apply).
  *
  * PROVISÓRIO — os campos precisam ser revisados por quem realmente recruta na
- * guilda antes de virar migration definitiva. Ver TIT-13.
+ * guilda antes de ampliar este contrato. Ver TIT-13.
  *
  * Este schema é a única fonte de verdade: o Nest valida com ele no
  * ZodValidationPipe e o form do Next infere os tipos dele. Não redeclarar
@@ -17,13 +17,13 @@ export const createApplicationSchema = z.object({
   additionalInfo: z.string().max(2000).optional(),
 
   /**
-   * Honeypot anti-spam: campo escondido no form. Humano deixa vazio; bot que
-   * preenche tudo cai aqui. Ver TIT-14.
+   * Honeypot anti-spam: o schema aceita o valor para não revelar o campo-armadilha
+   * nos erros de validação. O descarte silencioso acontece no serviço da API.
    */
-  website: z.string().max(0).optional(),
+  website: z.string().optional(),
 });
 export type CreateApplication = z.infer<typeof createApplicationSchema>;
 
-export const APPLICATION_STATUSES = ['pending', 'reviewing', 'accepted', 'rejected'] as const;
-export const applicationStatusSchema = z.enum(APPLICATION_STATUSES);
-export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
+/** Resultado do envio. `delivered` só é true se o Discord aceitou a mensagem. */
+export const applyResultSchema = z.object({ delivered: z.literal(true) });
+export type ApplyResult = z.infer<typeof applyResultSchema>;

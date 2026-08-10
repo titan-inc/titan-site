@@ -3,11 +3,22 @@
 import './load-env';
 
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
+import { json } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+
+  // Produção tem exatamente um reverse proxy entre o cliente e o Nest. Confiar
+  // em um salto faz req.ip usar o IP do cliente para o throttler; sem isto o
+  // bucket seria o IP único do proxy. Se a topologia ganhar outro salto, este
+  // número precisa mudar junto com o deploy — não aceite X-Forwarded-For livre.
+  app.set('trust proxy', 1);
+
+  // Limita o corpo antes do Zod para que JSONs gigantes não consumam memória.
+  app.use(json({ limit: '16kb' }));
 
   // Necessário para ler o cookie de sessão. Sem isso req.cookies é undefined e
   // todo request parece deslogado.

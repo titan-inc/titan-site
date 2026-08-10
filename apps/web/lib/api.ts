@@ -66,7 +66,6 @@ export interface InternalSummary {
   greeting: string;
   matchedCharacter: SessionUser['matchedCharacter'];
   guildRank: number | null;
-  canReviewApplications: boolean;
 }
 
 /** Dados da área interna. Null se a API recusar (401/403). */

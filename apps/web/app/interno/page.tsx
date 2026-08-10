@@ -183,11 +183,6 @@ export default async function InternoPage() {
           As ferramentas de guild management ainda não foram escolhidas. O levantamento é a TIT-21 —
           a ideia é construir o que hoje é manual ou se perde, não o que um addon já resolve bem.
         </p>
-        {summary?.canReviewApplications && (
-          <p className="text-accent mt-3 text-sm">
-            Sua conta tem permissão de oficial: o painel de candidaturas aparecerá aqui.
-          </p>
-        )}
       </section>
     </main>
   );
