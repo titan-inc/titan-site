@@ -37,13 +37,13 @@ Todo o resto (`BLIZZARD_CLIENT_ID/SECRET`, `GUILD_*`, `DISCORD_APPLY_WEBHOOK_URL
 `WOW_AUDIT_KEY`, `WARCRAFTLOGS_*`, `API_PORT`) segue o mesmo significado do
 `.env.example` — só troca o valor real pelo de produção.
 
-## Credencial do backup (S3)
+## Backup (S3)
 
-O usuário de serviço `titan-site-backup-bot` (TIT-89) tem Access Key ID e
-Secret Access Key próprios, restritos ao bucket `titan-site-db-backups`.
-Essas duas entram no `.env` da instância quando o script de backup (TIT-96)
-existir — documentado ali, não aqui, porque é quem consome que define o
-nome da variável.
+Variáveis `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`
+e `BACKUP_S3_BUCKET` no `.env` da instância — credencial do usuário de
+serviço `titan-site-backup-bot` (TIT-89), restrita ao bucket
+`titan-site-db-backups`. Consumidas por
+`scripts/deploy/backup-postgres-to-s3.sh`.
 
 ## Rodando migration depois de um deploy
 
