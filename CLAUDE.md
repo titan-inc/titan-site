@@ -324,7 +324,7 @@ pnpm build                # todos, na ordem de dependência
 
 ## Fluxo de git
 
-Repo: https://github.com/leonardodasilveira/titan-site (público)
+Repo: https://github.com/titan-inc/titan-site (público). Transferido da conta pessoal do Leonardo pra esta organization em 10/08/2026, pra permitir Admin por pessoa (necessário pra configurar Actions/secrets) — repositório pessoal tem teto de Write/Maintain por colaborador, sem exceção.
 
 `main` é protegida por ruleset: nada de push direto, nada de force-push, nada de deletar a branch, e o check `verify` do CI é obrigatório. Todo trabalho entra por PR.
 

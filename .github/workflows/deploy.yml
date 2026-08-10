@@ -48,8 +48,8 @@ jobs:
           file: apps/api/Dockerfile
           push: true
           tags: |
-            ghcr.io/leonardodasilveira/titan-api:latest
-            ghcr.io/leonardodasilveira/titan-api:${{ github.event.workflow_run.head_sha }}
+            ghcr.io/titan-inc/titan-api:latest
+            ghcr.io/titan-inc/titan-api:${{ github.event.workflow_run.head_sha }}
           # gha: reaproveita o --mount=type=cache do pnpm entre runs. Sem
           # isto, o cache mount do Dockerfile é inútil em CI -- cada run
           # pega um runner novo e o cache "local" nunca sobrevive.
@@ -68,7 +68,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=https://titaninc.com.br/api
           tags: |
-            ghcr.io/leonardodasilveira/titan-web:latest
-            ghcr.io/leonardodasilveira/titan-web:${{ github.event.workflow_run.head_sha }}
+            ghcr.io/titan-inc/titan-web:latest
+            ghcr.io/titan-inc/titan-web:${{ github.event.workflow_run.head_sha }}
           cache-from: type=gha,scope=titan-web
           cache-to: type=gha,mode=max,scope=titan-web
