@@ -1,0 +1,74 @@
+name: Deploy
+
+# Reage ao workflow CI, não repete os steps dele (TIT-102). branches:[main]
+# aqui filtra pela branch em que o CI RODOU -- isso já exclui os runs do CI
+# disparados por pull_request de outras branches, sem precisar checar o
+# tipo de evento à parte.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+
+# Não cancela um deploy em andamento: interromper no meio deixaria o ghcr.io
+# com uma imagem parcial ou a instância com containers pela metade.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Builda o commit exato que o CI verificou, não o que `main` for no
+      # instante em que este job rodar -- protege contra corrida se outro
+      # push acontecer entre o merge e este workflow disparar.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/leonardodasilveira/titan-api:latest
+            ghcr.io/leonardodasilveira/titan-api:${{ github.event.workflow_run.head_sha }}
+          # gha: reaproveita o --mount=type=cache do pnpm entre runs. Sem
+          # isto, o cache mount do Dockerfile é inútil em CI -- cada run
+          # pega um runner novo e o cache "local" nunca sobrevive.
+          cache-from: type=gha,scope=titan-api
+          cache-to: type=gha,mode=max,scope=titan-api
+
+      - name: Build e push do web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          # Ver o aviso no topo do apps/web/Dockerfile: isto fica AMARRADO
+          # na imagem. Precisa bater com o domínio real (Caddyfile roteia
+          # /api pra api).
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://titaninc.com.br/api
+          tags: |
+            ghcr.io/leonardodasilveira/titan-web:latest
+            ghcr.io/leonardodasilveira/titan-web:${{ github.event.workflow_run.head_sha }}
+          cache-from: type=gha,scope=titan-web
+          cache-to: type=gha,mode=max,scope=titan-web
