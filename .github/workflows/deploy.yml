@@ -72,3 +72,41 @@ jobs:
             ghcr.io/titan-inc/titan-web:${{ github.event.workflow_run.head_sha }}
           cache-from: type=gha,scope=titan-web
           cache-to: type=gha,mode=max,scope=titan-web
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # Mesmo commit que foi buildado -- não o que main for agora.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Copiar docker-compose.prod.yml e Caddyfile pra instância
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: 'docker-compose.prod.yml,Caddyfile'
+          target: /opt/titan-site
+          strip_components: 0
+
+      # docker compose up -d NÃO repuxa imagem nova sozinho quando a tag é
+      # `latest` (mutável) -- ele só usa o que já está em cache local. Por
+      # isso o pull explícito antes do up.
+      #
+      # .env e a senha do banco JÁ existem na instância (TIT-106) -- este
+      # job nunca cria nem edita segredo, só troca as imagens e reinicia.
+      - name: Pull das imagens novas e restart dos containers
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/titan-site
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
