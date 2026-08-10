@@ -143,7 +143,19 @@ async function main() {
       );
     }
 
-    console.log('\nFalta preencher `usableBySpecs` à mão antes de carregar.');
+    const comProposta = arquivo.bosses
+      .flatMap((b) => b.items)
+      .filter((i) => i.specsFromClient).length;
+
+    if (comProposta > 0) {
+      console.log(
+        `\n${comProposta} item(ns) com \`usableBySpecs\` PROPOSTO pelo cliente, marcado com` +
+          ' `specsFromClient`.\nO carregador grava sem marcar como revisado, e não encosta em item' +
+          ' já curado.\nRevise e remova a marca do que você assinar.',
+      );
+    } else {
+      console.log('\nFalta preencher `usableBySpecs` à mão antes de carregar.');
+    }
   } finally {
     await app.close();
   }

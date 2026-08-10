@@ -44,13 +44,38 @@ export const catalogFileItemSchema = z.object({
   primaryStats: primaryStatSchema.array().optional(),
 
   /**
-   * Quais specs podem usar. Curadoria humana — ver TIT-77.
+   * Quais specs podem usar — ver TIT-77.
    *
    * Lista vazia e campo ausente são a mesma coisa aqui: "não decidi". Para
    * dizer "ninguém usa" é preciso marcar no banco, porque um arquivo gerado
    * automaticamente vem com isto vazio e não pode ser lido como decisão.
+   *
+   * Quem preencheu isto muda o que o carregador faz — ver `specsFromClient`.
    */
   usableBySpecs: wowSpecSchema.array().optional(),
+
+  /**
+   * `usableBySpecs` acima é PROPOSTA da máquina, não curadoria humana.
+   *
+   * O dump do Encounter Journal traz quais specs o cliente mostra para cada
+   * peça, e o filtro dele é bom — sabe que Holy Paladin pode rolar num trinket
+   * de healer e que Frost Mage não, mesmo os dois sendo intelecto. Mas continua
+   * respondendo "quem pode equipar e aproveita", que não é a mesma pergunta que
+   * "a guilda deixa rolar" — essa é política de guilda.
+   *
+   * A marcação existe porque `specsCuratedAt` no banco significa **um humano
+   * olhou**, e o carregador o preenche sempre que recebe specs. Sem distinguir a
+   * origem, o arquivo gerado passaria a afirmar revisão que ninguém fez, e
+   * regerar a raid depois de um hotfix sobrescreveria curadoria de verdade.
+   *
+   * Então com esta marca o carregador grava as specs **sem** tocar em
+   * `specsCuratedAt`, e **pula** o item que já tem curadoria. Curadoria
+   * substitui derivação; derivação nunca substitui curadoria.
+   *
+   * Quem edita o arquivo à mão remove a marca — é isso que diz "agora sou eu
+   * assinando".
+   */
+  specsFromClient: z.boolean().optional(),
 
   /**
    * Dificuldades em que ESTE item cai, quando diferem das do boss.

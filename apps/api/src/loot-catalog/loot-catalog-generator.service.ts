@@ -8,6 +8,7 @@ import {
   type JournalDump,
   type PrimaryStat,
   type RaidDifficultyLevel,
+  type WowSpec,
 } from '@titan/shared';
 import { BlizzardService } from '../blizzard/blizzard.service';
 import { WarcraftLogsService, type RaidEncounter } from '../warcraftlogs/warcraftlogs.service';
@@ -16,8 +17,10 @@ import { WarcraftLogsService, type RaidEncounter } from '../warcraftlogs/warcraf
  * Monta o arquivo de catálogo a partir da Blizzard e do Warcraft Logs, para o
  * humano revisar em vez de digitar.
  *
- * O único campo que sobra para a mão é `usableBySpecs` — curadoria que depende
- * do efeito do item e não sai de nenhuma API. Ver TIT-77.
+ * `usableBySpecs` é o único campo que ainda depende de gente. Com o dump do
+ * cliente sai uma **proposta** — o journal do WoW sabe distinguir trinket de
+ * healer de trinket de caster com o mesmo intelecto — mas ela responde "quem
+ * pode equipar e aproveita", não "a guilda deixa rolar". Ver TIT-77.
  */
 
 /** `LFR` fica de fora: a guilda não roda, e o enum do sistema não tem o valor. */
@@ -63,6 +66,7 @@ export class LootCatalogGeneratorService {
       ? new Map<string, number>()
       : await this.idsDoWcl(instancia.encounters.map((e) => e.name));
 
+    const specsPorItem = specsDoDump(dump);
     const cache = new Map<number, CatalogFileItem>();
     const bosses: CatalogFileBoss[] = [];
 
@@ -81,7 +85,7 @@ export class LootCatalogGeneratorService {
 
       const items: CatalogFileItem[] = [];
       for (const entrada of encontro.items) {
-        items.push(await this.item(entrada.item.id, cache));
+        items.push(await this.item(entrada.item.id, cache, specsPorItem));
       }
 
       bosses.push({
@@ -208,12 +212,14 @@ export class LootCatalogGeneratorService {
    * O cache existe porque a mesma peça pode cair de mais de um boss, e cada item
    * custa duas chamadas — uma de dado, uma de mídia.
    *
-   * `usableBySpecs` fica de fora de propósito: é curadoria humana, e escrever
-   * uma lista aqui faria o carregador gravá-la como decisão tomada.
+   * `usableBySpecs` só é escrito quando vem do dump, e sempre acompanhado de
+   * `specsFromClient` — é isso que impede o carregador de gravá-lo como decisão
+   * humana. Sem dump o campo é omitido, porque não há de onde derivar.
    */
   private async item(
     itemId: number,
     cache: Map<number, CatalogFileItem>,
+    specsPorItem: Map<number, WowSpec[]>,
   ): Promise<CatalogFileItem> {
     const emCache = cache.get(itemId);
     if (emCache) return emCache;
@@ -227,6 +233,8 @@ export class LootCatalogGeneratorService {
       .map((s) => PRIMARIO_POR_STAT[s.type?.type ?? ''])
       .filter((p): p is PrimaryStat => p !== undefined);
 
+    const specs = specsPorItem.get(itemId) ?? [];
+
     const item: CatalogFileItem = {
       itemId,
       name: dados.name,
@@ -237,11 +245,38 @@ export class LootCatalogGeneratorService {
       ...(dados.inventory_type?.type ? { equipLoc: dados.inventory_type.type } : {}),
       ...(dados.item_subclass?.name ? { itemSubclass: dados.item_subclass.name } : {}),
       ...(primaryStats.length > 0 ? { primaryStats } : {}),
+      // A marca vai SEMPRE junto da lista, nunca separada: lista sem marca é o
+      // que o carregador lê como assinatura humana.
+      ...(specs.length > 0 ? { usableBySpecs: specs, specsFromClient: true } : {}),
     };
 
     cache.set(itemId, item);
     return item;
   }
+}
+
+/**
+ * `itemId` → specs que o journal do cliente mostra para a peça.
+ *
+ * O mesmo item pode cair de mais de um boss, e a lista é a mesma nos dois — o
+ * filtro do journal é propriedade do item, não do encontro. Fica a primeira
+ * aparição.
+ *
+ * Mapa vazio sem dump, e aí nenhum item sai com specs: derivar de
+ * `primaryStats` + `equipLoc` daria uma lista pior que a do cliente, que sabe
+ * distinguir trinket de healer de trinket de caster com o mesmo intelecto.
+ */
+function specsDoDump(dump?: JournalDump): Map<number, WowSpec[]> {
+  const porItem = new Map<number, WowSpec[]>();
+  if (!dump) return porItem;
+
+  for (const boss of dump.bosses) {
+    for (const item of boss.items) {
+      if (!porItem.has(item.itemId)) porItem.set(item.itemId, item.specs);
+    }
+  }
+
+  return porItem;
 }
 
 /**

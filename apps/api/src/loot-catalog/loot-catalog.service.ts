@@ -95,7 +95,22 @@ export class LootCatalogService {
       });
 
       for (const item of boss.items) {
-        await this.repo.upsertItem(item);
+        // Campo por campo, e não `upsertItem(item)`: o item do ARQUIVO tem
+        // `difficulties`, que é do drop e não do dicionário, e o repositório
+        // espalha o que recebe nas colunas do Prisma. Repassar o objeto inteiro
+        // quebra no dia em que alguém usar o escape de dificuldade por item —
+        // que é justamente o campo que quase nunca aparece, então quebraria
+        // tarde e longe daqui.
+        await this.repo.upsertItem({
+          itemId: item.itemId,
+          name: item.name,
+          icon: item.icon,
+          equipLoc: item.equipLoc,
+          itemSubclass: item.itemSubclass,
+          primaryStats: item.primaryStats,
+          usableBySpecs: item.usableBySpecs,
+          specsFromClient: item.specsFromClient,
+        });
         itens.add(item.itemId);
       }
 

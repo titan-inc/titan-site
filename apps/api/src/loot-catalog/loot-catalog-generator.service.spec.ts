@@ -1,6 +1,7 @@
 import {
   PRIMARY_STATS,
   RAID_DIFFICULTIES,
+  SPECS,
   type CatalogFile,
   type CatalogFileBoss,
   type CatalogFileItem,
@@ -348,6 +349,47 @@ describe('LootCatalogGeneratorService', () => {
       // Não cai no nome como plano B: misturar as duas fontes na mesma geração
       // esconderia que o dump está incompleto.
       expect(bossEm(arquivo, 1).dungeonEncounterId).toBeUndefined();
+    });
+
+    it('escreve as specs do cliente marcadas como proposta', async () => {
+      const { service } = montar({
+        journal: [encontro(10, 'Boss', { items: [{ item: { id: 249344, name: 'Guidon' } }] })],
+        wcl: [],
+      });
+
+      const arquivo = await service.gerar(
+        1307,
+        undefined,
+        dump({
+          bosses: [
+            {
+              journalEncounterId: 10,
+              dungeonEncounterId: 3176,
+              items: [{ itemId: 249344, filterType: 13, specs: [SPECS.WARRIOR_ARMS] }],
+            },
+          ],
+        }),
+      );
+
+      // A marca tem que vir JUNTO: lista sem marca é o que o carregador lê como
+      // assinatura humana, e aí gravaria `specsCuratedAt` mentindo.
+      expect(primeiroItem(bossEm(arquivo, 0))).toMatchObject({
+        usableBySpecs: [SPECS.WARRIOR_ARMS],
+        specsFromClient: true,
+      });
+    });
+
+    it('omite o campo quando o dump não dá spec para a peça', async () => {
+      const { service } = montar({
+        journal: [encontro(10, 'Boss', { items: [{ item: { id: 999, name: 'Sem specs' } }] })],
+        wcl: [],
+      });
+
+      const arquivo = await service.gerar(1307, undefined, dump());
+      const item = primeiroItem(bossEm(arquivo, 0));
+
+      expect(item).not.toHaveProperty('usableBySpecs');
+      expect(item).not.toHaveProperty('specsFromClient');
     });
 
     it('preenche instanceMapId a partir do dump', async () => {

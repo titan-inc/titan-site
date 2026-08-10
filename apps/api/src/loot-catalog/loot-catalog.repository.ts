@@ -24,6 +24,9 @@ export interface WowItemUpsert {
   itemSubclass?: string;
   primaryStats?: PrimaryStat[];
   usableBySpecs?: WowSpec[];
+
+  /** `usableBySpecs` é proposta da máquina, não curadoria. Ver `upsertItem`. */
+  specsFromClient?: boolean;
 }
 
 export interface RaidFilter {
@@ -209,12 +212,14 @@ export class LootCatalogRepository {
    * arquivo pode ter sido digitado à mão com só o `itemId`, enquanto o banco já
    * tem nome e ícone vindos da API — sobrescrever com nulo perderia isso.
    *
-   * `usableBySpecs` segue a mesma regra e é ainda mais sensível: é curadoria
-   * humana. Lista vazia no arquivo é "não decidi", e um arquivo gerado
-   * automaticamente sempre vem assim.
+   * `usableBySpecs` segue a mesma regra e é ainda mais sensível, porque envolve
+   * curadoria humana. Lista vazia no arquivo é "não decidi".
+   *
+   * Com `specsFromClient`, as specs são proposta da máquina: gravam sem marcar
+   * `specsCuratedAt`, e não encostam em item que já tem curadoria.
    */
   async upsertItem(dados: WowItemUpsert): Promise<void> {
-    const { itemId, usableBySpecs, ...campos } = dados;
+    const { itemId, usableBySpecs, specsFromClient, ...campos } = dados;
 
     // Só o que veio. `undefined` é "não mexi nisso", e cair no update como nulo
     // apagaria enriquecimento que a API já tinha trazido.
@@ -230,19 +235,42 @@ export class LootCatalogRepository {
       update: { ...preenchidos, ...enriquecido },
     });
 
-    // Lista vazia é "não decidi", nunca "ninguém usa" — arquivo gerado sempre
+    // Lista vazia é "não decidi", nunca "ninguém usa" — arquivo digitado à mão
     // vem assim, e apagar curadoria humana por causa disso seria destrutivo.
     if (!usableBySpecs || usableBySpecs.length === 0) return;
+
+    /*
+     * Proposta da máquina não passa por cima de humano.
+     *
+     * O item que já tem `specsCuratedAt` fica intacto: sem esta saída, regerar a
+     * raid depois de um hotfix devolveria a lista do cliente e apagaria a
+     * correção que alguém fez à mão — em silêncio, porque a carga reportaria
+     * sucesso.
+     */
+    if (specsFromClient) {
+      const atual = await this.prisma.wowItem.findUnique({
+        where: { itemId },
+        select: { specsCuratedAt: true },
+      });
+
+      if (atual?.specsCuratedAt) return;
+    }
 
     await this.prisma.$transaction([
       this.prisma.wowItemSpec.deleteMany({ where: { itemId } }),
       this.prisma.wowItemSpec.createMany({
         data: usableBySpecs.map((spec) => ({ itemId, spec: SPEC_TO_DB[spec] })),
       }),
-      this.prisma.wowItem.update({
-        where: { itemId },
-        data: { specsCuratedAt: new Date() },
-      }),
+      // `specsCuratedAt` significa "um humano olhou", então proposta não o marca.
+      // Marcar faria o banco afirmar uma revisão que ninguém fez.
+      ...(specsFromClient
+        ? []
+        : [
+            this.prisma.wowItem.update({
+              where: { itemId },
+              data: { specsCuratedAt: new Date() },
+            }),
+          ]),
     ]);
   }
 
