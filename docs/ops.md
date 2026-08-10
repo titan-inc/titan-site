@@ -14,6 +14,41 @@ alcançável de dentro do container (`docker compose exec`) ou por túnel SSH
 
 Em dev local (`pnpm dev`), a base é `http://localhost:3001`.
 
+## Como implementar uma rota nova
+
+Segue o mesmo desenho das sete que já existem — **nunca** chama
+`NestFactory` de dentro de um método, é exatamente o padrão que este
+módulo existe pra evitar (Regra 8 do CLAUDE.md).
+
+1. **Reaproveita o service que já existe** pra aquela operação. Adiciona o
+   método em `apps/api/src/ops/ops.controller.ts`, injetando o service
+   certo no construtor — igual `snapshot`/`attendance-sync`/`catalog-*` já
+   fazem. Nenhuma lógica de negócio nasce no controller.
+2. **Se a lógica não existir em nenhum service ainda** (caso de
+   `roster-probe`/`oauth-check`, que nunca tiveram um), entra em
+   `apps/api/src/ops/ops.service.ts` — ou no service de domínio certo, se
+   fizer sentido reaproveitar fora de ops também.
+3. **Módulo novo sendo importado?** Adiciona em `imports` de
+   `apps/api/src/ops/ops.module.ts`. Sem isso o Nest não injeta.
+4. **Guard e bloqueio no Caddy já cobrem qualquer rota nova sob
+   `/internal/ops/*` automaticamente** — o `@UseGuards(OpsTokenGuard)` está
+   no `@Controller('internal/ops')` inteiro, e o bloco do Caddyfile usa
+   `/api/internal/ops/*` (com `*`, não uma rota específica). Não precisa
+   repetir o guard nem tocar no Caddyfile pra uma rota nova aqui dentro.
+5. **Corpo grande/estruturado** → valida com `ZodValidationPipe` + schema
+   do `@titan/shared` (Regra 2 do CLAUDE.md), igual `catalog-generate`/
+   `catalog-load` fazem. **Query param simples** → parse manual, igual o
+   resto do controller.
+6. **Testa** em `ops.controller.spec.ts` (mocka os services, chama o
+   método do controller direto — sem subir `TestingModule`, é o padrão já
+   usado em todo o resto da api) e, se a lógica for nova, em
+   `ops.service.spec.ts`.
+7. **Documenta o `curl` equivalente** aqui embaixo, na seção certa.
+
+Antes de criar uma rota nova, confere se já não existe um caminho — foi o
+caso do `raid-probe.js`, que virou nota em vez de rota: já existia
+`GET /internal/raid-progress` fazendo a mesma coisa.
+
 ## Snapshot semanal
 
 Era `pnpm --filter api probe:snapshot [--backfill]`.
