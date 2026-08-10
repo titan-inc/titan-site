@@ -6,38 +6,48 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  isOfficerByRank,
   toCharacterKey,
   toSlug,
   type CreateOfficerGrant,
+  type OfficerByRank,
   type OfficerGrant,
   type OfficerList,
 } from '@titan/shared';
 import { BlizzardService, type RosterMember } from '../blizzard/blizzard.service';
+import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
 import { OfficersRepository } from './officers.repository';
 
+/** Identidade normalizada nos dois lados antes de comparar — Regra 6. */
+function chaveDe(ref: { nameKey: string; realmSlug: string }): string {
+  return `${toSlug(ref.realmSlug)}/${toCharacterKey(ref.nameKey)}`;
+}
+
 /**
- * A lista manual de oficiais — Regra 4.
+ * Quem é oficial — Regra 4.
  *
- * O service não decide quem é oficial: quem decide é a pessoa que abre a tela e
- * digita um personagem. O que ele faz é impedir que essa decisão vire uma linha
- * inútil no banco por causa de um nome errado, e impedir que a guilda fique sem
- * nenhum oficial.
+ * Escreve só a **lista manual**. A outra fonte (rank) é derivada do roster a
+ * cada leitura e não tem escrita aqui; `list()` devolve as duas porque a tela
+ * mostra as duas.
  */
 @Injectable()
 export class OfficersService {
   private readonly logger = new Logger(OfficersService.name);
+  private readonly guild: GuildConfig;
 
   constructor(
     private readonly repo: OfficersRepository,
     private readonly blizzard: BlizzardService,
-  ) {}
+  ) {
+    this.guild = loadGuildConfig();
+  }
 
   /**
-   * Lista os grants com dois enfeites que importam: rank atual e se alguma
-   * conta já casou.
+   * As duas fontes, com rank atual e se alguma conta já casou.
    *
-   * Roster fora do ar não derruba a tela — os ranks vêm nulos e a lista aparece
-   * mesmo assim, que é o degradar da Regra 6. Conceder, esse sim, exige roster.
+   * Roster fora do ar degrada em vez de derrubar (Regra 6): ranks nulos,
+   * automáticos vazios, e `rosterOk` avisando que é lacuna, não zero. Conceder,
+   * esse sim, exige roster.
    */
   async list(): Promise<OfficerList> {
     const [grants, conhecidos] = await Promise.all([
@@ -45,18 +55,16 @@ export class OfficersService {
       this.repo.findKnownCharacterKeys(),
     ]);
 
-    const roster = await this.rosterPorChave().catch(() => {
-      this.logger.warn('Roster indisponível; a lista de oficiais vai sem rank');
-      return new Map<string, RosterMember>();
-    });
-
-    const vinculados = new Set(
-      conhecidos.map((c) => `${toSlug(c.realmSlug)}/${toCharacterKey(c.nameKey)}`),
-    );
+    const membros = await this.rosterMembros();
+    const porChave = new Map((membros ?? []).map((m) => [chaveDe(m), m]));
+    const vinculados = new Set(conhecidos.map(chaveDe));
 
     return {
+      officerRankMax: this.guild.officerRankMax,
+      rosterOk: membros !== null,
+
       grants: grants.map((g): OfficerGrant => {
-        const chave = `${toSlug(g.realmSlug)}/${toCharacterKey(g.nameKey)}`;
+        const chave = chaveDe(g);
 
         return {
           id: g.id,
@@ -64,12 +72,27 @@ export class OfficersService {
           realm: g.realm,
           nameKey: g.nameKey,
           realmSlug: g.realmSlug,
-          rank: roster.get(chave)?.rank ?? null,
+          rank: porChave.get(chave)?.rank ?? null,
           linked: vinculados.has(chave),
           grantedBy: g.grantedBy,
           grantedAt: g.grantedAt.toISOString(),
         };
       }),
+
+      // Derivada, nunca gravada: some e volta com o roster. Ordena por rank e
+      // depois por nome para a tela ficar estável entre requisições — a ordem
+      // que a Blizzard devolve o roster não é.
+      byRank: (membros ?? [])
+        .filter((m) => isOfficerByRank(m.rank, this.guild.officerRankMax))
+        .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
+        .map((m): OfficerByRank => ({
+          name: m.name,
+          realm: m.realmSlug,
+          nameKey: m.nameKey,
+          realmSlug: m.realmSlug,
+          rank: m.rank,
+          linked: vinculados.has(chaveDe(m)),
+        })),
     };
   }
 
@@ -141,21 +164,36 @@ export class OfficersService {
   }
 
   /**
-   * Revoga.
+   * Revoga. Recusa se isso zerar os oficiais — a tela é gated por oficial, e o
+   * conserto seria `INSERT` em produção.
    *
-   * Recusa apagar o último grant. Sem isso, um clique deixa a guilda com zero
-   * oficiais — e como a própria tela é gated por oficial, ninguém consegue
-   * desfazer pelo site. O conserto seria `INSERT` manual no banco de produção.
+   * Olha as **duas** fontes desde 10/08/2026: com rank promovendo sozinho,
+   * apagar o último grant não tranca ninguém, e recusar seria barrar revogação
+   * legítima.
    */
   async revoke(id: string, revokedBy: string): Promise<OfficerList> {
     const grant = await this.repo.findById(id);
     if (!grant) throw new NotFoundException('Essa concessão não existe mais.');
 
     if ((await this.repo.count()) <= 1) {
-      throw new ConflictException(
-        'Este é o último oficial. Conceda a outra pessoa antes de revogar este, ' +
-          'ou ninguém mais consegue abrir esta tela.',
-      );
+      const automaticos = await this.contarOficiaisPorRank();
+
+      // Roster fora do ar é "não sei", não "não tem" — e aqui a diferença é
+      // entre recusar por um minuto e trancar a guilda para fora de vez.
+      if (automaticos === null) {
+        throw new ConflictException(
+          'Este é o último oficial concedido à mão, e não deu para conferir o roster agora ' +
+            'para saber se algum rank de oficial cobre a lista. Tente de novo em alguns minutos.',
+        );
+      }
+
+      if (automaticos === 0) {
+        throw new ConflictException(
+          `Este é o último oficial, e nenhum personagem está nos ranks de oficial da guilda ` +
+            `(0 a ${this.guild.officerRankMax}). Conceda a outra pessoa antes de revogar este, ` +
+            'ou ninguém mais consegue abrir esta tela.',
+        );
+      }
     }
 
     await this.repo.delete(id);
@@ -164,9 +202,33 @@ export class OfficersService {
     return this.list();
   }
 
-  /** Roster indexado pela mesma chave usada no casamento de grants. */
-  private async rosterPorChave(): Promise<Map<string, RosterMember>> {
-    const roster = await this.blizzard.getGuildRosterSnapshot();
-    return new Map(roster.members.map((m) => [`${m.realmSlug}/${m.nameKey}`, m]));
+  /**
+   * Quantos personagens do roster estão nos ranks de oficial.
+   *
+   * Null = o roster não respondeu. É diferente de zero de propósito: quem
+   * chama decide o que fazer com a dúvida.
+   */
+  private async contarOficiaisPorRank(): Promise<number | null> {
+    const membros = await this.rosterMembros();
+    if (membros === null) return null;
+
+    return membros.filter((m) => isOfficerByRank(m.rank, this.guild.officerRankMax)).length;
+  }
+
+  /**
+   * Membros do roster, ou null quando não dá para confiar no que veio.
+   *
+   * Roster vazio conta como null: ~590 membros nunca devolvem zero de verdade,
+   * então zero é falha. Mesmo julgamento do `grant()`.
+   */
+  private async rosterMembros(): Promise<RosterMember[] | null> {
+    const roster = await this.blizzard.getGuildRosterSnapshot().catch(() => null);
+
+    if (roster === null || roster.members.length === 0) {
+      this.logger.warn('Roster indisponível; sem rank e sem os oficiais automáticos');
+      return null;
+    }
+
+    return roster.members;
   }
 }

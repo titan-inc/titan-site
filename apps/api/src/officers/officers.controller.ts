@@ -10,13 +10,12 @@ import { OfficersService } from './officers.service';
  * Quem é oficial — a lista manual da Regra 4.
  *
  * Todos os endpoints sob `OfficerGuard`: só oficial concede e revoga oficial.
- * É circular de propósito. A alternativa seria derivar de rank, que é
- * exatamente o que a Regra 4 proíbe, e o custo dessa circularidade — precisar
- * de um `INSERT` manual para o primeiro oficial — se paga uma vez na vida.
+ * A circularidade disso — precisar de `INSERT` manual para existir o primeiro
+ * oficial — acabou em 10/08/2026, quando os ranks 0–2 passaram a promover
+ * sozinhos.
  *
- * Não existe endpoint que leia isto sem ser oficial: a lista diz quem tem
- * acesso a dado pessoal de candidato, e isso não é informação pública da
- * guilda.
+ * Não existe leitura sem ser oficial: a lista diz quem vê o histórico dos
+ * outros e quem promove.
  */
 @Controller('internal/officers')
 @UseGuards(OfficerGuard)
