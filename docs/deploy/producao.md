@@ -94,6 +94,24 @@ docker compose -f docker-compose.prod.yml logs -f api web   # os dois juntos
 docker compose -f docker-compose.prod.yml logs -f --tail=100 api   # com histórico recente
 ```
 
+**Túnel SSH pro Postgres** — o banco não fica exposto na internet (só na
+loopback `127.0.0.1` do host), então acesso direto de fora exige túnel.
+Num terminal, abre e deixa aberto:
+
+```bash
+ssh -i ~/.ssh/titan-site-<seu-nome> -L 5433:127.0.0.1:5432 ubuntu@<STATIC_IP>
+```
+
+Com o túnel de pé, em outro terminal (ou num client gráfico como TablePlus/
+DBeaver, apontando pra `localhost:5433`):
+
+```bash
+psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5433/$POSTGRES_DB"
+```
+
+(precisa do `psql` instalado na sua máquina — não vem por padrão no
+Windows; um client gráfico dispensa isso.)
+
 **Migration depois de um deploy** — o container da api **não** roda migration
 no boot (ver comentário no `apps/api/Dockerfile`), é sempre passo manual:
 

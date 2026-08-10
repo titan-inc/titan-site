@@ -25,8 +25,13 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
-    # SEM `ports:` de propósito — só a api fala com o banco, pela rede
-    # interna do compose. Publicar 5432 no host exporia o Postgres à internet.
+    # Publicada só na LOOPBACK do host (127.0.0.1), nunca em 0.0.0.0 — isso
+    # não expõe nada pra internet, só torna a porta alcançável por um túnel
+    # SSH (`ssh -L`), que do lado do servidor chega como se fosse conexão
+    # local. Acesso direto ao banco é só assim; a api continua falando com
+    # ele pela rede interna do compose, sem depender disto.
+    ports:
+      - '127.0.0.1:5432:5432'
 
   api:
     image: ghcr.io/titan-inc/titan-api:${IMAGE_TAG:-latest}
