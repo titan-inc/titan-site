@@ -5,8 +5,10 @@ import {
   type CatalogFile,
   type CatalogFileBoss,
   type CatalogFileItem,
+  type JournalDump,
   type PrimaryStat,
   type RaidDifficultyLevel,
+  type WowSpec,
 } from '@titan/shared';
 import { BlizzardService } from '../blizzard/blizzard.service';
 import { WarcraftLogsService, type RaidEncounter } from '../warcraftlogs/warcraftlogs.service';
@@ -15,8 +17,10 @@ import { WarcraftLogsService, type RaidEncounter } from '../warcraftlogs/warcraf
  * Monta o arquivo de catálogo a partir da Blizzard e do Warcraft Logs, para o
  * humano revisar em vez de digitar.
  *
- * O único campo que sobra para a mão é `usableBySpecs` — curadoria que depende
- * do efeito do item e não sai de nenhuma API. Ver TIT-77.
+ * `usableBySpecs` é o único campo que ainda depende de gente. Com o dump do
+ * cliente sai uma **proposta** — o journal do WoW sabe distinguir trinket de
+ * healer de trinket de caster com o mesmo intelecto — mas ela responde "quem
+ * pode equipar e aproveita", não "a guilda deixa rolar". Ver TIT-77.
  */
 
 /** `LFR` fica de fora: a guilda não roda, e o enum do sistema não tem o valor. */
@@ -48,15 +52,21 @@ export class LootCatalogGeneratorService {
   /**
    * Gera o arquivo de uma raid do Encounter Journal.
    *
-   * Orquestra: lê a raid, resolve o id de cada boss contra o WCL, e enriquece
-   * cada item. Falha antes de produzir arquivo se algum boss não casar — arquivo
-   * pela metade é pior que arquivo nenhum, porque parece pronto.
+   * Orquestra: lê a raid, resolve o `dungeonEncounterId` de cada boss, e
+   * enriquece cada item. Falha antes de produzir arquivo se algum id for
+   * ambíguo — arquivo pela metade é pior que arquivo nenhum, porque parece
+   * pronto.
    */
-  async gerar(journalInstanceId: number, slug?: string): Promise<CatalogFile> {
+  async gerar(journalInstanceId: number, slug?: string, dump?: JournalDump): Promise<CatalogFile> {
     const instancia = await this.blizzard.getJournalInstance(journalInstanceId);
     this.logger.log(`${instancia.name}: ${instancia.encounters.length} boss(es) no journal`);
 
-    const idPorNome = await this.idsDoWcl(instancia.encounters.map((e) => e.name));
+    const idPorJournal = this.idsDoDump(journalInstanceId, dump);
+    const idPorNome = idPorJournal
+      ? new Map<string, number>()
+      : await this.idsDoWcl(instancia.encounters.map((e) => e.name));
+
+    const specsPorItem = specsDoDump(dump);
     const cache = new Map<number, CatalogFileItem>();
     const bosses: CatalogFileBoss[] = [];
 
@@ -75,13 +85,15 @@ export class LootCatalogGeneratorService {
 
       const items: CatalogFileItem[] = [];
       for (const entrada of encontro.items) {
-        items.push(await this.item(entrada.item.id, cache));
+        items.push(await this.item(entrada.item.id, cache, specsPorItem));
       }
 
       bosses.push({
         name: encontro.name,
         position: posicao,
-        dungeonEncounterId: idPorNome.get(encontro.name),
+        dungeonEncounterId: idPorJournal
+          ? idPorJournal.get(resumo.id)
+          : idPorNome.get(encontro.name),
         difficulties: difficulties as CatalogFileBoss['difficulties'],
         items,
       });
@@ -97,8 +109,53 @@ export class LootCatalogGeneratorService {
       version: 1,
       slug: slug ?? toSlugSimples(instancia.name),
       name: instancia.name,
+      // Vinha vazio desde o TIT-46: o campo estava modelado nos dois schemas e
+      // ninguém preenchia, embora a Blizzard devolva de graça.
+      ...((dump?.instanceMapId ?? instancia.map?.id)
+        ? { instanceMapId: dump?.instanceMapId ?? instancia.map?.id }
+        : {}),
       bosses: bosses as CatalogFile['bosses'],
     };
+  }
+
+  /**
+   * `journalEncounterId` → `dungeonEncounterId`, direto do cliente do WoW.
+   *
+   * Quando existe dump, ele **substitui** o casamento por nome contra o WCL: o
+   * cliente é a única fonte que publica a ponte entre os dois espaços de id, e
+   * casar por id não sofre com nome repetido entre expansões nem com boss
+   * renomeado num patch.
+   *
+   * Devolve `undefined` quando não há dump, e aí o gerador cai no nome.
+   */
+  private idsDoDump(
+    journalInstanceId: number,
+    dump?: JournalDump,
+  ): Map<number, number> | undefined {
+    if (!dump) return undefined;
+
+    // Dump da raid errada é o erro fácil de cometer com dois arquivos abertos,
+    // e sem esta checagem ele produziria uma raid inteira sem id nenhum.
+    if (dump.journalInstanceId !== journalInstanceId) {
+      throw new Error(
+        `o dump é da instância ${dump.journalInstanceId} e você pediu a ${journalInstanceId}`,
+      );
+    }
+
+    const ids = new Map<number, number>();
+    const semId: number[] = [];
+
+    for (const boss of dump.bosses) {
+      if (boss.dungeonEncounterId) ids.set(boss.journalEncounterId, boss.dungeonEncounterId);
+      else semId.push(boss.journalEncounterId);
+    }
+
+    if (semId.length > 0) {
+      this.logger.warn(`${semId.length} boss(es) sem id no dump: ${semId.join(', ')}`);
+    }
+
+    this.logger.log(`Dump do cliente: ${ids.size} de ${dump.bosses.length} boss(es) com id`);
+    return ids;
   }
 
   /**
@@ -155,12 +212,14 @@ export class LootCatalogGeneratorService {
    * O cache existe porque a mesma peça pode cair de mais de um boss, e cada item
    * custa duas chamadas — uma de dado, uma de mídia.
    *
-   * `usableBySpecs` fica de fora de propósito: é curadoria humana, e escrever
-   * uma lista aqui faria o carregador gravá-la como decisão tomada.
+   * `usableBySpecs` só é escrito quando vem do dump, e sempre acompanhado de
+   * `specsFromClient` — é isso que impede o carregador de gravá-lo como decisão
+   * humana. Sem dump o campo é omitido, porque não há de onde derivar.
    */
   private async item(
     itemId: number,
     cache: Map<number, CatalogFileItem>,
+    specsPorItem: Map<number, WowSpec[]>,
   ): Promise<CatalogFileItem> {
     const emCache = cache.get(itemId);
     if (emCache) return emCache;
@@ -174,6 +233,8 @@ export class LootCatalogGeneratorService {
       .map((s) => PRIMARIO_POR_STAT[s.type?.type ?? ''])
       .filter((p): p is PrimaryStat => p !== undefined);
 
+    const specs = specsPorItem.get(itemId) ?? [];
+
     const item: CatalogFileItem = {
       itemId,
       name: dados.name,
@@ -184,11 +245,38 @@ export class LootCatalogGeneratorService {
       ...(dados.inventory_type?.type ? { equipLoc: dados.inventory_type.type } : {}),
       ...(dados.item_subclass?.name ? { itemSubclass: dados.item_subclass.name } : {}),
       ...(primaryStats.length > 0 ? { primaryStats } : {}),
+      // A marca vai SEMPRE junto da lista, nunca separada: lista sem marca é o
+      // que o carregador lê como assinatura humana.
+      ...(specs.length > 0 ? { usableBySpecs: specs, specsFromClient: true } : {}),
     };
 
     cache.set(itemId, item);
     return item;
   }
+}
+
+/**
+ * `itemId` → specs que o journal do cliente mostra para a peça.
+ *
+ * O mesmo item pode cair de mais de um boss, e a lista é a mesma nos dois — o
+ * filtro do journal é propriedade do item, não do encontro. Fica a primeira
+ * aparição.
+ *
+ * Mapa vazio sem dump, e aí nenhum item sai com specs: derivar de
+ * `primaryStats` + `equipLoc` daria uma lista pior que a do cliente, que sabe
+ * distinguir trinket de healer de trinket de caster com o mesmo intelecto.
+ */
+function specsDoDump(dump?: JournalDump): Map<number, WowSpec[]> {
+  const porItem = new Map<number, WowSpec[]>();
+  if (!dump) return porItem;
+
+  for (const boss of dump.bosses) {
+    for (const item of boss.items) {
+      if (!porItem.has(item.itemId)) porItem.set(item.itemId, item.specs);
+    }
+  }
+
+  return porItem;
 }
 
 /**

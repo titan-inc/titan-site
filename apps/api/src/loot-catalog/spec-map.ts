@@ -18,6 +18,7 @@ export const SPEC_FROM_DB: Record<PrismaWowSpec, WowSpec> = {
   death_knight_blood: SPECS.DEATH_KNIGHT_BLOOD,
   death_knight_frost: SPECS.DEATH_KNIGHT_FROST,
   death_knight_unholy: SPECS.DEATH_KNIGHT_UNHOLY,
+  demon_hunter_devourer: SPECS.DEMON_HUNTER_DEVOURER,
   demon_hunter_havoc: SPECS.DEMON_HUNTER_HAVOC,
   demon_hunter_vengeance: SPECS.DEMON_HUNTER_VENGEANCE,
   druid_balance: SPECS.DRUID_BALANCE,

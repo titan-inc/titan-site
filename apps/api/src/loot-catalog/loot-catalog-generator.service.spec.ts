@@ -1,9 +1,11 @@
 import {
   PRIMARY_STATS,
   RAID_DIFFICULTIES,
+  SPECS,
   type CatalogFile,
   type CatalogFileBoss,
   type CatalogFileItem,
+  type JournalDump,
 } from '@titan/shared';
 import type { BlizzardService, JournalEncounter } from '../blizzard/blizzard.service';
 import type {
@@ -49,6 +51,8 @@ interface Cenario {
   wcl: RaidEncounter[];
   /** itemId → resposta da API de item. */
   itens?: Record<number, Record<string, unknown>>;
+  /** `map` da instância, de onde sai o `instanceMapId`. */
+  map?: { id: number; name: string };
 }
 
 function montar(cenario: Cenario) {
@@ -63,6 +67,7 @@ function montar(cenario: Cenario) {
         id: 1307,
         name: 'The Voidspire',
         encounters: cenario.journal.map((e) => ({ id: e.id, name: e.name })),
+        ...(cenario.map ? { map: cenario.map } : {}),
       }),
     getJournalEncounter: (id: number) => {
       const achado = cenario.journal.find((e) => e.id === id);
@@ -279,6 +284,141 @@ describe('LootCatalogGeneratorService', () => {
 
     expect(arquivo.slug).toBe('the-voidspire');
     expect(arquivo.bosses.map((b) => b.position)).toEqual([0, 1]);
+  });
+
+  describe('dump do Encounter Journal', () => {
+    const dump = (over: Partial<JournalDump> = {}): JournalDump => ({
+      journalInstanceId: 1307,
+      instanceMapId: 2912,
+      bosses: [{ journalEncounterId: 10, dungeonEncounterId: 3176, items: [] }],
+      ...over,
+    });
+
+    it('tira o id do dump e não consulta o Warcraft Logs', async () => {
+      // O WCL é deixado de propósito com o boss em nome AMBÍGUO: se o gerador
+      // ainda estivesse casando por nome, isto derrubaria a geração.
+      const { service } = montar({
+        journal: [encontro(10, "Artificer Xy'mox")],
+        wcl: [encounter(2405, "Artificer Xy'mox", 26), encounter(2553, "Artificer Xy'mox", 29)],
+      });
+
+      const arquivo = await service.gerar(1307, undefined, dump());
+
+      expect(bossEm(arquivo, 0).dungeonEncounterId).toBe(3176);
+    });
+
+    it('casa por journalEncounterId, não por posição', async () => {
+      // No journal real os ids saem fora de ordem crescente — 2736 vem antes de
+      // 2735 — então casar por posição daria o boss errado sem erro nenhum.
+      const { service } = montar({
+        journal: [encontro(20, 'Boss A'), encontro(19, 'Boss B')],
+        wcl: [],
+      });
+
+      const arquivo = await service.gerar(1307, undefined, {
+        journalInstanceId: 1307,
+        bosses: [
+          { journalEncounterId: 19, dungeonEncounterId: 3179, items: [] },
+          { journalEncounterId: 20, dungeonEncounterId: 3178, items: [] },
+        ],
+      });
+
+      expect(bossEm(arquivo, 0).dungeonEncounterId).toBe(3178);
+      expect(bossEm(arquivo, 1).dungeonEncounterId).toBe(3179);
+    });
+
+    it('recusa dump de outra raid', async () => {
+      // Erro fácil de cometer com dois arquivos abertos, e sem esta checagem a
+      // raid inteira sairia sem id nenhum.
+      const { service } = montar({ journal: [encontro(10, 'Boss')], wcl: [] });
+
+      await expect(
+        service.gerar(1307, undefined, dump({ journalInstanceId: 1314 })),
+      ).rejects.toThrow(/1314.*1307/s);
+    });
+
+    it('deixa sem id o boss que o dump não cobre', async () => {
+      const { service } = montar({
+        journal: [encontro(10, 'Boss A'), encontro(11, 'Boss B')],
+        wcl: [encounter(3177, 'Boss B')],
+      });
+
+      const arquivo = await service.gerar(1307, undefined, dump());
+
+      expect(bossEm(arquivo, 0).dungeonEncounterId).toBe(3176);
+      // Não cai no nome como plano B: misturar as duas fontes na mesma geração
+      // esconderia que o dump está incompleto.
+      expect(bossEm(arquivo, 1).dungeonEncounterId).toBeUndefined();
+    });
+
+    it('escreve as specs do cliente marcadas como proposta', async () => {
+      const { service } = montar({
+        journal: [encontro(10, 'Boss', { items: [{ item: { id: 249344, name: 'Guidon' } }] })],
+        wcl: [],
+      });
+
+      const arquivo = await service.gerar(
+        1307,
+        undefined,
+        dump({
+          bosses: [
+            {
+              journalEncounterId: 10,
+              dungeonEncounterId: 3176,
+              items: [{ itemId: 249344, filterType: 13, specs: [SPECS.WARRIOR_ARMS] }],
+            },
+          ],
+        }),
+      );
+
+      // A marca tem que vir JUNTO: lista sem marca é o que o carregador lê como
+      // assinatura humana, e aí gravaria `specsCuratedAt` mentindo.
+      expect(primeiroItem(bossEm(arquivo, 0))).toMatchObject({
+        usableBySpecs: [SPECS.WARRIOR_ARMS],
+        specsFromClient: true,
+      });
+    });
+
+    it('omite o campo quando o dump não dá spec para a peça', async () => {
+      const { service } = montar({
+        journal: [encontro(10, 'Boss', { items: [{ item: { id: 999, name: 'Sem specs' } }] })],
+        wcl: [],
+      });
+
+      const arquivo = await service.gerar(1307, undefined, dump());
+      const item = primeiroItem(bossEm(arquivo, 0));
+
+      expect(item).not.toHaveProperty('usableBySpecs');
+      expect(item).not.toHaveProperty('specsFromClient');
+    });
+
+    it('preenche instanceMapId a partir do dump', async () => {
+      const { service } = montar({ journal: [encontro(10, 'Boss')], wcl: [] });
+
+      const arquivo = await service.gerar(1307, undefined, dump());
+
+      expect(arquivo.instanceMapId).toBe(2912);
+    });
+  });
+
+  it('preenche instanceMapId a partir da REST quando não há dump', async () => {
+    const { service } = montar({
+      journal: [encontro(10, 'Boss')],
+      wcl: [encounter(3176, 'Boss')],
+      map: { id: 2912, name: 'The Voidspire' },
+    });
+
+    const arquivo = await service.gerar(1307);
+
+    expect(arquivo.instanceMapId).toBe(2912);
+  });
+
+  it('omite instanceMapId quando nenhuma fonte tem', async () => {
+    const { service } = montar({ journal: [encontro(10, 'Boss')], wcl: [encounter(3176, 'Boss')] });
+
+    const arquivo = await service.gerar(1307);
+
+    expect(arquivo).not.toHaveProperty('instanceMapId');
   });
 
   it('respeita o slug passado à mão', async () => {

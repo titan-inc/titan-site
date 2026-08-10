@@ -2,6 +2,7 @@ export * from './wow.js';
 export * from './application.js';
 export * from './attendance.js';
 export * from './health.js';
+export * from './journal-dump.js';
 export * from './loot-catalog.js';
 export * from './loot-catalog-file.js';
 export * from './membership.js';
