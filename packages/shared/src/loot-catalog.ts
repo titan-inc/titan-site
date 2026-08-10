@@ -21,7 +21,7 @@ export const wowItemSchema = z.object({
   /** Slug (`inv_helm_plate_raidwarrior_a_01`), não URL. */
   icon: z.string().nullable(),
 
-  /** `INVTYPE_*`: o slot. Constante da Blizzard, não localizada. */
+  /** Slot na grafia da API REST (`TRINKET`, `HEAD`). NÃO é `INVTYPE_*`, que é a do cliente. */
   equipLoc: z.string().nullable(),
 
   /** Subclasse: `Plate`, `Trinket`, `One-Handed Sword`. */

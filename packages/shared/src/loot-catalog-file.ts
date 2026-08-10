@@ -30,7 +30,16 @@ export const catalogFileItemSchema = z.object({
 
   name: z.string().optional(),
   icon: z.string().optional(),
+
+  /**
+   * Slot na grafia da API REST: `TRINKET`, `HEAD`, `WEAPON`.
+   *
+   * Preenchendo à mão, cuidado: a API Lua do cliente e o export do
+   * RCLootCouncil escrevem o mesmo slot como `INVTYPE_TRINKET`. As duas grafias
+   * não casam, e nada acusa — só deixa de encontrar.
+   */
   equipLoc: z.string().optional(),
+
   itemSubclass: z.string().optional(),
   primaryStats: primaryStatSchema.array().optional(),
 

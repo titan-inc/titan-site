@@ -499,10 +499,19 @@ model WowItem {
   /// e a URL se compõe na hora de exibir.
   icon String?
 
-  /// `INVTYPE_*` da Blizzard — o slot. Constante, e **não** localizado.
+  /// Slot da peça, na grafia da API REST — `TRINKET`, `HEAD`, `WEAPON`.
+  /// Constante, e **não** localizada.
   ///
-  /// Deliberadamente não é o `subType` do export do RCLootCouncil, que vem
-  /// traduzido pelo cliente e reintroduziria o problema do nome localizado.
+  /// O mesmo conceito tem uma segunda grafia, que NÃO casa com esta: a API Lua
+  /// do cliente devolve `INVTYPE_TRINKET`. Lá a string é o nome de uma global
+  /// que serve de chave de localização — `_G["INVTYPE_HEAD"]` devolve "Head",
+  /// ou "Cabeça" num cliente ptBR. A REST não precisa disso: manda o enum
+  /// estável e o nome já traduzido em campos separados.
+  ///
+  /// Só o gerador escreve aqui, e ele lê da REST. O addon não manda slot em
+  /// grafia nenhuma: ele manda `itemString`, e slot é derivável do `itemID` no
+  /// servidor. Pelo mesmo motivo não é o `subType` do export do RCLootCouncil,
+  /// que vem traduzido pelo cliente e reintroduziria o nome localizado.
   equipLoc String?
 
   /// Tipo do item (subclasse: `Plate`, `Trinket`, `One-Handed Sword`).
