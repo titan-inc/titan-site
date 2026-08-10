@@ -128,9 +128,27 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-**Recriar um serviço específico do zero** (container preso, ou precisa
-reler uma env var que mudou — `up -d` sozinho não recria container que já
-está rodando, mesmo com `.env` diferente):
+**Recarregar o `.env`** depois de editar/adicionar uma variável — só isto,
+sem `pull` nem `--force-recreate`:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Confirmado na prática (não é suposição): o `docker compose up -d` calcula
+o hash da config resolvida de cada serviço — `environment:` interpolado
+**e** o conteúdo de `env_file:` entram nessa conta — e recria **só** quem
+mudou. Editar uma variável que só a `api` lê recria a `api` e deixa `web`/
+`postgres`/`caddy` intocados, sem downtime dos outros.
+
+Exceção: `POSTGRES_USER`/`PASSWORD`/`DB` não seguem essa regra — o
+Postgres só lê essas variáveis no `initdb`, na primeira vez que o volume é
+criado. Depois disso, mudar o `.env` e rodar `up -d` recria o _container_
+mas não muda a senha já gravada no banco. Ver "Reset completo do banco"
+abaixo.
+
+**Recriar um serviço do zero mesmo sem nada ter mudado** (container preso
+num estado ruim, por exemplo):
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --force-recreate api

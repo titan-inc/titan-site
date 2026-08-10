@@ -84,13 +84,17 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: Copiar docker-compose.prod.yml e Caddyfile pra instância
+      # strip_components: 0 preserva o caminho relativo do repo -- o script
+      # de backup chega em /opt/titan-site/scripts/deploy/..., não solto na
+      # raiz. TIT-97: antes desta linha, o script só existia no repositório
+      # -- nunca chegava na instância pelo deploy automático.
+      - name: Copiar docker-compose.prod.yml, Caddyfile e script de backup pra instância
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: 'docker-compose.prod.yml,Caddyfile'
+          source: 'docker-compose.prod.yml,Caddyfile,scripts/deploy/backup-postgres-to-s3.sh'
           target: /opt/titan-site
           strip_components: 0
 
@@ -100,6 +104,10 @@ jobs:
       #
       # .env e a senha do banco JÁ existem na instância (TIT-106) -- este
       # job nunca cria nem edita segredo, só troca as imagens e reinicia.
+      #
+      # chmod +x no script de backup a cada deploy: não confiar que a scp
+      # preserva o bit executável do git na cópia -- mais barato reafirmar
+      # do que descobrir que o cron falhou silenciosamente por permissão.
       - name: Pull das imagens novas e restart dos containers
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -108,5 +116,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/titan-site
+            chmod +x scripts/deploy/backup-postgres-to-s3.sh
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
