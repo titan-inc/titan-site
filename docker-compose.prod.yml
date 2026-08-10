@@ -38,8 +38,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - '3001:3001'
 
   web:
     image: ghcr.io/leonardodasilveira/titan-web:${IMAGE_TAG:-latest}
@@ -48,9 +46,26 @@ services:
     env_file: .env
     depends_on:
       - api
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: titan-caddy
+    restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+      - api
 
 volumes:
   titan-pgdata:
     name: titan-pgdata
+  caddy-data:
+    name: titan-caddy-data
+  caddy-config:
+    name: titan-caddy-config
