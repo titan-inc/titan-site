@@ -70,12 +70,67 @@ genérico que o `aws` CLI reconhece sozinho — essa credencial só tem
 permissão neste bucket, e uma futura chave AWS de outro escopo não deve
 colidir com o nome desta.
 
-## Rodando migration depois de um deploy
+## Comandos úteis
 
-O container da api **não** roda migration no boot (ver comentário no
-`apps/api/Dockerfile`). Depois de subir uma versão nova:
+Todos assumem `cd /opt/titan-site` antes (onde vive o `docker-compose.prod.yml`),
+via SSH:
 
 ```bash
-cd /opt/titan-site
+ssh -i ~/.ssh/titan-site-<seu-nome> ubuntu@<STATIC_IP>
+```
+
+**Status dos containers:**
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+```
+
+**Logs ao vivo** (`-f` de "follow"):
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f api
+docker compose -f docker-compose.prod.yml logs -f web
+docker compose -f docker-compose.prod.yml logs -f api web   # os dois juntos
+docker compose -f docker-compose.prod.yml logs -f --tail=100 api   # com histórico recente
+```
+
+**Migration depois de um deploy** — o container da api **não** roda migration
+no boot (ver comentário no `apps/api/Dockerfile`), é sempre passo manual:
+
+```bash
 docker compose -f docker-compose.prod.yml exec api ./node_modules/.bin/prisma migrate deploy
+```
+
+**Redeploy manual** (o mesmo que o job de CI faz sozinho — útil se quiser
+forçar sem esperar um push, ou se o deploy automático falhar no meio):
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+**Recriar um serviço específico do zero** (container preso, ou precisa
+reler uma env var que mudou — `up -d` sozinho não recria container que já
+está rodando, mesmo com `.env` diferente):
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate api
+```
+
+**Reset completo do banco (DESTRUTIVO — apaga todos os dados)**, só depois
+de confirmar que não tem nada de valor gravado. Necessário se o
+`POSTGRES_PASSWORD` mudar depois que o volume já existe (ver seção acima):
+
+```bash
+docker compose -f docker-compose.prod.yml down -v
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml exec api ./node_modules/.bin/prisma migrate deploy
+```
+
+**Testar de fora** se o site e a api estão respondendo (rodar da sua
+máquina, não da instância):
+
+```bash
+curl -sSI https://titaninc.com.br/
+curl -sS https://titaninc.com.br/api/health
 ```
