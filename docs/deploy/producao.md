@@ -26,7 +26,7 @@ Mesma lista do `.env.example`, com estas diferenças:
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_URL`          | **Não setar.** Fica sem efeito — o `docker-compose.prod.yml` sintetiza a URL a partir de `POSTGRES_USER/PASSWORD/DB`.                                                                                 |
 | `POSTGRES_USER`         | Novo em produção (o compose de dev hardcoda `titan`). Só existe aqui.                                                                                                                                 |
-| `POSTGRES_PASSWORD`     | Novo em produção. Senha forte, gerada — não reusar a de dev (`titan`).                                                                                                                                |
+| `POSTGRES_PASSWORD`     | Novo em produção. Senha forte, gerada — não reusar a de dev (`titan`). **Gerar com `openssl rand -hex 24`, nunca `-base64`** (ver seção abaixo).                                                      |
 | `POSTGRES_DB`           | Novo em produção. Pode ser `titan` mesmo, não é segredo.                                                                                                                                              |
 | `BLIZZARD_REDIRECT_URI` | Domínio de produção + path `/api` (ver Caddyfile): `https://titaninc.com.br/api/auth/battlenet/callback`. Precisa estar cadastrado assim, byte a byte, no portal da Blizzard antes do primeiro login. |
 | `WEB_URL`               | `https://titaninc.com.br`                                                                                                                                                                             |
@@ -36,6 +36,26 @@ Mesma lista do `.env.example`, com estas diferenças:
 Todo o resto (`BLIZZARD_CLIENT_ID/SECRET`, `GUILD_*`, `DISCORD_APPLY_WEBHOOK_URL`,
 `WOW_AUDIT_KEY`, `WARCRAFTLOGS_*`, `API_PORT`) segue o mesmo significado do
 `.env.example` — só troca o valor real pelo de produção.
+
+## Gerando POSTGRES_PASSWORD (e qualquer segredo que vai dentro de uma URL)
+
+**Sempre `openssl rand -hex N`, nunca `-base64`.** O `docker-compose.prod.yml`
+monta o `DATABASE_URL` colando a senha direto na string
+(`postgresql://user:senha@postgres:5432/db`), sem nenhum encode. Base64 pode
+gerar `/`, `+` e `=` — todos caracteres especiais de URL — e se a senha cair
+com uma `/` no meio, ela quebra o parser da connection string (`ERR_INVALID_URL`
+do Prisma, sintoma real já visto em produção em 10/08/2026). Hex usa só
+`0-9a-f`, sempre seguro:
+
+```bash
+openssl rand -hex 24
+```
+
+Se a senha do Postgres precisar trocar depois de o volume já existir, trocar
+só o `.env` não basta — o `initdb` já gravou a senha antiga no volume.
+Precisa recriar o volume junto (`docker compose down -v`, depois `up -d` de
+novo), o que **apaga os dados**. Fora de um cenário de "banco ainda vazio",
+trocar a senha do Postgres em produção é operação destrutiva.
 
 ## Backup (S3)
 
