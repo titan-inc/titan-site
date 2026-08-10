@@ -91,10 +91,12 @@ os modelos `User` e `Session`, e o Nest conectando via driver adapter.
 
 ### Sonda de roster
 
-Testa a lógica de membership **sem credencial da Blizzard e sem o login implementado**:
+Testa a lógica de membership **sem credencial da Blizzard e sem o login implementado**,
+contra a api já rodando (`pnpm dev`):
 
 ```bash
-pnpm --filter api probe:roster "<Nome da Guilda>" <realm> [personagem...]
+curl "http://localhost:3001/internal/ops/roster-probe?guild=<Nome da Guilda>&realm=<realm>&characters=<personagem1,personagem2>" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
 ```
 
 Mostra o roster, a distribuição de rank (que vira role no site) e se a interseção por
@@ -102,3 +104,8 @@ slug encontra os personagens informados. Usa Raider.IO, que é público.
 
 O Raider.IO é crawleado, então pode estar atrasado em relação ao jogo — a fonte da
 verdade em produção é a Game Data API da Blizzard (TIT-19). Isto é ferramenta de dev.
+
+Essa e as outras rotas de operação (`/internal/ops/*` — snapshot, sync de presença,
+geração e carga de catálogo, checagem de credencial OAuth) rodam contra a app já
+rodando, nunca sobem uma instância própria — ver `docs/ops.md` pra lista completa e
+por quê (TIT-109).

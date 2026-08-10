@@ -1,4 +1,12 @@
 titaninc.com.br, www.titaninc.com.br {
+	# Nunca alcançável pelo domínio público, mesmo com o token certo (defesa
+	# em profundidade — ver OpsTokenGuard, TIT-109). Só de dentro do
+	# container ou por túnel SSH na porta loopback do docker-compose.
+	# Precisa vir ANTES do handle_path /api/* abaixo, mais genérico.
+	handle /api/internal/ops/* {
+		respond 404
+	}
+
 	handle_path /api/* {
 		reverse_proxy api:3001
 	}
