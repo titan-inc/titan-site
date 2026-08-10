@@ -197,6 +197,10 @@ model GameSeason {
 
   snapshots CharacterSnapshot[]
 
+  /// Raids cadastradas no catálogo desta season. A ligação é OPCIONAL do outro
+  /// lado — ver o comentário em `LootCatalogRaid.seasonId`.
+  lootCatalogRaids LootCatalogRaid[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 }
@@ -378,4 +382,302 @@ model CharacterSnapshot {
   @@unique([period, realmSlug, nameKey])
   @@index([seasonId])
   @@index([realmSlug, nameKey])
+}
+
+/// Dificuldade de raid, como contexto do catálogo.
+///
+/// NÃO é derivada do `itemString`. Isso foi testado nos 445 registros da season
+/// passada: dos 112 itens de raid, 75 aparecem em mais de uma dificuldade, e só
+/// UM bonus ID (`13786`, Flexible Raiding) separa limpo. O mesmo item 249276 em
+/// Heroic e Normal compartilha os bonus `13333` e `12786` — o conjunto varia por
+/// socket, terciário, track de upgrade e caminho de aquisição, não por
+/// dificuldade.
+///
+/// E não precisa ser derivada: quem cadastra está lendo a loot table Mítica no
+/// Wowhead e já sabe que é mítica.
+///
+/// LFR ficou de fora porque a guilda não roda. Acrescentar valor a enum depois é
+/// migration barata; o inverso, não.
+enum RaidDifficulty {
+  normal
+  heroic
+  mythic
+}
+
+/// Stat primário de uma peça. Ver `primaryStatSchema` no shared.
+enum PrimaryStat {
+  strength
+  agility
+  intellect
+}
+
+/// Specs do jogo, com o slug prefixado pela classe.
+///
+/// Duplica `SPECS` do `packages/shared` de propósito, no mesmo padrão de
+/// `RaidDifficulty`: o banco valida o que a curadoria grava, e o typecheck pega
+/// a divergência na função de tradução do service. Errar de digitação aqui é
+/// exatamente o tipo de coisa que estraga dado curado à mão.
+///
+/// Prefixo obrigatório porque o nome sozinho colide: `restoration` é de druida e
+/// de xamã, `holy` de paladino e sacerdote, `frost` de mago e death knight,
+/// `protection` de paladino e guerreiro.
+enum WowSpec {
+  death_knight_blood
+  death_knight_frost
+  death_knight_unholy
+  demon_hunter_havoc
+  demon_hunter_vengeance
+  druid_balance
+  druid_feral
+  druid_guardian
+  druid_restoration
+  evoker_augmentation
+  evoker_devastation
+  evoker_preservation
+  hunter_beast_mastery
+  hunter_marksmanship
+  hunter_survival
+  mage_arcane
+  mage_fire
+  mage_frost
+  monk_brewmaster
+  monk_mistweaver
+  monk_windwalker
+  paladin_holy
+  paladin_protection
+  paladin_retribution
+  priest_discipline
+  priest_holy
+  priest_shadow
+  rogue_assassination
+  rogue_outlaw
+  rogue_subtlety
+  shaman_elemental
+  shaman_enhancement
+  shaman_restoration
+  warlock_affliction
+  warlock_demonology
+  warlock_destruction
+  warrior_arms
+  warrior_fury
+  warrior_protection
+}
+
+/// Dicionário de itens: "o que é o item 249276".
+///
+/// NÃO é a loot table da raid — isso é `EncounterDrop`. A distinção importa: dos
+/// 445 registros do histórico, 17 são de Mythic Keystone e 86 são bonus roll,
+/// itens que nunca vão estar em `EncounterDrop`. Se o dicionário só cobrisse
+/// item de raid, o explorador exibiria M+ com o nome localizado que ele existe
+/// para eliminar.
+///
+/// Por isso a tabela é COMPARTILHADA: o cadastro manual do catálogo escreve
+/// aqui, e o import do histórico também.
+///
+/// Cresce para sempre e nunca apaga: linha de loot e sessão guardam `itemId`, e
+/// apagar um item apagaria o significado de histórico já gravado.
+model WowItem {
+  /// Id da Blizzard, chave natural. Sem surrogate: o import já chega com o
+  /// `itemID` na mão, e PK natural transforma o import em upsert direto.
+  /// Mesmo precedente do `GameSeason.id`.
+  itemId Int @id
+
+  /// Nome canônico em **en_US**, escolhido por casar com Wowhead, WarcraftLogs
+  /// e Raider.IO — as fontes que a gente confere contra.
+  ///
+  /// A TELA SEMPRE LÊ DAQUI, nunca o `itemName` da linha de loot: aquele vem
+  /// localizado pelo cliente de quem era loot master na noite, então o mesmo
+  /// item aparece em dois idiomas na mesma lista.
+  ///
+  /// Nulo até o enriquecimento rodar. É nulável de propósito: item de patch não
+  /// lançado responde 404 na API live, e o cadastro precisa funcionar antes
+  /// disso — a season começa em 18/08/2026 e o patch só entra em 11/08.
+  name String?
+
+  /// Slug do ícone (`inv_helm_plate_raidwarrior_a_01`), não URL.
+  /// URL de CDN muda de host e formato; o slug é estável há mais de uma década
+  /// e a URL se compõe na hora de exibir.
+  icon String?
+
+  /// `INVTYPE_*` da Blizzard — o slot. Constante, e **não** localizado.
+  ///
+  /// Deliberadamente não é o `subType` do export do RCLootCouncil, que vem
+  /// traduzido pelo cliente e reintroduziria o problema do nome localizado.
+  equipLoc String?
+
+  /// Tipo do item (subclasse: `Plate`, `Trinket`, `One-Handed Sword`).
+  itemSubclass String?
+
+  /// Quando a API da Blizzard preencheu os campos acima. Nulo = nunca
+  /// enriquecido, e é isso que o job procura para tentar de novo.
+  enrichedAt DateTime?
+
+  /// Stats primários da peça, cadastrados à mão.
+  ///
+  /// Conjunto e não valor único, porque os quatro casos são reais: stat fixo
+  /// (`[strength]`), grupo restrito (`[strength, agility]`, comum em trinket),
+  /// totalmente adaptativa, e sem primário nenhum — trinket que é só efeito.
+  primaryStats PrimaryStat[]
+
+  /// Quando um humano revisou a lista de specs. Nulo = ninguém revisou.
+  ///
+  /// Existe para separar duas coisas que a lista vazia confunde: "ainda não
+  /// sabemos" e "nenhuma spec usa". Mesmo princípio da Regra 7 — lacuna nunca é
+  /// zero. Sem isto, item recém-cadastrado apareceria como inútil para todos.
+  specsCuratedAt DateTime?
+
+  usableBySpecs WowItemSpec[]
+
+  drops EncounterDrop[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// O job de enriquecimento varre por aqui.
+  @@index([enrichedAt])
+}
+
+/// Qual spec pode usar a peça.
+///
+/// ESTAS LINHAS SUBSTITUEM A DERIVAÇÃO, NUNCA SOMAM A ELA.
+///
+/// Derivar por tipo de armadura, stat primário e slot dá uma boa proposta, mas
+/// erra num caso que não é raro: o EFEITO do item restringe além do que o stat
+/// diz. Trinket com intelecto e proc de cura serve healer e não serve mago;
+/// trinket com força e redução de dano serve tank e não serve Fury.
+///
+/// Como as restrições reais são de REMOÇÃO, um desenho "derivado + acréscimos
+/// manuais" não conseguiria expressar nenhum desses casos — só dá para
+/// acrescentar spec, nunca tirar. Por isso o que fica gravado é a resposta final
+/// do humano, e a derivação vive na tela de cadastro como sugestão.
+///
+/// É a Regra 7 ao pé da letra: derivar automático, humano corrige, guardar a
+/// correção. Ver TIT-77.
+model WowItemSpec {
+  itemId Int
+  item   WowItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade)
+
+  spec WowSpec
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([itemId, spec])
+  @@index([spec])
+}
+
+/// Uma raid do catálogo.
+model LootCatalogRaid {
+  id String @id @default(cuid())
+
+  /// Identidade estável para referenciar de fora sem depender do cuid.
+  slug String @unique
+
+  /// "The Voidspire".
+  name String
+
+  /// `instanceMapID` do cliente, como o addon emite no cabeçalho da colagem.
+  ///
+  /// É CONFERÊNCIA, não chave de casamento: achar o boss pelo
+  /// `dungeonEncounterId` já entrega a raid pela FK, então a raid vem de graça.
+  /// Guardar isto permite detectar colagem cujo `instance` não corresponde à raid
+  /// do boss — sinal de dado estranho, que é melhor notar do que ignorar.
+  ///
+  /// CUIDADO: não é o mesmo espaço de id da zona do Warcraft Logs. Aberrus é
+  /// `2569` aqui e zona `33` no WCL. Só o id de ENCOUNTER coincide entre as duas
+  /// fontes; comparar estes números com os do WCL erra em silêncio.
+  instanceMapId Int?
+
+  /// Season da Blizzard, **opcional de propósito**.
+  ///
+  /// `GameSeason` é populada pelo job de snapshot a partir de
+  /// `getCurrentSeason()`, então a linha da season nova só existe depois que ela
+  /// COMEÇA. Como o catálogo precisa estar pronto ANTES disso — é o motivo de
+  /// ele ser a primeira coisa a construir — uma FK obrigatória impediria
+  /// cadastrar justamente na janela em que o cadastro serve para algo.
+  ///
+  /// Chutar o id também não é opção: o índice da Blizzard devolveu 1..15 e 17,
+  /// e a season 16 não existe.
+  ///
+  /// Fica nulo no cadastro e é preenchido quando a season aparece.
+  seasonId Int?
+  season   GameSeason? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+
+  encounters LootCatalogEncounter[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([seasonId])
+}
+
+/// Um boss da raid.
+model LootCatalogEncounter {
+  id String @id @default(cuid())
+
+  raidId String
+  raid   LootCatalogRaid @relation(fields: [raidId], references: [id], onDelete: Cascade)
+
+  name String
+
+  /// Ordem do boss na raid, para a tela listar na sequência em que se mata.
+  position Int
+
+  /// `dungeonEncounterID` do jogo. É a chave que casa três fontes.
+  ///
+  /// Verificado em 09/08/2026 contra a API do Warcraft Logs, com sete ids que o
+  /// addon emitiu em raid real, de duas expansões: 2688 Kazzara, 2687 The
+  /// Amalgamation Chamber, 2693 The Forgotten Experiments, 2032 Goroth, 2048
+  /// Demonic Inquisition, 2036 Harjatan, 2037 Mistress Sassz'ine. Sete de sete
+  /// com o nome batendo.
+  ///
+  /// Ou seja: o `ENCOUNTER_END` do jogo e o WCL usam o MESMO espaço de id. Uma
+  /// coluna resolve três coisas — casar a colagem do addon com o boss, casar a
+  /// progressão que o `warcraftlogs.service.ts` já busca, e dar identidade
+  /// estável ao boss em vez de depender do nome, que é localizado.
+  ///
+  /// NÃO é o `journalEncounterID` do Encounter Journal, que é outro espaço de id.
+  /// Cadastrar o número de lá faria a colagem não casar com boss nenhum, sem erro.
+  ///
+  /// Único de propósito: dois bosses com o mesmo id seria ambiguidade na hora de
+  /// casar a colagem, e é melhor o banco recusar do que a sessão escolher um dos
+  /// dois. Nulo enquanto o cadastro não tiver o número.
+  dungeonEncounterId Int? @unique
+
+  drops EncounterDrop[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Sem `@@index` para o `dungeonEncounterId`: o `@unique` dele já cria índice
+  /// no Postgres, e um segundo seria peso morto na escrita.
+  @@unique([raidId, position])
+  @@index([raidId])
+}
+
+/// A loot table: este boss solta este item nesta dificuldade.
+///
+/// A dificuldade é atributo DESTA linha, e não da raid nem do boss, porque a
+/// loot table muda entre dificuldades. Os "28 pares boss+dificuldade" da season
+/// passada saem como `DISTINCT (encounterId, difficulty)` — o par não vira
+/// tabela porque não tem atributo próprio.
+///
+/// MODIFICADORES NÃO ENTRAM AQUI. Socket, terciário e track variam por drop, não
+/// por entrada de catálogo; enumerar combinações seria explosão combinatória sem
+/// ganho. Eles vivem no `itemString` cru da linha de loot.
+model EncounterDrop {
+  encounterId String
+  encounter   LootCatalogEncounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  difficulty RaidDifficulty
+
+  itemId Int
+  item   WowItem @relation(fields: [itemId], references: [itemId], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// Sem id próprio: a trinca já é a identidade, e nada referencia um drop.
+  /// A sessão ao vivo e a linha de loot guardam `itemId`, não esta linha — que é
+  /// o que faz editar o catálogo nunca corromper histórico já gravado.
+  @@id([encounterId, difficulty, itemId])
+  @@index([itemId])
 }
