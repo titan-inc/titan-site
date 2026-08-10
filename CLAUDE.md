@@ -58,18 +58,20 @@ Se mexer no shared e o app não ver a mudança, o watch morreu: `pnpm --filter @
 
 ## Regra 3 — Estrutura de módulo no Nest
 
-Um módulo por domínio (`applications`, `guild`, `auth`), cada um com:
+Um módulo por domínio (`officers`, `attendance`, `auth`), cada um com:
 
 ```
-src/applications/
-├─ applications.module.ts
-├─ applications.controller.ts    ← só HTTP: rota, status, serialização
-├─ applications.service.ts       ← regra de negócio
-└─ applications.repository.ts    ← único lugar que toca o Prisma
+src/officers/
+├─ officers.module.ts
+├─ officers.controller.ts    ← só HTTP: rota, status, serialização
+├─ officers.service.ts       ← regra de negócio
+└─ officers.repository.ts    ← único lugar que toca o Prisma
 ```
 
 - Regra de negócio no **service**, nunca no controller.
 - `PrismaClient` só no **repository**. Nenhum service importa Prisma direto.
+
+**Domínio que não persiste não tem repository.** A candidatura é o caso: ela entrega no Discord e não grava nada (ver a Regra 4), então o módulo tem controller e service e mais nada. A ausência é a garantia arquitetural — não "completar o padrão" criando um repository vazio.
 
 ## Regra 4 — Acesso por rank, agregado por pessoa
 
@@ -120,15 +122,25 @@ O job loga a distribuição por rank a cada rodada, mas isso é **registro, não
 
 Por isso o corte é configuração, nunca constante no código.
 
-### A exceção: painel de candidaturas
+### Candidatura não é dado do site — é mensagem no Discord
 
-Candidatura contém Discord tag, Battle.tag e texto que a pessoa escreveu esperando que só a liderança lesse. Se qualquer um dos ~590 membros do roster puder abrir isso, é vazamento.
+**Decisão de 09/08/2026. Alvo, ainda não implementado — ver `docs/specs/discord-apply-flow.md`.**
 
-Então o painel é gated por ser **oficial**, uma marcação **manual**, dada à mão a poucas pessoas. Deliberadamente **não** derivada do rank: errar o mapeamento para cima expõe dado pessoal de centenas de candidatos.
+A candidatura **não é gravada em lugar nenhum**. O formulário público posta no Nest, o Nest valida, sanitiza e entrega **uma mensagem num canal privado do Discord**. Não existe tabela, não existe status, não existe painel de review.
 
-Isso continua valendo **mesmo agora que o rank decide o acesso à área interna**. São dois gates independentes de propósito: passar do corte te dá a área interna, não a caixa de entrada do recrutamento. Um raider dentro do corte não vê candidatura.
+O cuidado que motivava o painel continua existindo, só mudou de lugar. Candidatura contém Discord tag, Battle.tag e texto que a pessoa escreveu esperando que só a liderança lesse. Antes o vazamento seria dar a tela ao membro errado; agora é **mandar para o canal errado**. Ou seja: **a permissão do canal do Discord é o controle de acesso**, e configurá-la errado é a nova versão do mesmo erro. O canal é privado, restrito à liderança, e a URL do webhook é segredo de backend.
 
-Use `canReviewApplications()`. Ela exige membership **e** ser oficial — sair da guilda derruba o acesso mesmo que ninguém lembre de revogar.
+#### Isto reverteu uma decisão anterior
+
+Até 09/08/2026 a arquitetura prevista era `POST /applications` gravando no Postgres, com status (`pending`/`reviewing`/`accepted`/`rejected`) e um painel interno gated por `canReviewApplications()`. **Nada disso chegou a ser implementado** — não houve model, migration nem endpoint; existia como plano aqui e no Linear.
+
+A troca aceita um custo real, e é melhor tê-lo escrito: **sem persistência não há garantia de entrega**. Se o Discord estiver fora no momento do envio, aquela candidatura se perde — não há registro para reprocessar. Isso contraria a letra da Regra 7 ("o que é durável, guarda") para este dado específico, e foi aceito conscientemente: a liderança já recruta pelo Discord, e um segundo inbox que ninguém abre não vale o custo. Por isso o caminho de falha tem que ser **honesto** — nunca responder sucesso para uma mensagem que não chegou.
+
+Registrado aqui em vez de apagado, para ninguém refazer o raciocínio antigo achando que é novo. Consequência prática: `canReviewApplications()` saiu do shared, e o formulário de apply não tem qualquer relação com o banco.
+
+#### O que sobrevive intacto
+
+Ser **oficial** continua sendo marcação **manual**, deliberadamente **não** derivada do rank, e continua gateando o que a Regra 7 protege (histórico de outra pessoa) e a própria lista de oficiais. Os dois gates seguem independentes: passar do corte te dá a área interna, não as decisões de liderança.
 
 ### Oficial é concessão por personagem, não coluna na conta
 
@@ -147,14 +159,15 @@ A agregação é a mesma do resto da Regra 4: **qualquer** personagem da conta q
 
 #### Três permissões, uma precondição
 
-| Função                    | Decide                                             |
-| ------------------------- | -------------------------------------------------- |
-| `isActingOfficer()`       | precondição comum — é o que o `OfficerGuard` checa |
-| `canReviewApplications()` | painel de candidaturas                             |
-| `canSeeOthersHistory()`   | histórico de outra pessoa (Regra 7)                |
-| `canManageOfficers()`     | conceder e revogar oficial                         |
+| Função                  | Decide                                             |
+| ----------------------- | -------------------------------------------------- |
+| `isActingOfficer()`     | precondição comum — é o que o `OfficerGuard` checa |
+| `canSeeOthersHistory()` | histórico de outra pessoa (Regra 7)                |
+| `canManageOfficers()`   | conceder e revogar oficial                         |
 
-As três últimas têm o mesmo corpo hoje e continuam separadas de propósito: são decisões diferentes sobre dados diferentes, e uma pode mudar sem as outras. Delegar à precondição não é colapsar — mudar uma permissão é substituir o corpo dela, sem tocar nas demais.
+As duas últimas têm o mesmo corpo hoje e continuam separadas de propósito: são decisões diferentes sobre dados diferentes, e uma pode mudar sem a outra. Delegar à precondição não é colapsar — mudar uma permissão é substituir o corpo dela, sem tocar na outra.
+
+Havia uma quarta, `canReviewApplications()`, para o painel de candidaturas. **Ela foi removida** junto com a promessa de persistência: sem painel, era uma permissão sem objeto — e permissão órfã convidaria alguém a construir o objeto. Ver `docs/specs/discord-apply-flow.md`.
 
 Guard genérico checa a **precondição**, nunca uma das específicas. Um guard que checasse `canSeeOthersHistory()` para proteger a lista de oficiais passaria a mentir no dia em que as duas divergissem, e o jeito de descobrir seria pelo acesso indevido.
 
@@ -194,7 +207,9 @@ Blizzard, Raider.IO e WarcraftLogs são chamadas **só pelo Nest**, nunca pelo b
 
 ### Região: US, fixa
 
-A guilda é **exclusivamente região US**. A região vem de `BLIZZARD_REGION` e de nenhum outro lugar — nenhum formulário do site pergunta região, e `createApplicationSchema` usa `characterInputSchema` (sem região) justamente por isso.
+A guilda é **exclusivamente região US**. A região vem de `BLIZZARD_REGION` e de nenhum outro lugar — nenhum formulário do site pergunta região. Quem pede personagem digitado usa `characterInputSchema` (sem região) justamente por isso; é o caso de `createOfficerGrantSchema`.
+
+(O `createApplicationSchema` **não** usa mais esse schema: o commit `38c1dd5`, de 06/08/2026, simplificou a candidatura para campos de texto livre. Continua sem região, que é o que esta regra exige.)
 
 Não existe "bloquear outras regiões" como código separado: a verificação de membership é a interseção com o roster da guilda, que só existe em US. Conta de outra região não tem personagem nesse roster e já não entra.
 
@@ -270,7 +285,7 @@ Então o sistema grava o fato observável ("Não Raidou") e oferece ao raid lead
 
 ### Visibilidade do histórico
 
-Generaliza a exceção da Regra 4:
+Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico:
 
 - **Oficial** vê o detalhe de qualquer pessoa.
 - **Membro** vê o próprio histórico, inteiro.
@@ -332,7 +347,9 @@ Localmente a ordem errada passa, porque o `dist` sobrou de um build anterior. S�
 
 Nada de credencial no repositório. Tudo em `.env` local, documentado em `.env.example` com valores vazios.
 
-Nunca commitar: `DATABASE_URL` de produção, `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`, `SESSION_SECRET`, `DISCORD_WEBHOOK_URL`.
+Nunca commitar: `DATABASE_URL` de produção, `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`, `SESSION_SECRET`, `DISCORD_APPLY_WEBHOOK_URL`.
+
+A URL do webhook do Discord carrega o próprio token no caminho: quem tem a URL posta no canal. Ela é segredo **de backend** — nunca com prefixo `NEXT_PUBLIC_`, que o Next embute no bundle do browser. Se vazar, rotacionar é **apagar o webhook nas configurações do canal e criar outro**; reescrever o histórico do git não invalida a URL antiga.
 
 Se um segredo escapar: **tratar como comprometido e rotacionar na origem** (gerar novo secret no portal da Blizzard, novo webhook no Discord). Remover do histórico é limpeza, não conserto — o valor antigo tem que morrer.
 

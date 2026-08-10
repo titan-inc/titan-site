@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { ApplicationsModule } from './applications/applications.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
@@ -20,6 +22,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     // Sem forRoot() os @Cron não são registrados e o job simplesmente nunca roda,
     // sem erro nenhum.
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([{ ttl: 60 * 60 * 1_000, limit: 5 }]),
     PrismaModule,
     BlizzardModule,
     AuthModule,
@@ -32,6 +35,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     OfficersModule,
     LootCatalogModule,
     HealthModule,
+    ApplicationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

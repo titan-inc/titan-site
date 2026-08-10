@@ -47,16 +47,16 @@ export const sessionUserSchema = z.object({
   membership: membershipSchema,
 
   /**
-   * Acesso a dado pessoal de candidatos (painel de recrutamento).
+   * Concessão manual de oficial para decisões de liderança.
    *
    * Flag **manual**, atribuída à mão, deliberadamente não derivada do rank do
-   * jogo. Motivo: candidatura contém Discord tag, Battle.tag e texto que a
-   * pessoa escreveu esperando que só a liderança lesse. Errar o mapeamento de
-   * rank para cima vazaria isso para centenas de membros.
+   * jogo. Entre outras decisões, oficiais acessam histórico pessoal e gerenciam
+   * a própria lista de concessões; errar o mapeamento de rank para cima
+   * liberaria isso para centenas de membros.
    *
    * Continua valendo mesmo agora que o rank decide a área interna: são dois
-   * gates independentes. Passar do corte dá a área interna, não a caixa de
-   * entrada do recrutamento.
+   * gates independentes. Passar do corte dá a área interna, não decisões de
+   * liderança.
    */
   isOfficer: z.boolean(),
 
@@ -154,17 +154,6 @@ export function isActingOfficer(user: OfficerCheck): boolean {
 }
 
 /**
- * Acesso a dado pessoal de candidatos. Nunca inferido de rank.
- *
- * Exige acesso à área interna **e** a flag manual. Perder o acesso — por sair
- * da guilda ou por cair abaixo do corte — derruba o painel junto, mesmo que
- * ninguém lembre de desligar a flag.
- */
-export function canReviewApplications(user: OfficerCheck): boolean {
-  return isActingOfficer(user);
-}
-
-/**
  * Conceder e revogar o próprio status de oficial.
  *
  * A mais perigosa das três: quem pode isto pode se dar todas as outras. Por
@@ -184,13 +173,12 @@ export function canManageOfficers(user: OfficerCheck): boolean {
  * entrar na guilda, e ranking de falta entre pares gera treta sem ajudar o raid
  * leader a decidir nada — ele já tem o detalhe.
  *
- * Dá no mesmo que `canReviewApplications` hoje e mesmo assim é uma função
+ * Dá no mesmo que `canManageOfficers` hoje e mesmo assim é uma função
  * separada, de propósito: são decisões diferentes sobre dados diferentes, e
- * uma pode mudar sem a outra. Colapsar as duas hoje é criar o acoplamento que
- * amanhã libera a caixa de recrutamento junto com o histórico de raid.
+ * uma pode mudar sem a outra.
  *
  * Delegar a `isActingOfficer` não é o mesmo que colapsar: mudar esta permissão
- * é substituir o corpo desta função, sem tocar nas outras duas.
+ * é substituir o corpo desta função, sem tocar na outra.
  */
 export function canSeeOthersHistory(user: OfficerCheck): boolean {
   return isActingOfficer(user);

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   canAccessInternalArea,
   canApply,
-  canReviewApplications,
   canSeeOthersHistory,
   type SessionUser,
 } from './membership.js';
@@ -69,29 +68,6 @@ describe('canApply', () => {
     // O ponto do terceiro estado: um social que está na guilda há dois anos
     // não pode receber a tela de "candidate-se para entrar na guilda".
     expect(canApply(user({ membership: 'member', guildRank: 7 }))).toBe(false);
-  });
-});
-
-describe('canReviewApplications', () => {
-  it('libera oficial com acesso', () => {
-    expect(canReviewApplications(user({ isOfficer: true }))).toBe(true);
-  });
-
-  it('bloqueia membro comum', () => {
-    // O painel tem Discord tag e texto pessoal de candidatos.
-    expect(canReviewApplications(user({ isOfficer: false }))).toBe(false);
-  });
-
-  it('bloqueia quem perdeu o acesso, mesmo com a flag ligada', () => {
-    // Sair da guilda ou cair abaixo do corte derruba o painel junto, mesmo que
-    // ninguém lembre de desligar a flag manualmente.
-    expect(canReviewApplications(user({ hasInternalAccess: false, isOfficer: true }))).toBe(false);
-  });
-
-  it('rank dentro do corte não dá o painel sozinho — a flag é que decide', () => {
-    // Os dois gates são independentes: passar do corte dá a área interna, não
-    // a caixa de entrada do recrutamento.
-    expect(canReviewApplications(user({ guildRank: 0, isOfficer: false }))).toBe(false);
   });
 });
 
