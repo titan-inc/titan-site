@@ -216,6 +216,19 @@ describe('LootCatalogService', () => {
       expect(repo.replaceDrops).not.toHaveBeenCalled();
     });
 
+    it('aceita o id correto quando as fontes pontuam o nome diferente', async () => {
+      // Caso real de 09/08/2026: o journal escreve "Chimaerus the Undreamt God" e
+      // o WCL "Chimaerus, the Undreamt God". A vírgula reprovava um id CORRETO,
+      // vindo do cliente do WoW — falso negativo que travava a carga inteira.
+      const comVirgula = arquivo();
+      comVirgula.bosses[0].name = 'Chimaerus the Undreamt God';
+      wcl.getRaidCatalog.mockResolvedValue(catalogoWcl('Chimaerus, the Undreamt God'));
+
+      await service.carregarArquivo(comVirgula);
+
+      expect(repo.upsertRaid).toHaveBeenCalled();
+    });
+
     it('para quando o WCL não conhece o id', async () => {
       wcl.getRaidCatalog.mockResolvedValue({
         encounters: new Map(),

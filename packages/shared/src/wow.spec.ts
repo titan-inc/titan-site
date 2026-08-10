@@ -6,6 +6,7 @@ import {
   SPEC_CLASS,
   SPECS,
   toCharacterKey,
+  toEncounterMatchKey,
   toRealmMatchKey,
   toSlug,
   wowSpecSchema,
@@ -153,6 +154,34 @@ describe('toCharacterKey', () => {
 
   it('ignora espaço em volta', () => {
     expect(toCharacterKey('  Joci  ')).toBe('joci');
+  });
+});
+
+describe('toEncounterMatchKey', () => {
+  it('casa o boss entre o Encounter Journal e o Warcraft Logs', () => {
+    // O caso real: o journal escreve sem vírgula e o WCL com. Em 09/08/2026 essa
+    // vírgula reprovou a carga de The Dreamrift com um id CORRETO, vindo do
+    // cliente do WoW.
+    expect(toEncounterMatchKey('Chimaerus the Undreamt God')).toBe(
+      toEncounterMatchKey('Chimaerus, the Undreamt God'),
+    );
+  });
+
+  it('não afrouxa a verificação: boss diferente continua diferente', () => {
+    // É o ponto todo da conferência — id apontando para outro boss tem que
+    // reprovar. Foi assim que um id errado de Aberrus foi pego.
+    expect(toEncounterMatchKey('Kazzara, the Hellforged')).not.toBe(
+      toEncounterMatchKey('The Forgotten Experiments'),
+    );
+  });
+
+  it('colapsa hífen e apóstrofo, que é onde as fontes mais divergem', () => {
+    // Nomes reais do tier corrente. Não invento divergência que não observei —
+    // estes dois caracteres são os que aparecem nos bosses de verdade.
+    expect(toEncounterMatchKey('Fallen-King Salhadaar')).toBe(
+      toEncounterMatchKey('Fallen King Salhadaar'),
+    );
+    expect(toEncounterMatchKey("Artificer Xy'mox")).toBe(toEncounterMatchKey('Artificer Xymox'));
   });
 });
 

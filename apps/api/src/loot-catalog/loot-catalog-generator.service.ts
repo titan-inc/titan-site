@@ -109,6 +109,9 @@ export class LootCatalogGeneratorService {
       version: 1,
       slug: slug ?? toSlugSimples(instancia.name),
       name: instancia.name,
+      // Procedência: é por ele que se regera o arquivo depois de um hotfix, sem
+      // caçar o número entre as 210 instâncias do índice.
+      journalInstanceId,
       // Vinha vazio desde o TIT-46: o campo estava modelado nos dois schemas e
       // ninguém preenchia, embora a Blizzard devolva de graça.
       ...((dump?.instanceMapId ?? instancia.map?.id)

@@ -274,6 +274,16 @@ describe('LootCatalogGeneratorService', () => {
     });
   });
 
+  it('registra de qual instância do journal o arquivo saiu', async () => {
+    // Procedência: sem isto, regerar depois de um hotfix exige redescobrir o
+    // número entre as 210 instâncias do índice, procurando por nome.
+    const { service } = montar({ journal: [encontro(10, 'Boss')], wcl: [encounter(3176, 'Boss')] });
+
+    const arquivo = await service.gerar(1307);
+
+    expect(arquivo.journalInstanceId).toBe(1307);
+  });
+
   it('numera os bosses na ordem do journal e sugere slug a partir do nome', async () => {
     const { service } = montar({
       journal: [encontro(10, 'Boss A'), encontro(11, 'Boss B')],
@@ -365,7 +375,7 @@ describe('LootCatalogGeneratorService', () => {
             {
               journalEncounterId: 10,
               dungeonEncounterId: 3176,
-              items: [{ itemId: 249344, filterType: 13, specs: [SPECS.WARRIOR_ARMS] }],
+              items: [{ itemId: 249344, specs: [SPECS.WARRIOR_ARMS] }],
             },
           ],
         }),

@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type {
-  CatalogFile,
-  CatalogFileBoss,
-  LootCatalogRaid,
-  RaidDifficultyLevel,
-  WowItem,
+import {
+  toEncounterMatchKey,
+  type CatalogFile,
+  type CatalogFileBoss,
+  type LootCatalogRaid,
+  type RaidDifficultyLevel,
+  type WowItem,
 } from '@titan/shared';
 import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { LootCatalogRepository, type RaidFilter } from './loot-catalog.repository';
@@ -140,6 +141,13 @@ export class LootCatalogService {
    * Como o WCL responde nome a partir do mesmo id que o jogo usa, dá para
    * transformar isso num erro detectável. Verificado com sete ids reais de duas
    * expansões, todos batendo — ver TIT-46.
+   *
+   * A comparação é por `toEncounterMatchKey()`, nunca por igualdade literal: as
+   * duas fontes pontuam o mesmo boss de formas diferentes, e em 09/08/2026 uma
+   * vírgula reprovou a carga de The Dreamrift com um id **correto**, vindo do
+   * cliente do WoW. Colapsar pontuação não afrouxa a verificação — id apontando
+   * para outro boss continua barrado, porque nomes diferentes de verdade não
+   * colidem sob normalização nenhuma.
    */
   private async conferirIdsContraWcl(arquivo: CatalogFile): Promise<void> {
     const comId = arquivo.bosses.filter((b) => b.dungeonEncounterId !== undefined);
@@ -153,7 +161,7 @@ export class LootCatalogService {
 
       if (!noWcl) {
         divergencias.push(`${boss.name}: o WCL não conhece o encounter ${boss.dungeonEncounterId}`);
-      } else if (noWcl.name !== boss.name) {
+      } else if (toEncounterMatchKey(noWcl.name) !== toEncounterMatchKey(boss.name)) {
         divergencias.push(`${boss.name}: o id ${boss.dungeonEncounterId} é "${noWcl.name}" no WCL`);
       }
     }

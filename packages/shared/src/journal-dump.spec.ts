@@ -31,9 +31,22 @@ describe('parseJournalDump', () => {
     });
     expect(resultado.bosses[0]?.items[0]).toEqual({
       itemId: 249344,
-      filterType: 13,
       specs: [SPECS.WARRIOR_ARMS, SPECS.WARRIOR_FURY, SPECS.WARRIOR_PROTECTION],
     });
+  });
+
+  it('descarta o filterType, inclusive o `-1` que o addon emitia', () => {
+    // O campo é inútil, enganoso e instável: o cliente só o devolve para item já
+    // em cache, então num laço de 100 itens ele vem ausente na maioria. Ler e
+    // descartar mantém válidos os dumps já colhidos.
+    const resultado = parseJournalDump(
+      dump(CABECALHO, 'boss\t2733\t3176', 'item\t264497\t-1\t71', 'item\t249350\t14\t72'),
+    );
+
+    expect(resultado.bosses[0]?.items).toEqual([
+      { itemId: 264497, specs: [SPECS.WARRIOR_ARMS] },
+      { itemId: 249350, specs: [SPECS.WARRIOR_FURY] },
+    ]);
   });
 
   it('traduz o specID do jogo para o nosso slug', () => {
