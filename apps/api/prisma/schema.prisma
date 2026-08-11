@@ -691,3 +691,56 @@ model EncounterDrop {
   @@id([encounterId, difficulty, itemId])
   @@index([itemId])
 }
+
+/// Opção de resposta que o jogador (ou o loot master) escolhe sobre um item.
+///
+/// **Tabela, e não enum, porque é configurável no app.** A liderança ajusta a
+/// lista sem deploy — é o que a Regra 4 quer quando diz que o processo não pode
+/// depender de um dev estar disponível.
+///
+/// O vocabulário é UM só: a sessão ao vivo escolhe daqui, e o histórico importado
+/// do RCLootCouncil é traduzido para cá. Dado velho e dado novo falam a mesma
+/// língua.
+enum LootResponseKind {
+  /// O jogador declara o quanto quer a peça.
+  player
+
+  /// Decisão do loot master sobre o destino do item, não interesse de ninguém.
+  /// `banking` é o caso: o próprio RCLootCouncil o marca com `isAwardReason`.
+  loot_master
+}
+
+model LootResponseOption {
+  id String @id @default(cuid())
+
+  /// Identidade ESTÁVEL e imutável. É por ela que o tradutor do histórico
+  /// aponta, e é o que a linha de loot antiga continua encontrando.
+  ///
+  /// Nunca renomear: renomear slug é reescrever passado. Para trocar o texto
+  /// exibido, mude `label`.
+  slug String @unique
+
+  /// Texto que aparece na tela. Editável, e por isso NUNCA usado como chave.
+  label String
+
+  kind LootResponseKind @default(player)
+
+  /// Ordem na tela.
+  ///
+  /// Deliberadamente separada do `slug`: o `responseID` do RCLootCouncil juntava
+  /// posição e identidade num número só, e reordenar os botões fez o id `2`
+  /// significar `Big` num raid e `Banking` noutro — sem erro nenhum. Mesma
+  /// armadilha do `guildRank` na Regra 4.
+  position Int
+
+  /// Opção retirada da tela **continua existindo**.
+  ///
+  /// Nunca apagar linha daqui: linha de loot antiga aponta para ela, e apagar
+  /// reescreveria histórico. Desativar some do seletor e preserva o registro.
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([active, position])
+}
