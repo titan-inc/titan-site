@@ -25,6 +25,9 @@ const SEASONS_NO_SELETOR = 6;
  */
 const TTL_MS = 15 * 60 * 1000;
 
+/** Season como o repositório devolve. */
+type SeasonRow = Awaited<ReturnType<SnapshotsRepository['listSeasons']>>[number];
+
 /** Acumulador por boss × dificuldade, antes de virar contrato. */
 interface Agregado {
   pulls: number;
@@ -70,24 +73,77 @@ export class RaidProgressService {
   ) {}
 
   /**
-   * @param seasonId season pedida; sem ela, a mais recente gravada.
+   * @param seasonId season pedida; sem ela, a mais recente **com pull**.
    * @returns null quando não há nenhuma season gravada ainda.
    */
   async getReport(seasonId?: number): Promise<RaidProgressReport | null> {
     const seasons = await this.repo.listSeasons(SEASONS_NO_SELETOR);
     if (seasons.length === 0) return null;
 
-    const escolhida = seasonId ? await this.repo.findSeason(seasonId) : (seasons[0] ?? null);
+    if (seasonId === undefined) return this.maisRecenteComPull(seasons);
+
+    const escolhida = await this.repo.findSeason(seasonId);
     if (!escolhida) throw new NotFoundException(`Season ${seasonId} não foi gravada`);
 
-    const cacheado = this.cache.get(escolhida.id);
-    if (cacheado && Date.now() - cacheado.fetchedAt < TTL_MS) return cacheado.report;
+    return this.relatorioDaSeason(escolhida, seasons);
+  }
 
+  /**
+   * Qual season a aba abre sozinha: a mais recente **que tem pull**.
+   *
+   * Não é a mais recente gravada. A season nova nasce no dia do patch, quando o
+   * snapshot cria o `GameSeason`, e a primeira noite de raid dela só acontece
+   * depois — em 11/08/2026 isso fez a progressão do tier sumir da tela e dar
+   * lugar a "nenhuma pull registrada". Quem abre a aba quer ver onde o time
+   * está, e onde o time está é a última season em que ele raidou.
+   *
+   * Vira sozinha para a season nova na primeira pull dela, sem ninguém mexer em
+   * nada — o que a Regra 4 pede de qualquer processo da guilda.
+   *
+   * O passeio custa uma consulta ao WCL por season vazia, e só até achar a
+   * primeira com pull. Na prática é uma a mais, na semana da virada, e o cache
+   * por season absorve as repetições.
+   */
+  private async maisRecenteComPull(seasons: SeasonRow[]): Promise<RaidProgressReport | null> {
+    let maisRecente: RaidProgressReport | null = null;
+
+    for (const season of seasons) {
+      const report = await this.relatorioDaSeason(season, seasons);
+      if (report.raids.length > 0) return report;
+
+      // Nenhuma tem pull ainda (guilda nova, ou WCL sem log): a tela abre na
+      // mais recente e diz que está vazia, que é a verdade.
+      maisRecente ??= report;
+    }
+
+    return maisRecente;
+  }
+
+  /** Monta — ou reaproveita do cache — o relatório de uma season específica. */
+  private async relatorioDaSeason(
+    escolhida: SeasonRow,
+    seasons: SeasonRow[],
+  ): Promise<RaidProgressReport> {
     const opcao = (s: { id: number; patch: string | null; name: string }): SeasonOption => ({
       id: s.id,
       patch: s.patch,
       name: s.name,
     });
+
+    /**
+     * O seletor sai sempre da leitura de agora, nunca do cache.
+     *
+     * A season nova entra no banco no dia do patch, e um relatório cacheado
+     * minutos antes disso ficaria com a lista velha por até 15 minutos — a
+     * season nova sumindo do seletor exatamente na hora em que alguém vai
+     * olhar. Custa nada: `seasons` já foi lido nesta requisição.
+     */
+    const disponiveis = seasons.map(opcao);
+
+    const cacheado = this.cache.get(escolhida.id);
+    if (cacheado && Date.now() - cacheado.fetchedAt < TTL_MS) {
+      return { ...cacheado.report, availableSeasons: disponiveis };
+    }
 
     try {
       // A janela da season termina onde a próxima começa. Sem próxima, é agora
@@ -101,7 +157,7 @@ export class RaidProgressService {
 
       const report: RaidProgressReport = {
         season: opcao(escolhida),
-        availableSeasons: seasons.map(opcao),
+        availableSeasons: disponiveis,
         difficulties: this.difficuldades(pulls, catalogo),
         raids: this.montarRaids(pulls, catalogo),
         fetchedAt: new Date().toISOString(),
@@ -121,7 +177,7 @@ export class RaidProgressService {
       // que a tela dizer que não conseguiu atualizar.
       if (cacheado) {
         this.logger.warn(`Warcraft Logs falhou (${motivo}); usando cache anterior`);
-        return { ...cacheado.report, stale: true };
+        return { ...cacheado.report, availableSeasons: disponiveis, stale: true };
       }
 
       throw new Error(`Não foi possível ler o Warcraft Logs: ${motivo}`);
