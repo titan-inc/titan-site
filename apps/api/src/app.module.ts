@@ -12,6 +12,7 @@ import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
 import { OfficersModule } from './officers/officers.module';
+import { OpsModule } from './ops/ops.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RaidProgressModule } from './raidprogress/raidprogress.module';
 import { RosterModule } from './roster/roster.module';
@@ -36,6 +37,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     LootCatalogModule,
     HealthModule,
     ApplicationsModule,
+    OpsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

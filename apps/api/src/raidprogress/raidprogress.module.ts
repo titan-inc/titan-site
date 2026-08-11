@@ -17,5 +17,9 @@ import { RaidProgressService } from './raidprogress.service';
   imports: [AuthModule, SnapshotsModule, WarcraftLogsModule],
   controllers: [RaidProgressController, RaidProgressPublicController],
   providers: [RaidProgressService],
+  // Exportado pro OpsModule reaproveitar em GET /internal/ops/raid-progress
+  // — mesma chamada que o GET /internal/raid-progress já faz, só que
+  // gateada por OpsTokenGuard em vez de sessão de membro (TIT-109).
+  exports: [RaidProgressService],
 })
 export class RaidProgressModule {}

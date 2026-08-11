@@ -22,16 +22,17 @@ nunca é commitado, e é editado à mão via SSH quando precisa mudar.
 
 Mesma lista do `.env.example`, com estas diferenças:
 
-| Variável                | Diferença em produção                                                                                                                                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`          | **Não setar.** Fica sem efeito — o `docker-compose.prod.yml` sintetiza a URL a partir de `POSTGRES_USER/PASSWORD/DB`.                                                                                 |
-| `POSTGRES_USER`         | Novo em produção (o compose de dev hardcoda `titan`). Só existe aqui.                                                                                                                                 |
-| `POSTGRES_PASSWORD`     | Novo em produção. Senha forte, gerada — não reusar a de dev (`titan`). **Gerar com `openssl rand -hex 24`, nunca `-base64`** (ver seção abaixo).                                                      |
-| `POSTGRES_DB`           | Novo em produção. Pode ser `titan` mesmo, não é segredo.                                                                                                                                              |
-| `BLIZZARD_REDIRECT_URI` | Domínio de produção + path `/api` (ver Caddyfile): `https://titaninc.com.br/api/auth/battlenet/callback`. Precisa estar cadastrado assim, byte a byte, no portal da Blizzard antes do primeiro login. |
-| `WEB_URL`               | `https://titaninc.com.br`                                                                                                                                                                             |
-| `NEXT_PUBLIC_API_URL`   | **Não é lido daqui.** Inlinado no bundle do Next durante o build — vem do build-arg que o CI passa (TIT-100/101), não do `.env` da instância. Editar aqui e reiniciar o container não muda nada.      |
-| `SESSION_SECRET`        | Gerar um novo, não reusar o de dev.                                                                                                                                                                   |
+| Variável                | Diferença em produção                                                                                                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`          | **Não setar.** Fica sem efeito — o `docker-compose.prod.yml` sintetiza a URL a partir de `POSTGRES_USER/PASSWORD/DB`.                                                                                     |
+| `POSTGRES_USER`         | Novo em produção (o compose de dev hardcoda `titan`). Só existe aqui.                                                                                                                                     |
+| `POSTGRES_PASSWORD`     | Novo em produção. Senha forte, gerada — não reusar a de dev (`titan`). **Gerar com `openssl rand -hex 24`, nunca `-base64`** (ver seção abaixo).                                                          |
+| `POSTGRES_DB`           | Novo em produção. Pode ser `titan` mesmo, não é segredo.                                                                                                                                                  |
+| `BLIZZARD_REDIRECT_URI` | Domínio de produção + path `/api` (ver Caddyfile): `https://titaninc.com.br/api/auth/battlenet/callback`. Precisa estar cadastrado assim, byte a byte, no portal da Blizzard antes do primeiro login.     |
+| `WEB_URL`               | `https://titaninc.com.br`                                                                                                                                                                                 |
+| `NEXT_PUBLIC_API_URL`   | **Não é lido daqui.** Inlinado no bundle do Next durante o build — vem do build-arg que o CI passa (TIT-100/101), não do `.env` da instância. Editar aqui e reiniciar o container não muda nada.          |
+| `SESSION_SECRET`        | Gerar um novo, não reusar o de dev.                                                                                                                                                                       |
+| `OPS_TRIGGER_TOKEN`     | Gerar um novo, não reusar o de dev. Protege `/internal/ops/*` (ver `docs/ops.md` e TIT-109) — além disso, bloqueada no domínio público pelo Caddy, só alcançável de dentro do container ou por túnel SSH. |
 
 Todo o resto (`BLIZZARD_CLIENT_ID/SECRET`, `GUILD_*`, `DISCORD_APPLY_WEBHOOK_URL`,
 `WOW_AUDIT_KEY`, `WARCRAFTLOGS_*`, `API_PORT`) segue o mesmo significado do
@@ -127,9 +128,27 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-**Recriar um serviço específico do zero** (container preso, ou precisa
-reler uma env var que mudou — `up -d` sozinho não recria container que já
-está rodando, mesmo com `.env` diferente):
+**Recarregar o `.env`** depois de editar/adicionar uma variável — só isto,
+sem `pull` nem `--force-recreate`:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Confirmado na prática (não é suposição): o `docker compose up -d` calcula
+o hash da config resolvida de cada serviço — `environment:` interpolado
+**e** o conteúdo de `env_file:` entram nessa conta — e recria **só** quem
+mudou. Editar uma variável que só a `api` lê recria a `api` e deixa `web`/
+`postgres`/`caddy` intocados, sem downtime dos outros.
+
+Exceção: `POSTGRES_USER`/`PASSWORD`/`DB` não seguem essa regra — o
+Postgres só lê essas variáveis no `initdb`, na primeira vez que o volume é
+criado. Depois disso, mudar o `.env` e rodar `up -d` recria o _container_
+mas não muda a senha já gravada no banco. Ver "Reset completo do banco"
+abaixo.
+
+**Recriar um serviço do zero mesmo sem nada ter mudado** (container preso
+num estado ruim, por exemplo):
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --force-recreate api
