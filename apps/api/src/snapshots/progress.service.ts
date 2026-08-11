@@ -109,6 +109,9 @@ export class ProgressService {
       period: atual,
       weekInSeason: atual - escolhida.firstPeriod + 1,
       periodCount: escolhida.periodCount,
+      // Sem slug do Raider.IO, o M+ desta season ainda não abriu — ver
+      // `SnapshotsService.mythicPlusAberto()`.
+      mythicPlusOpen: escolhida.raiderioSlug !== null,
       average,
       rows,
     };

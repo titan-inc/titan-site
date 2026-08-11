@@ -35,7 +35,12 @@ describe('SnapshotsService', () => {
   const wowaudit = { getTeamCharacters: jest.fn(), getWeeklyKeys: jest.fn() };
   const raiderio = { getProgress: jest.fn() };
   const gameVersion = { getPatchLabel: jest.fn() };
-  const repo = { upsertSeason: jest.fn(), saveSnapshots: jest.fn() };
+  const repo = {
+    upsertSeason: jest.fn(),
+    saveSnapshots: jest.fn(),
+    findSeasonByRaiderioSlug: jest.fn(),
+    setRaiderioSlug: jest.fn(),
+  };
 
   let service: SnapshotsService;
 
@@ -53,11 +58,15 @@ describe('SnapshotsService', () => {
     raiderio.getProgress.mockResolvedValue({
       itemLevel: 293.06,
       mythicPlusScore: 3412.1,
+      season: 'season-mn-1',
       seasonRuns: 182,
       seasonRunsTimed: 165,
     });
     gameVersion.getPatchLabel.mockResolvedValue('12.0');
     repo.upsertSeason.mockResolvedValue(undefined);
+    // O caso normal: o slug que o Raider.IO responde é o da season corrente.
+    repo.findSeasonByRaiderioSlug.mockResolvedValue({ id: 17 });
+    repo.setRaiderioSlug.mockResolvedValue(undefined);
     repo.saveSnapshots.mockImplementation((e: unknown[]) => Promise.resolve(e.length));
 
     service = new SnapshotsService(
@@ -169,6 +178,73 @@ describe('SnapshotsService', () => {
     await service.takeSnapshot();
 
     expect(gravados()[0]?.keysDone).toBeNull();
+  });
+
+  describe('a semana entre o patch e a abertura do M+', () => {
+    // A season de M+ abre uma semana depois do patch. Nesse intervalo a
+    // Blizzard já publicou a season nova e o Raider.IO ainda responde a
+    // anterior — foi o que aconteceu em 11/08/2026 na virada da 12.0 para a
+    // 12.1, e o acumulado da 12.0 entrou no banco como se fosse da 12.1.
+    const preSeason = () => {
+      blizzard.getCurrentSeason.mockResolvedValue(season({ id: 18, currentPeriod: 1076 }));
+      repo.findSeasonByRaiderioSlug.mockResolvedValue({ id: 17 });
+    };
+
+    it('não atribui o M+ da season anterior à season nova', async () => {
+      preSeason();
+
+      const result = await service.takeSnapshot();
+
+      expect(gravados()[0]).toMatchObject({
+        seasonId: 18,
+        mythicPlusScore: null,
+        seasonRuns: null,
+        seasonRunsTimed: null,
+      });
+      expect(result).toMatchObject({ status: 'ok', mythicPlusOpen: false });
+    });
+
+    it('mas continua medindo item level, que não é da season', async () => {
+      preSeason();
+
+      await service.takeSnapshot();
+
+      expect(gravados()[0]?.itemLevel).toBe(293.06);
+    });
+
+    it('quando o M+ abre, a season adota o slug e volta a gravar', async () => {
+      blizzard.getCurrentSeason.mockResolvedValue(season({ id: 18, currentPeriod: 1077 }));
+      raiderio.getProgress.mockResolvedValue({
+        itemLevel: 293.06,
+        mythicPlusScore: 180.4,
+        season: 'season-mn-2',
+        seasonRuns: 4,
+        seasonRunsTimed: 3,
+      });
+      // Slug novo, de ninguém ainda.
+      repo.findSeasonByRaiderioSlug.mockResolvedValue(null);
+
+      const result = await service.takeSnapshot();
+
+      expect(repo.setRaiderioSlug).toHaveBeenCalledWith(18, 'season-mn-2');
+      expect(gravados()[0]).toMatchObject({ seasonRuns: 4, mythicPlusScore: 180.4 });
+      expect(result).toMatchObject({ mythicPlusOpen: true });
+    });
+
+    it('sem o Raider.IO nomear season nenhuma, não afirma que abriu', async () => {
+      raiderio.getProgress.mockResolvedValue({
+        itemLevel: 293.06,
+        mythicPlusScore: null,
+        season: null,
+        seasonRuns: null,
+        seasonRunsTimed: null,
+      });
+
+      const result = await service.takeSnapshot();
+
+      expect(repo.setRaiderioSlug).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ mythicPlusOpen: false });
+    });
   });
 
   it('a rodada agendada não deixa exceção escapar', async () => {

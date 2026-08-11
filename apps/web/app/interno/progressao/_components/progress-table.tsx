@@ -97,6 +97,17 @@ export function ProgressTable({ report }: { report: ProgressReport }) {
         </span>
       </div>
 
+      {/* A season de M+ abre uma semana depois do patch. Sem este aviso, a
+          coluna vazia é lida como site quebrado — e a anterior, se fosse
+          mostrada, seria lida como progresso desta season. */}
+      {!report.mythicPlusOpen && (
+        <p className="border-border text-fg-muted rounded-lg border border-dashed px-4 py-3 text-sm">
+          O M+ desta season ainda não abriu — ele começa uma semana depois do patch. Score e chaves
+          na season aparecem vazios até lá, de propósito: o número que existe hoje é da season
+          passada.
+        </p>
+      )}
+
       <div className="border-border bg-surface flex flex-wrap gap-x-8 gap-y-2 rounded-lg border p-4 text-sm">
         <div>
           <span className="text-fg-subtle">Média de ilvl do time </span>
