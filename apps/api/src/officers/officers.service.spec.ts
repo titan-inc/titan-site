@@ -30,6 +30,16 @@ const dbGrant = (over: Partial<OfficerGrant> = {}): OfficerGrant => ({
   ...over,
 });
 
+/**
+ * O service lê o corte de oficial de `loadGuildConfig()`, que valida o ambiente
+ * inteiro e lança sem GUILD_NAME/GUILD_REALM. Definir aqui é mais honesto que
+ * mockar o módulo: o teste roda contra o mesmo parser que a produção usa, então
+ * um corte inválido quebraria aqui também.
+ */
+process.env.GUILD_NAME ??= 'Titan Inc';
+process.env.GUILD_REALM ??= 'Azralon';
+process.env.GUILD_OFFICER_RANK_MAX ??= '2';
+
 describe('OfficersService', () => {
   const blizzard = { getGuildRosterSnapshot: jest.fn() };
   const repo = {
@@ -134,11 +144,43 @@ describe('OfficersService', () => {
       expect(repo.delete).toHaveBeenCalledWith('grant-1');
     });
 
-    it('recusa revogar o último oficial', async () => {
+    it('recusa revogar o último quando ninguém é oficial por rank', async () => {
       // Sem isto, um clique deixa a guilda sem ninguém que consiga abrir a tela
       // de oficiais — e o conserto vira INSERT manual no banco de produção.
       repo.findById.mockResolvedValue(dbGrant());
       repo.count.mockResolvedValue(1);
+      blizzard.getGuildRosterSnapshot.mockResolvedValue(
+        snapshot([rosterMember('Fulano', 'azralon', 5)]),
+      );
+
+      await expect(service.revoke('grant-1', 'Chefe#1234')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+
+      expect(repo.delete).not.toHaveBeenCalled();
+    });
+
+    it('revoga o último grant quando os ranks de oficial cobrem a lista', async () => {
+      // Desde 10/08/2026 os ranks 0–2 promovem sozinhos, então apagar o último
+      // grant não tranca ninguém para fora. Recusar aqui seria barrar uma
+      // revogação legítima com uma mensagem que virou mentira.
+      repo.findById.mockResolvedValue(dbGrant());
+      repo.count.mockResolvedValue(1);
+      blizzard.getGuildRosterSnapshot.mockResolvedValue(
+        snapshot([rosterMember('Chefe', 'azralon', 0)]),
+      );
+
+      await service.revoke('grant-1', 'Chefe#1234');
+
+      expect(repo.delete).toHaveBeenCalledWith('grant-1');
+    });
+
+    it('recusa revogar o último quando o roster não respondeu', async () => {
+      // "Não sei" não pode virar "pode revogar": o erro é irreversível pela
+      // tela. Recusar custa um minuto; liberar custa um INSERT em produção.
+      repo.findById.mockResolvedValue(dbGrant());
+      repo.count.mockResolvedValue(1);
+      blizzard.getGuildRosterSnapshot.mockRejectedValue(new Error('Blizzard fora do ar'));
 
       await expect(service.revoke('grant-1', 'Chefe#1234')).rejects.toBeInstanceOf(
         ConflictException,
@@ -174,10 +216,21 @@ describe('OfficersService', () => {
       repo.findAll.mockResolvedValue([dbGrant()]);
       blizzard.getGuildRosterSnapshot.mockRejectedValue(new Error('Blizzard fora do ar'));
 
-      const { grants } = await service.list();
+      const { grants, byRank, rosterOk } = await service.list();
 
       expect(grants).toHaveLength(1);
       expect(grants[0]?.rank).toBeNull();
+      // Lacuna nunca vira zero — Regra 7. `byRank` vazio com rosterOk falso é
+      // "não sei"; sem a flag a tela afirmaria "não há oficial automático".
+      expect(byRank).toEqual([]);
+      expect(rosterOk).toBe(false);
+    });
+
+    it('trata roster vazio como falha, não como guilda sem ninguém', async () => {
+      // ~590 membros nunca devolvem zero de verdade; zero é a API falhando.
+      blizzard.getGuildRosterSnapshot.mockResolvedValue(snapshot([]));
+
+      expect((await service.list()).rosterOk).toBe(false);
     });
 
     it('traz o rank atual de quem está no roster', async () => {
@@ -186,6 +239,52 @@ describe('OfficersService', () => {
       const { grants } = await service.list();
 
       expect(grants[0]?.rank).toBe(2);
+    });
+
+    it('lista os oficiais automáticos do corte para baixo, e só eles', async () => {
+      blizzard.getGuildRosterSnapshot.mockResolvedValue(
+        snapshot([
+          rosterMember('Chefe', 'azralon', 0),
+          rosterMember('Oficial', 'azralon', 2),
+          rosterMember('Raider', 'azralon', 4),
+          rosterMember('Social', 'azralon', 7),
+        ]),
+      );
+
+      const { byRank, officerRankMax } = await service.list();
+
+      expect(officerRankMax).toBe(2);
+      // Rank 4 é Raider: entra na área interna e NÃO vê candidatura. Se este
+      // teste passar a incluir "Raider", o painel de recrutamento vazou.
+      expect(byRank.map((o) => o.name)).toEqual(['Chefe', 'Oficial']);
+    });
+
+    it('ordena os automáticos por rank, do mais alto para o mais baixo', async () => {
+      // A ordem em que a Blizzard devolve o roster não é estável; a tela não
+      // pode reordenar sozinha entre duas requisições.
+      blizzard.getGuildRosterSnapshot.mockResolvedValue(
+        snapshot([
+          rosterMember('Dois', 'azralon', 2),
+          rosterMember('Zero', 'azralon', 0),
+          rosterMember('Um', 'azralon', 1),
+        ]),
+      );
+
+      const { byRank } = await service.list();
+
+      expect(byRank.map((o) => o.rank)).toEqual([0, 1, 2]);
+    });
+
+    it('marca o automático que ainda não logou no site', async () => {
+      blizzard.getGuildRosterSnapshot.mockResolvedValue(
+        snapshot([rosterMember('Chefe', 'azralon', 0), rosterMember('Oficial', 'azralon', 1)]),
+      );
+      repo.findKnownCharacterKeys.mockResolvedValue([{ nameKey: 'chefe', realmSlug: 'azralon' }]);
+
+      const { byRank } = await service.list();
+
+      expect(byRank.find((o) => o.name === 'Chefe')?.linked).toBe(true);
+      expect(byRank.find((o) => o.name === 'Oficial')?.linked).toBe(false);
     });
   });
 });

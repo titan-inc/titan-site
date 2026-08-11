@@ -2,7 +2,7 @@
 
 Site da guilda de World of Warcraft: landing pública com formulário de apply, e área interna para guild management.
 
-Projeto de dois devs, desenvolvido com Claude. **As regras abaixo existem para que as duas pessoas e as duas sessões de Claude produzam a mesma arquitetura.** Se uma decisão contradiz este arquivo, o arquivo ganha — ou o arquivo é atualizado explicitamente.
+Projeto de três devs, desenvolvido com Claude. **As regras abaixo existem para que as três pessoas e as três sessões de Claude produzam a mesma arquitetura.** Se uma decisão contradiz este arquivo, o arquivo ganha — ou o arquivo é atualizado explicitamente.
 
 Planejamento no Linear: projeto **Site da Guilda**, time `TIT`.
 
@@ -30,7 +30,7 @@ Route handlers do Next são permitidos **apenas** para o que é genuinamente do 
 
 Qualquer outra coisa (query no banco, chamada às APIs da Blizzard, validação de negócio, envio de notificação) é endpoint no Nest.
 
-Por quê: sem essa linha, em duas semanas metade da lógica está duplicada nos dois lados e não existe fonte da verdade. Com dois devs trabalhando em paralelo, isso acontece rápido.
+Por quê: sem essa linha, em duas semanas metade da lógica está duplicada nos dois lados e não existe fonte da verdade. Com três devs trabalhando em paralelo, isso acontece rápido.
 
 ## Regra 2 — O contrato mora no shared
 
@@ -96,6 +96,26 @@ O salto de 26 para 149 no rank 5 é a fronteira entre o time de raid e o resto d
 
 O estado do meio existe por um motivo específico: um social que está na guilda há dois anos não pode receber a tela de "candidate-se para entrar na guilda". Colapsar ele em não-membro é ofensivo e faz o site parecer quebrado.
 
+### O corte é filtro de conteúdo, não fronteira de segurança
+
+**Leia isto antes de decidir qualquer coisa sobre acesso.** O arquivo já errou aqui uma vez.
+
+Presença, progressão, item level, quem raidou: está tudo aberto no Warcraft Logs, no WoWAudit e no Raider.IO. O site junta essas fontes, não as protege — esconder do rank 5 não guarda segredo nenhum, só mantém a ferramenta legível para as ~26 pessoas que a usam toda semana.
+
+O custo de errar é assimétrico: corte frouxo = alguém viu uma tabela que já podia ver no Logs; corte apertado = o raid leader trancado num sábado esperando um dev. **Diante de dúvida, prefira liberar.**
+
+Não existe exceção: desde 09/08/2026 o único dado de gente de fora — candidatura — não passa mais pelo site.
+
+**Isto não relaxa a Regra 5.** Filtro sem guard no Nest não é filtro, é enfeite: a tela promete uma organização que o backend não entrega. Endpoint interno sem guard continua sendo bug.
+
+### O processo não pode depender de uma pessoa estar disponível
+
+Três pessoas mantêm o site, e o objetivo é que **nenhuma precise estar disponível para a guilda funcionar**. É requisito, não conforto: é o que faz oficial sair automático do rank e o que proíbe acesso que só se conquista rodando migration.
+
+Empate entre "mais controlado" e "não precisa de dev no meio" → **ganha a segunda**.
+
+Pendência conhecida: os dois cortes moram em variável de ambiente, então mudá-los exige mexer no deploy. Se incomodar, viram linha no banco, editáveis em `/interno/oficiais`.
+
 ### Por pessoa, não por personagem
 
 Uma conta tem **N personagens** no roster. O rank da pessoa é o **melhor** (menor número) entre todos eles.
@@ -116,7 +136,11 @@ A liderança reorganizou os ranks da guilda. A premissa caiu, e a regra mudou ju
 
 E não dá para detectar automaticamente: o roster da Blizzard devolve `rank` só como número, sem nome.
 
-**O que segura a régua é a definição combinada, não o código: rank 4 é Raider.** Reorganizar ranks no jogo é uma decisão da liderança, e ela vem junto com revisar este corte.
+**O que segura a régua é a definição combinada, não o código: rank 4 é Raider.**
+
+Isso está **combinado entre os três que mantêm o site** (10/08/2026): reorganizar ranks no jogo é mudança de sistema, e vem junto com revisar os cortes daqui. Não é torcida para alguém lembrar — é acordo registrado.
+
+E o risco é menor do que parece de fora: a organização de ranks da guilda é antiga, funciona bem, e **mudá-la não está nos planos**. O cuidado aqui é para o dia em que estiver, não para uma segunda-feira qualquer.
 
 O job loga a distribuição por rank a cada rodada, mas isso é **registro, não alarme**: com ~590 membros a contagem oscila toda semana com entrada e saída, então variação não significa nada. O valor é forense — se um dia o acesso ficar estranho, o histórico mostra em que rodada a estrutura mudou de formato.
 
@@ -130,6 +154,8 @@ A candidatura **não é gravada em lugar nenhum**. O formulário público posta 
 
 O cuidado que motivava o painel continua existindo, só mudou de lugar. Candidatura contém Discord tag, Battle.tag e texto que a pessoa escreveu esperando que só a liderança lesse. Antes o vazamento seria dar a tela ao membro errado; agora é **mandar para o canal errado**. Ou seja: **a permissão do canal do Discord é o controle de acesso**, e configurá-la errado é a nova versão do mesmo erro. O canal é privado, restrito à liderança, e a URL do webhook é segredo de backend.
 
+Consequência para a seção anterior: **o site não guarda mais nenhum dado de gente de fora**. O corte de rank decide só conteúdo que já está aberto no Logs e no WoWAudit.
+
 #### Isto reverteu uma decisão anterior
 
 Até 09/08/2026 a arquitetura prevista era `POST /applications` gravando no Postgres, com status (`pending`/`reviewing`/`accepted`/`rejected`) e um painel interno gated por `canReviewApplications()`. **Nada disso chegou a ser implementado** — não houve model, migration nem endpoint; existia como plano aqui e no Linear.
@@ -140,24 +166,50 @@ Registrado aqui em vez de apagado, para ninguém refazer o raciocínio antigo ac
 
 #### O que sobrevive intacto
 
-Ser **oficial** continua sendo marcação **manual**, deliberadamente **não** derivada do rank, e continua gateando o que a Regra 7 protege (histórico de outra pessoa) e a própria lista de oficiais. Os dois gates seguem independentes: passar do corte te dá a área interna, não as decisões de liderança.
+Ser **oficial** continua gateando o que a Regra 7 protege (histórico de outra pessoa) e a própria lista de oficiais. Os dois gates seguem independentes: passar do corte te dá a área interna, não as decisões de liderança.
 
-### Oficial é concessão por personagem, não coluna na conta
+(Esta seção dizia também que oficial é marcação **manual, não derivada do rank**. Deixou de valer em 10/08/2026 — ver "O corte automático" abaixo.)
 
-**Não existe `User.isOfficer`.** A fonte da verdade é a tabela `OfficerGrant`, uma linha por **personagem** (`nameKey` + `realmSlug`), gerenciada em `/interno/oficiais`. Ser oficial é derivado a cada leitura de sessão por `isOfficerByGrants()`, que casa os personagens da conta contra os grants.
+### Oficial: duas fontes, nunca coluna na conta
 
-**Por personagem, e não por conta**, porque `User` só existe depois do primeiro login OAuth — e a liderança precisa poder preparar a lista antes disso. Quando isso foi montado, 4 dos 5 oficiais nunca tinham logado no site: uma tela que listasse contas mostraria uma linha só.
+**Não existe `User.isOfficer`.** Ser oficial é derivado a cada leitura de sessão, de **duas fontes independentes**, bastando uma:
+
+| Fonte           | Como                             | Função                |
+| --------------- | -------------------------------- | --------------------- |
+| rank na guilda  | `rank <= GUILD_OFFICER_RANK_MAX` | `isOfficerByRank()`   |
+| concessão à mão | linha em `OfficerGrant`          | `isOfficerByGrants()` |
+
+Quem combina as duas é o `AuthService`, com um `||`. As funções ficam separadas porque respondem perguntas diferentes — "a guilda diz que é liderança?" e "alguém concedeu?" — e uma pode mudar sem a outra.
 
 **Derivado na leitura, sem cópia gravada**, por duas razões:
 
-- revogar vale na hora, na requisição seguinte — mesma lógica do cookie de sessão com estado no banco em vez de JWT;
-- não existe estado em que a flag da conta e a lista discordam.
+- revogar vale na hora, na requisição seguinte — mesma lógica do cookie de sessão com estado no banco em vez de JWT. Vale igual para o rank: quem sai do rank de oficial perde o status no request seguinte;
+- não existe estado em que a flag da conta e a realidade discordam.
 
 Custa uma consulta numa tabela de poucas linhas por requisição interna, e paga.
 
-A agregação é a mesma do resto da Regra 4: **qualquer** personagem da conta que case com **qualquer** grant basta.
+#### O corte automático (10/08/2026)
 
-#### Três permissões, uma precondição
+Os ranks de oficial da guilda dão o status **sem ninguém precisar conceder**. Pedido da liderança; reverte parcialmente a decisão de 09/08/2026 registrada abaixo.
+
+O motivo é o requisito de disponibilidade: antes, virar oficial dependia de um dos três mantenedores abrir uma tela. Dos 5 oficiais, **4 nunca tinham logado no site**.
+
+O corte é `GUILD_OFFICER_RANK_MAX`, hoje **2**, e **sempre `<= GUILD_RANK_ACCESS_MAX`** — a API recusa subir se for maior, porque `isActingOfficer()` exige acesso à área interna junto, e um corte mais frouxo marcaria gente como oficial sem nenhuma permissão de oficial.
+
+**Dois riscos, aceitos:**
+
+- **rank é posicional** — reordenar rank no jogo muda quem é oficial, sem erro nenhum. Coberto pelo acordo da seção "O rank é posicional". Não está nos planos mexer.
+- **agregação pelo melhor rank** — um alt em rank 0–2 promove a conta inteira. Hoje esses ranks são 5 personagens, exatamente os 5 oficiais.
+
+#### A lista manual não virou redundante
+
+É como alguém vira oficial **sem** estar nos ranks do topo (raid leader, recrutador), e é o que sobrevive a uma reorganização de ranks.
+
+Continua **por personagem**: `User` só existe depois do primeiro login OAuth, e a liderança precisa poder preparar a lista antes disso. Qualquer personagem da conta casando com qualquer grant basta.
+
+`/interno/oficiais` mostra as **duas** listas. A automática é derivada do roster na hora — não há o que revogar, e a tela não oferece o botão.
+
+#### Duas permissões, uma precondição
 
 | Função                  | Decide                                             |
 | ----------------------- | -------------------------------------------------- |
@@ -177,13 +229,19 @@ Nome que não está no roster é recusado, e nome ambíguo também. Um grant com
 
 Ambíguo é o caso do `toSlug()` da Regra 6: `Shrëwd`, `Shrêwd` e `Shrèwd` colapsam na mesma chave e são pessoas diferentes, com ranks diferentes. A tela lista as grafias e exige a exata em vez de escolher uma sozinha. O que fica gravado é a grafia da **Blizzard**, não a digitada, porque é ela que precisa casar com o `GuildCharacter` do login.
 
-Revogar o **último** oficial é recusado: a tela é gated por oficial, então zerar a lista tranca todo mundo para fora e o conserto vira `INSERT` manual em produção.
+Revogar o **último** oficial é recusado — zerar a lista tranca todo mundo fora de uma tela gated por oficial, e o conserto vira `INSERT` em produção. Desde 10/08/2026 a checagem olha as **duas** fontes: com os ranks 0–2 promovendo sozinhos, apagar o último grant não tranca ninguém, e recusar seria barrar revogação legítima. Roster fora do ar é "não sei" e recusa.
 
 #### Isto substituiu a flag no usuário (09/08/2026)
 
 Até aqui `isOfficer` era coluna no `User`, e **nenhum caminho no código escrevia nela** — promover era `UPDATE` no psql, sem registro de quem decidiu.
 
 Foi cogitado derivar de "oficial para cima" no rank, e descartado. Não existe "oficial para cima" legível: o roster devolve `rank` só como número, sem nome, então viraria `rank <= N` com N escolhido hoje — e a Regra 4 já avisa que rank é posicional. Some-se a agregação pelo melhor rank, e qualquer pessoa com um alt em rank alto viraria oficial. Na distribuição real da época, os 5 oficiais eram exatamente os ranks 0–2, mas o rank 3 tinha 4 personagens que não eram oficiais: a fronteira é julgamento humano, não propriedade do roster.
+
+**Esta parte durou um dia: em 10/08/2026 o corte automático foi feito** (ver acima). Os dois riscos previstos aqui estavam certos e continuam valendo.
+
+O que estava errado era o **peso** dado a eles — erro repetível, por isso registrado: a análise de 09/08 tratou os gates como fronteira de segurança. Não são, e a seção "O corte é filtro de conteúdo" no topo da regra existe para ser lida antes deste instinto.
+
+O que **não** foi revertido: `isOfficer` continua fora do `User`, a lista manual continua existindo, e `N` continua sendo configuração. A alternativa descartada era _substituir_ o julgamento humano por rank; o que foi feito é somar as duas fontes.
 
 Registrado aqui em vez de apagado, para ninguém refazer o raciocínio antigo achando que é novo.
 
@@ -303,7 +361,9 @@ Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico:
 - **Membro** vê o próprio histórico, inteiro.
 - **Membro não vê o histórico de outro membro.**
 
-Presença, loot e evolução são dados sobre pessoas reais que ninguém combinou tornar públicos ao entrar na guilda. Ranking público de falta gera treta e não ajuda o RL a decidir nada — ele já tem o detalhe.
+**O motivo é social, não sigilo.** O dado está aberto no Logs e no WoWAudit; o que o site evita é apresentá-lo pronto em forma de ranking, que gera treta e não ajuda o raid leader — quem lidera já tem o detalhe.
+
+A régua para caso novo é "isto vira comparação entre membros?", não "isto é confidencial?". Média da guilda passa; lista ordenada por falta, não.
 
 ## Regra 8 — Ferramenta de operação roda contra a app já rodando, nunca sobe instância própria
 
@@ -355,7 +415,7 @@ gh pr create
 
 O CI (`.github/workflows/ci.yml`) roda no PR: formatação, lint, build, typecheck e testes. Merge só com CI verde.
 
-Review do outro dev é bem-vindo, mas não obrigatório — em dupla, review obrigatório trava quando um dos dois está offline.
+Review dos outros devs é bem-vindo, mas não obrigatório — em time pequeno, review obrigatório trava quando quem revisaria está offline.
 
 Antes de abrir PR, rodar localmente o que o CI roda, **nesta ordem**:
 
