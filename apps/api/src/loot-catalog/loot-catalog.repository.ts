@@ -97,6 +97,31 @@ export class LootCatalogRepository {
     });
   }
 
+  /**
+   * As raids sem os drops, para a lista.
+   *
+   * Consulta própria em vez de reaproveitar `findRaids` e descartar: o custo que
+   * se quer evitar é o do banco trazer 468 drops com item e specs, então filtrar
+   * depois não economizaria nada.
+   *
+   * `_count` dos encounters em vez de trazer a lista deles: quem chama quer saber
+   * quantos bosses a raid tem, não quais.
+   */
+  findRaidSummaries(filtro: RaidFilter = {}) {
+    return this.prisma.lootCatalogRaid.findMany({
+      where: 'seasonId' in filtro ? { seasonId: filtro.seasonId } : {},
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        seasonId: true,
+        instanceMapId: true,
+        _count: { select: { encounters: true } },
+      },
+    });
+  }
+
   findRaidBySlug(slug: string, difficulty?: RaidDifficultyLevel) {
     return this.prisma.lootCatalogRaid.findUnique({
       where: { slug },
