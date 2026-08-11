@@ -2,18 +2,11 @@ import { z } from 'zod';
 import { characterInputSchema, toCharacterKey, toSlug, type CharacterInput } from './wow.js';
 
 /**
- * Concessão de status de oficial — a lista manual da Regra 4.
+ * Quem é oficial — Regra 4. Duas fontes independentes, basta uma:
+ * rank na guilda (`isOfficerByRank`) ou concessão manual (`isOfficerByGrants`).
  *
- * É **por personagem**, e não por conta, por um motivo prático: a flag precisa
- * poder ser dada antes de a pessoa logar no site pela primeira vez. Conta só
- * existe depois do OAuth, e o roster da Blizzard não diz de qual conta é cada
- * personagem, então esperar o login para poder promover deixaria a liderança
- * sem como preparar a lista.
- *
- * Continua **manual e nunca derivada de rank**, que é o que a Regra 4 exige:
- * quem escreve a lista é uma pessoa, personagem por personagem. Errar o
- * mapeamento para cima expõe dado pessoal de centenas de candidatos, e rank é
- * posicional — reordenar rank no jogo não pode promover ninguém.
+ * A concessão é **por personagem** porque precisa poder ser dada antes do
+ * primeiro login — conta só existe depois do OAuth.
  */
 
 /**
@@ -48,8 +41,8 @@ function matchKey(ref: OfficerCharacterRef): string {
  * tem grant no alt continua sendo a mesma pessoa, e quem verifica um personagem
  * só erra silenciosamente.
  *
- * Não recebe rank de propósito. Se um dia esta função aceitar rank, a Regra 4
- * foi violada.
+ * Não recebe rank de propósito: são duas fontes separadas, e quem as combina é
+ * o servidor.
  */
 export function isOfficerByGrants(
   characters: readonly OfficerCharacterRef[],
@@ -62,6 +55,21 @@ export function isOfficerByGrants(
 }
 
 /**
+ * A conta é de oficial **pelo rank na guilda**? (DECISÃO 2026-08-10)
+ *
+ * `officerRankMax` vem de `GUILD_OFFICER_RANK_MAX` — **nunca escreva o número
+ * aqui**: rank é posicional, e reordenar ranks no jogo muda quem é oficial sem
+ * erro nenhum. Ver Regra 4.
+ *
+ * `guildRank` é o **melhor** rank da conta, então um alt em rank de oficial
+ * promove a pessoa inteira. Consequência aceita, não descuido.
+ */
+export function isOfficerByRank(guildRank: number | null, officerRankMax: number): boolean {
+  if (guildRank === null) return false;
+  return guildRank <= officerRankMax;
+}
+
+/**
  * Personagem a promover, vindo do formulário.
  *
  * É o **mesmo** schema de personagem digitado do resto do site, e não uma
@@ -71,9 +79,8 @@ export function isOfficerByGrants(
 export const createOfficerGrantSchema = characterInputSchema;
 export type CreateOfficerGrant = CharacterInput;
 
-export const officerGrantSchema = z.object({
-  id: z.string(),
-
+/** O que as duas fontes têm em comum na tela. */
+const officerBaseSchema = z.object({
   /** Nome como a Blizzard exibe, com acento. */
   name: z.string(),
   realm: z.string(),
@@ -83,22 +90,21 @@ export const officerGrantSchema = z.object({
   realmSlug: z.string(),
 
   /**
-   * Rank do personagem no roster **agora**. Null = não está mais no roster.
-   *
-   * Exibição pura: não decide nada sobre o acesso. Serve para a liderança ver
-   * que um grant ficou apontando para alguém que saiu da guilda.
-   */
-  rank: z.number().int().nullable(),
-
-  /**
-   * Já existe conta que casou com este grant?
-   *
-   * Falso significa "concedido, mas a pessoa ainda não logou no site nenhuma
-   * vez". Sem este campo, um grant correto e um grant com nome errado ficam
-   * visualmente idênticos na tela — e o segundo só apareceria como "não tenho
-   * acesso" semanas depois.
+   * Já existe conta que casou com este personagem? Falso = "é oficial, mas
+   * nunca logou". Sem isto, um grant certo e um com nome errado ficam
+   * idênticos na tela.
    */
   linked: z.boolean(),
+});
+
+export const officerGrantSchema = officerBaseSchema.extend({
+  id: z.string(),
+
+  /**
+   * Rank no roster **agora**. Null = saiu da guilda. Exibição pura — mostra
+   * grant apontando para quem saiu, e grant que virou redundante.
+   */
+  rank: z.number().int().nullable(),
 
   /** Battletag de quem concedeu. Registro de quem decidiu, não de quem clicou. */
   grantedBy: z.string(),
@@ -106,7 +112,37 @@ export const officerGrantSchema = z.object({
 });
 export type OfficerGrant = z.infer<typeof officerGrantSchema>;
 
+/**
+ * Oficial **pelo rank**, sem concessão por trás.
+ *
+ * Sem `id`/`grantedBy`/`grantedAt` de propósito: não há o que revogar. Dois
+ * arrays em vez de união com campos nulos é o que impede a tela de oferecer um
+ * "Revogar" que a API não honraria.
+ */
+export const officerByRankSchema = officerBaseSchema.extend({
+  /** Nunca nulo: esta pessoa está na lista *porque* o roster devolveu o rank. */
+  rank: z.number().int(),
+});
+export type OfficerByRank = z.infer<typeof officerByRankSchema>;
+
 export const officerListSchema = z.object({
   grants: z.array(officerGrantSchema),
+
+  /**
+   * Oficiais automáticos, do roster de agora. Vem junto porque a tela se chama
+   * "Oficiais" — só os grants não explicaria quem mais tem acesso. Derivada,
+   * não armazenada.
+   */
+  byRank: z.array(officerByRankSchema),
+
+  /** O corte em vigor, para a tela explicar de onde `byRank` saiu. */
+  officerRankMax: z.number().int().nonnegative(),
+
+  /**
+   * O roster respondeu? Falso = `byRank` está vazio por falta de dado, não por
+   * não existir ninguém. Sem isto a tela afirmaria zero onde a verdade é "não
+   * sei" — Regra 7, lacuna nunca vira zero.
+   */
+  rosterOk: z.boolean(),
 });
 export type OfficerList = z.infer<typeof officerListSchema>;

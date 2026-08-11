@@ -14,6 +14,7 @@ describe('loadGuildConfig', () => {
       realm: 'Azralon',
       timezone: 'America/Sao_Paulo',
       rankAccessMax: 4,
+      officerRankMax: 2,
     });
   });
 
@@ -64,6 +65,57 @@ describe('loadGuildConfig', () => {
     it('rejeita negativo e fracionário', () => {
       expect(() => loadGuildConfig({ ...valid, GUILD_RANK_ACCESS_MAX: '-1' })).toThrow(/inválido/);
       expect(() => loadGuildConfig({ ...valid, GUILD_RANK_ACCESS_MAX: '4.5' })).toThrow(/inválido/);
+    });
+  });
+
+  describe('GUILD_OFFICER_RANK_MAX', () => {
+    it('lê o corte de oficial do ambiente', () => {
+      expect(loadGuildConfig({ ...valid, GUILD_OFFICER_RANK_MAX: '1' }).officerRankMax).toBe(1);
+    });
+
+    it('cai no default quando não está definida', () => {
+      // Um .env de antes de 10/08/2026 não pode derrubar a API no boot.
+      expect(loadGuildConfig(valid).officerRankMax).toBe(2);
+    });
+
+    it('aceita 0 — só o guild master', () => {
+      expect(loadGuildConfig({ ...valid, GUILD_OFFICER_RANK_MAX: '0' }).officerRankMax).toBe(0);
+    });
+
+    it('rejeita valor não numérico, negativo e fracionário', () => {
+      const bad = ['oficial', '-1', '1.5'];
+      for (const raw of bad) {
+        expect(() => loadGuildConfig({ ...valid, GUILD_OFFICER_RANK_MAX: raw })).toThrow(
+          /GUILD_OFFICER_RANK_MAX inválido/,
+        );
+      }
+    });
+
+    it('rejeita corte de oficial mais frouxo que o de acesso', () => {
+      // Ser oficial exige acesso à área interna (isActingOfficer). Um corte
+      // maior marcaria pessoas como oficiais sem nenhuma permissão de oficial —
+      // e isso não aparece em tela nenhuma, só na ausência do acesso que a
+      // liderança acha que concedeu.
+      expect(() =>
+        loadGuildConfig({ ...valid, GUILD_RANK_ACCESS_MAX: '4', GUILD_OFFICER_RANK_MAX: '5' }),
+      ).toThrow(/não pode ser maior/);
+    });
+
+    it('aceita corte de oficial igual ao de acesso', () => {
+      const cfg = loadGuildConfig({
+        ...valid,
+        GUILD_RANK_ACCESS_MAX: '2',
+        GUILD_OFFICER_RANK_MAX: '2',
+      });
+      expect(cfg.officerRankMax).toBe(2);
+    });
+
+    it('o default aperta em silêncio em vez de derrubar o boot', () => {
+      // Quem só apertou GUILD_RANK_ACCESS_MAX para 1 não escreveu nada sobre
+      // oficiais, e não pode ver a API morrer por um número que não é dele.
+      // Apertar restringe — nunca libera.
+      expect(loadGuildConfig({ ...valid, GUILD_RANK_ACCESS_MAX: '1' }).officerRankMax).toBe(1);
+      expect(loadGuildConfig({ ...valid, GUILD_RANK_ACCESS_MAX: '0' }).officerRankMax).toBe(0);
     });
   });
 

@@ -1,6 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { canAccessInternalArea, isOfficerByGrants, type SessionUser } from '@titan/shared';
+import {
+  canAccessInternalArea,
+  isOfficerByGrants,
+  isOfficerByRank,
+  type SessionUser,
+} from '@titan/shared';
 import { BlizzardService } from '../blizzard/blizzard.service';
 import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
 import {
@@ -157,21 +162,22 @@ export class AuthService {
    * do servidor e o front não tem acesso a ela. A regra em si mora no shared —
    * aqui só se aplica o corte a ela.
    *
-   * É `async` por causa do `isOfficer`: ele não é coluna do User, é derivado dos
-   * `OfficerGrant` a cada leitura. Custa uma consulta numa tabela de poucas
-   * linhas e paga com revogação imediata — apagar o grant tira o acesso na
-   * próxima requisição, sem depender de nenhum job lembrar de sincronizar.
+   * É `async` por causa do `isOfficer`: derivado a cada leitura, não coluna.
+   * Custa uma consulta numa tabela minúscula e paga com revogação imediata.
    */
   async toSessionUser(user: UserWithCharacters): Promise<SessionUser> {
     const membership = user.membership === 'member' ? ('member' as const) : ('not-member' as const);
     const grants = await this.repo.findOfficerGrants();
 
+    // Duas fontes independentes, basta uma — Regra 4. Separadas porque
+    // respondem perguntas diferentes e uma pode mudar sem a outra.
+    const porGrant = isOfficerByGrants(user.characters, grants);
+    const porRank = isOfficerByRank(user.guildRank, this.guild.officerRankMax);
+
     return {
       battletag: user.battletag,
       membership,
-      // Qualquer personagem da conta que case com qualquer grant basta — mesma
-      // agregação por pessoa da Regra 4.
-      isOfficer: isOfficerByGrants(user.characters, grants),
+      isOfficer: porGrant || porRank,
       guildRank: user.guildRank,
       hasInternalAccess: canAccessInternalArea(
         { membership, guildRank: user.guildRank },

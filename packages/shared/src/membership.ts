@@ -47,16 +47,14 @@ export const sessionUserSchema = z.object({
   membership: membershipSchema,
 
   /**
-   * Concessão manual de oficial para decisões de liderança.
+   * Oficial: gateia histórico de outra pessoa e a lista de oficiais.
    *
-   * Flag **manual**, atribuída à mão, deliberadamente não derivada do rank do
-   * jogo. Entre outras decisões, oficiais acessam histórico pessoal e gerenciam
-   * a própria lista de concessões; errar o mapeamento de rank para cima
-   * liberaria isso para centenas de membros.
+   * Derivado no servidor de **duas fontes**, bastando uma: rank de oficial na
+   * guilda (`GUILD_OFFICER_RANK_MAX`) ou concessão em `OfficerGrant`. Nunca é
+   * coluna gravada — ver Regra 4.
    *
-   * Continua valendo mesmo agora que o rank decide a área interna: são dois
-   * gates independentes. Passar do corte dá a área interna, não decisões de
-   * liderança.
+   * Gate independente do de acesso: passar do corte dá a área interna, não
+   * decisões de liderança.
    */
   isOfficer: z.boolean(),
 
@@ -138,8 +136,8 @@ export function canApply(user: Pick<SessionUser, 'membership'>): boolean {
 type OfficerCheck = Pick<SessionUser, 'hasInternalAccess' | 'isOfficer'>;
 
 /**
- * Precondição de **qualquer** ação de oficial: estar na área interna e ter a
- * flag manual.
+ * Precondição de **qualquer** ação de oficial: estar na área interna e ser
+ * oficial (por rank ou por concessão — ver `officers.ts`).
  *
  * Existe para o guard genérico do Nest ter o que chamar sem escolher uma das
  * permissões específicas abaixo — um guard de oficial que checasse
@@ -156,10 +154,8 @@ export function isActingOfficer(user: OfficerCheck): boolean {
 /**
  * Conceder e revogar o próprio status de oficial.
  *
- * A mais perigosa das três: quem pode isto pode se dar todas as outras. Por
- * isso a tela é gated por ela mesma — só oficial promove oficial — e o serviço
- * recusa revogar o último, para não existir estado em que ninguém consegue
- * mais entrar.
+ * Autorreferente: quem pode isto pode se dar as outras. Por isso a tela é gated
+ * por ela mesma, e o serviço recusa revogar o último oficial.
  */
 export function canManageOfficers(user: OfficerCheck): boolean {
   return isActingOfficer(user);
@@ -168,10 +164,11 @@ export function canManageOfficers(user: OfficerCheck): boolean {
 /**
  * Ver o histórico de **outra pessoa** (presença, loot, evolução) — Regra 7.
  *
- * Membro vê o próprio histórico inteiro; só oficial vê o dos outros. Presença e
- * loot são dados sobre pessoas reais que ninguém combinou tornar públicos ao
- * entrar na guilda, e ranking de falta entre pares gera treta sem ajudar o raid
- * leader a decidir nada — ele já tem o detalhe.
+ * Membro vê o próprio histórico inteiro; só oficial vê o dos outros. O motivo é
+ * **social, não de sigilo**: presença e progressão estão abertas no Logs e no
+ * WoWAudit, então o dado não é secreto. O que o site evita é apresentá-lo em
+ * forma de comparação entre pares, que gera treta sem ajudar o raid leader a
+ * decidir nada — quem lidera a raid já tem o detalhe.
  *
  * Dá no mesmo que `canManageOfficers` hoje e mesmo assim é uma função
  * separada, de propósito: são decisões diferentes sobre dados diferentes, e

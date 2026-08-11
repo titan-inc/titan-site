@@ -40,10 +40,24 @@ export interface GuildConfig {
    * número sem gerar erro nenhum.
    */
   rankAccessMax: number;
+
+  /**
+   * Corte de rank que dá status de **oficial** automaticamente — Regra 4.
+   *
+   * Mais restrito que `rankAccessMax`, e sobre outra coisa: aquele decide a
+   * área interna, este decide histórico de outra pessoa e a lista de oficiais.
+   *
+   * Em configuração porque rank é posicional: reordenar ranks no jogo mudaria
+   * quem é oficial sem erro nenhum.
+   */
+  officerRankMax: number;
 }
 
 /** Corte usado quando `GUILD_RANK_ACCESS_MAX` não está definida. */
 const DEFAULT_RANK_ACCESS_MAX = 4;
+
+/** Corte usado quando `GUILD_OFFICER_RANK_MAX` não está definida. */
+const DEFAULT_OFFICER_RANK_MAX = 2;
 
 /**
  * Lê e valida a config da guilda.
@@ -76,12 +90,15 @@ export function loadGuildConfig(env: NodeJS.ProcessEnv = process.env): GuildConf
     );
   }
 
+  const rankAccessMax = parseRankAccessMax(env);
+
   return {
     region: region.data,
     name,
     realm,
     timezone: parseTimezone(env),
-    rankAccessMax: parseRankAccessMax(env),
+    rankAccessMax,
+    officerRankMax: parseOfficerRankMax(env, rankAccessMax),
   };
 }
 
@@ -131,6 +148,43 @@ function parseRankAccessMax(env: NodeJS.ProcessEnv): number {
     throw new Error(
       `GUILD_RANK_ACCESS_MAX inválido: "${raw}". Esperado um inteiro >= 0 ` +
         '(rank 0 é o guild master; o número cresce descendo a hierarquia).',
+    );
+  }
+
+  return parsed;
+}
+
+/**
+ * Corte de oficial, com default seguro e um limite que o outro corte não tem.
+ *
+ * Ausente cai no default (2, o corte real da guilda): um `.env` antigo não pode
+ * derrubar a API no boot.
+ *
+ * Exige `<= rankAccessMax` porque `isActingOfficer()` pede acesso à área
+ * interna junto — um corte mais frouxo marcaria gente como oficial com todas
+ * as permissões falsas, invisível na tela.
+ *
+ * Esse limite **lança** se o valor foi escrito à mão, e **aperta em silêncio**
+ * se é o default: quem escreveu 5 errou e precisa saber; quem só apertou o
+ * outro corte não escreveu nada sobre oficiais.
+ */
+function parseOfficerRankMax(env: NodeJS.ProcessEnv, rankAccessMax: number): number {
+  const raw = env.GUILD_OFFICER_RANK_MAX?.trim();
+  if (!raw) return Math.min(DEFAULT_OFFICER_RANK_MAX, rankAccessMax);
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(
+      `GUILD_OFFICER_RANK_MAX inválido: "${raw}". Esperado um inteiro >= 0 ` +
+        '(rank 0 é o guild master; o número cresce descendo a hierarquia).',
+    );
+  }
+
+  if (parsed > rankAccessMax) {
+    throw new Error(
+      `GUILD_OFFICER_RANK_MAX (${parsed}) não pode ser maior que ` +
+        `GUILD_RANK_ACCESS_MAX (${rankAccessMax}): ser oficial exige acesso à área interna, ` +
+        'então esses ranks ficariam marcados como oficiais sem nenhuma permissão de oficial.',
     );
   }
 
