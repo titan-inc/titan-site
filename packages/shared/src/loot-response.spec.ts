@@ -3,7 +3,7 @@ import {
   LOOT_RESPONSES,
   matchLegacyResponse,
   RESPOSTA_IGNORADA,
-  lootResponseSchema,
+  lootResponseSlugSchema,
 } from './loot-response.js';
 
 /**
@@ -108,17 +108,35 @@ describe('matchLegacyResponse', () => {
 });
 
 describe('LOOT_RESPONSES', () => {
-  it('aceita só os sete valores canônicos', () => {
+  it('semeia os sete slugs, seis de jogador e um de loot master', () => {
     expect(Object.values(LOOT_RESPONSES).sort()).toEqual([
       'banking',
       'bis',
-      'minor-upgrade',
+      'minor',
       'offspec',
       'pass',
       'transmog',
       'upgrade',
     ]);
-    expect(lootResponseSchema.safeParse('big').success).toBe(false);
+  });
+
+  it('o slug de resposta NÃO é enum fechado', () => {
+    // A lista de opções é tabela configurável: um `nativeEnum` aqui recusaria a
+    // opção que a liderança cadastrar na tela. Quem valida é a linha da tabela.
+    expect(lootResponseSlugSchema.safeParse('uma-opcao-que-a-lideranca-criou').success).toBe(true);
+    expect(lootResponseSlugSchema.safeParse('').success).toBe(false);
+  });
+
+  it('todo destino do tradutor é um slug semeado', () => {
+    // Se o tradutor apontasse para um slug que a migration não semeia, o import
+    // quebraria na FK — e só na hora de importar, longe daqui.
+    const semeados = new Set<string>(Object.values(LOOT_RESPONSES));
+    const destinos = DO_EXPORT.map(([id, rotulo]) => matchLegacyResponse(id, rotulo))
+      .filter((m): m is Extract<typeof m, { kind: 'response' }> => m.kind === 'response')
+      .map((m) => m.response);
+
+    expect(destinos.length).toBeGreaterThan(0);
+    expect(destinos.filter((d) => !semeados.has(d))).toEqual([]);
   });
 
   it('o valor é o rótulo, nunca a posição', () => {

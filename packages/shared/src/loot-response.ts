@@ -1,19 +1,21 @@
 import { z } from 'zod';
 
 /**
- * O que a pessoa respondeu quando levou o item.
+ * Os slugs das opções que o sistema **semeia**.
  *
- * Vocabulário canônico do sistema, e o mesmo que a sessão ao vivo vai oferecer
- * nas opções configuráveis (TIT-64).
+ * ATENÇÃO: isto **não** é o conjunto de valores possíveis. As opções de resposta
+ * são uma tabela (`LootResponseOption`), configurável no app — a liderança
+ * acrescenta e desativa sem deploy. Um enum Zod fechado aqui reprovaria a opção
+ * nova que alguém cadastrasse.
  *
- * **Append-only.** Um valor entra e nunca sai, mesmo que a sessão ao vivo pare de
- * oferecê-lo: o histórico importado continua precisando dele para descrever o que
- * aconteceu. Remover valor daqui é reescrever passado.
+ * Existe para duas coisas terem referência tipada aos defaults: o tradutor do
+ * histórico abaixo, e o seed da migration. Para validar a resposta de uma linha
+ * de loot, confira contra a tabela, nunca contra esta lista.
  *
- * **Identidade estável, nunca posição** — mesmo cuidado do enum de dificuldade e
- * da Regra 4. É justamente o erro que o `responseID` do RCLootCouncil comete, e
- * que esta tabela existe para não repetir: lá o `2` aparece como `Big` e como
- * `Banking`, porque é o índice do botão na config daquele raid.
+ * **Slug é identidade estável e imutável.** Renomear é reescrever passado; o que
+ * se edita é o `label` da tabela. É justamente o erro que o `responseID` do
+ * RCLootCouncil comete — lá o `2` é `Big` num raid e `Banking` noutro, porque é o
+ * índice do botão — e é a mesma armadilha do `guildRank` na Regra 4.
  */
 export const LOOT_RESPONSES = {
   /** Melhor peça possível para a spec. */
@@ -21,32 +23,45 @@ export const LOOT_RESPONSES = {
   /** Upgrade relevante, sem ser o ideal. */
   UPGRADE: 'upgrade',
   /** Upgrade pequeno. */
-  MINOR_UPGRADE: 'minor-upgrade',
+  MINOR: 'minor',
   /** Serve para a spec secundária. */
   OFFSPEC: 'offspec',
   /** Só pela aparência. */
   TRANSMOG: 'transmog',
   /**
-   * Declarou não querer — e ainda assim levou.
+   * Declarou não querer.
    *
-   * Parece contradição e não é: num drop que ninguém quis, quem votou `pass`
-   * levou por ter tirado o maior roll. Registro de 28/04/2026. Não é dado sujo,
-   * então não é sanitizado na importação.
+   * Acumula três situações que o RCLootCouncil separava — ausência de resposta,
+   * pass ativo no botão, e "not eligible". No nosso desenho o jogador **sempre**
+   * responde a todo loot, então `pass` é escolha, não lacuna.
+   *
+   * E aparece como vencedor: num drop que ninguém quis, quem votou `pass` levou
+   * por ter tirado o maior roll. Registro real de 28/04/2026 — não é dado sujo, e
+   * não é sanitizado na importação.
    */
   PASS: 'pass',
   /**
    * Foi para o banco da guilda, não para uma pessoa.
    *
-   * É motivo de award e não declaração de interesse — o próprio RCLootCouncil o
-   * marca com `isAwardReason=true`, e era o único rótulo assim nos 445 registros.
-   * Fica no mesmo vocabulário porque continua sendo decisão do conselho sobre
-   * aquele item.
+   * Única opção de **loot master** entre as semeadas: é decisão sobre o destino
+   * do item, não declaração de interesse. O próprio RCLootCouncil a marca com
+   * `isAwardReason=true`, e era o único rótulo assim nos 445 registros.
    */
   BANKING: 'banking',
 } as const;
 
-export const lootResponseSchema = z.nativeEnum(LOOT_RESPONSES);
-export type LootResponse = z.infer<typeof lootResponseSchema>;
+/**
+ * Slug de opção de resposta.
+ *
+ * String, e **não** enum fechado: a lista de opções é configurável na tabela, e
+ * um `nativeEnum` aqui recusaria a opção que a liderança cadastrar. Quem valida
+ * de verdade é a existência da linha em `LootResponseOption`.
+ */
+export const lootResponseSlugSchema = z.string().min(1);
+export type LootResponseSlug = z.infer<typeof lootResponseSlugSchema>;
+
+/** Um dos slugs semeados. Só para o tradutor e o seed — ver `LOOT_RESPONSES`. */
+export type SeededLootResponse = (typeof LOOT_RESPONSES)[keyof typeof LOOT_RESPONSES];
 
 /**
  * Combinação que o import reconhece e **descarta de propósito**.
@@ -58,7 +73,7 @@ export type LootResponse = z.infer<typeof lootResponseSchema>;
 export const RESPOSTA_IGNORADA = 'ignorada';
 
 export type LegacyResponseMatch =
-  | { kind: 'response'; response: LootResponse }
+  | { kind: 'response'; response: SeededLootResponse }
   | { kind: typeof RESPOSTA_IGNORADA }
   | { kind: 'desconhecida'; chave: string };
 
@@ -88,12 +103,12 @@ export type LegacyResponseMatch =
  * Se aparecer outro arquivo histórico com rótulo novo, o import para e diz qual
  * é — e acrescentar é um PR de uma linha, uma vez.
  */
-const LEGADO_RC: Readonly<Record<string, LootResponse | typeof RESPOSTA_IGNORADA>> = {
+const LEGADO_RC: Readonly<Record<string, SeededLootResponse | typeof RESPOSTA_IGNORADA>> = {
   '1|bis': LOOT_RESPONSES.BIS,
   '2|big': LOOT_RESPONSES.UPGRADE,
   '2|banking': LOOT_RESPONSES.BANKING,
-  '3|minor': LOOT_RESPONSES.MINOR_UPGRADE,
-  '3|minor upgrade': LOOT_RESPONSES.MINOR_UPGRADE,
+  '3|minor': LOOT_RESPONSES.MINOR,
+  '3|minor upgrade': LOOT_RESPONSES.MINOR,
   '4|offspec': LOOT_RESPONSES.OFFSPEC,
   '5|xmog': LOOT_RESPONSES.TRANSMOG,
   'pass|pass': LOOT_RESPONSES.PASS,
