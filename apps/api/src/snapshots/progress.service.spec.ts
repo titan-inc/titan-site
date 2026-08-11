@@ -22,10 +22,11 @@ const char = (name: string, realm = 'Azralon'): TeamCharacter => ({
   role: 'Heal',
 });
 
-const seasonRow = (id: number, startedAt: string) => ({
+const seasonRow = (id: number, startedAt: string, raiderioSlug: string | null = 'season-mn-1') => ({
   id,
   patch: '12.0',
   name: `Season ${id}`,
+  raiderioSlug,
   firstPeriod: 1055,
   periodCount: 20,
   startedAt: new Date(startedAt),
@@ -147,6 +148,22 @@ describe('ProgressService', () => {
     const report = await service.getReport();
 
     expect(report?.rows.map((r) => r.name)).toEqual(['Fulano', 'Beltrano']);
+  });
+
+  it('marca a season sem slug do Raider.IO como M+ ainda não aberto', async () => {
+    // É a semana entre o patch e a abertura do M+. A tela precisa disto para
+    // dizer por que a coluna da season está vazia.
+    repo.listSeasons.mockResolvedValue([seasonRow(18, '2026-08-11T15:00:00Z', null)]);
+
+    const report = await service.getReport();
+
+    expect(report?.mythicPlusOpen).toBe(false);
+  });
+
+  it('com slug gravado, o M+ da season está aberto', async () => {
+    const report = await service.getReport();
+
+    expect(report?.mythicPlusOpen).toBe(true);
   });
 
   it('compara com a semana anterior de quem ficou', async () => {
