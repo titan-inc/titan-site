@@ -238,6 +238,27 @@ describe('RaidProgressService', () => {
       expect(report?.availableSeasons.map((s) => s.id)).toEqual([18, 17]);
     });
 
+    it('season que nasce depois do relatório cacheado entra no seletor na hora', async () => {
+      // O cache é por season e guardava a lista junto. A season nova entra no
+      // banco no dia do patch: um relatório cacheado minutos antes escondia
+      // ela do seletor por até 15 minutos, justo quando alguém vai olhar.
+      repo.listSeasons.mockResolvedValue([antiga]);
+      wcl.getRaidPulls.mockResolvedValue([pull({ kill: true })]);
+      await service.getReport();
+      const lidas = wcl.getRaidPulls.mock.calls.length;
+
+      // A season nova aparece, e está vazia: o passeio passa por ela e cai na
+      // 17, que já está cacheada.
+      repo.listSeasons.mockResolvedValue([nova, antiga]);
+      soAAntigaTemPull();
+      const report = await service.getReport();
+
+      expect(report?.season.id).toBe(17);
+      expect(report?.availableSeasons.map((s) => s.id)).toEqual([18, 17]);
+      // Só a season nova foi lida do WCL — a 17 veio mesmo do cache.
+      expect(wcl.getRaidPulls).toHaveBeenCalledTimes(lidas + 1);
+    });
+
     it('season pedida à mão vale mesmo vazia', async () => {
       soAAntigaTemPull();
       repo.findSeason.mockResolvedValue(nova);

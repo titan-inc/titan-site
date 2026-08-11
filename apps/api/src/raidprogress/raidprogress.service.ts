@@ -124,14 +124,26 @@ export class RaidProgressService {
     escolhida: SeasonRow,
     seasons: SeasonRow[],
   ): Promise<RaidProgressReport> {
-    const cacheado = this.cache.get(escolhida.id);
-    if (cacheado && Date.now() - cacheado.fetchedAt < TTL_MS) return cacheado.report;
-
     const opcao = (s: { id: number; patch: string | null; name: string }): SeasonOption => ({
       id: s.id,
       patch: s.patch,
       name: s.name,
     });
+
+    /**
+     * O seletor sai sempre da leitura de agora, nunca do cache.
+     *
+     * A season nova entra no banco no dia do patch, e um relatório cacheado
+     * minutos antes disso ficaria com a lista velha por até 15 minutos — a
+     * season nova sumindo do seletor exatamente na hora em que alguém vai
+     * olhar. Custa nada: `seasons` já foi lido nesta requisição.
+     */
+    const disponiveis = seasons.map(opcao);
+
+    const cacheado = this.cache.get(escolhida.id);
+    if (cacheado && Date.now() - cacheado.fetchedAt < TTL_MS) {
+      return { ...cacheado.report, availableSeasons: disponiveis };
+    }
 
     try {
       // A janela da season termina onde a próxima começa. Sem próxima, é agora
@@ -145,7 +157,7 @@ export class RaidProgressService {
 
       const report: RaidProgressReport = {
         season: opcao(escolhida),
-        availableSeasons: seasons.map(opcao),
+        availableSeasons: disponiveis,
         difficulties: this.difficuldades(pulls, catalogo),
         raids: this.montarRaids(pulls, catalogo),
         fetchedAt: new Date().toISOString(),
@@ -165,7 +177,7 @@ export class RaidProgressService {
       // que a tela dizer que não conseguiu atualizar.
       if (cacheado) {
         this.logger.warn(`Warcraft Logs falhou (${motivo}); usando cache anterior`);
-        return { ...cacheado.report, stale: true };
+        return { ...cacheado.report, availableSeasons: disponiveis, stale: true };
       }
 
       throw new Error(`Não foi possível ler o Warcraft Logs: ${motivo}`);
