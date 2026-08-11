@@ -4,6 +4,7 @@ import {
   type CatalogFile,
   type CatalogFileBoss,
   type LootCatalogRaid,
+  type LootCatalogRaidSummary,
   type RaidDifficultyLevel,
   type WowItem,
 } from '@titan/shared';
@@ -55,6 +56,19 @@ export class LootCatalogService {
   async listRaids(filtro: RaidFilter = {}): Promise<LootCatalogRaid[]> {
     const raids = await this.repo.findRaids(filtro);
     return raids.map(toLootCatalogRaid);
+  }
+
+  /**
+   * As raids sem os drops, que é o que a lista precisa.
+   *
+   * A resposta completa repete o item em cada dificuldade: as quatro raids do
+   * tier corrente dão 468 drops, que no endpoint são **306 KB** contra **553
+   * bytes** do resumo. Quem precisa dos drops quer **uma** raid.
+   */
+  async listRaidSummaries(filtro: RaidFilter = {}): Promise<LootCatalogRaidSummary[]> {
+    const raids = await this.repo.findRaidSummaries(filtro);
+
+    return raids.map(({ _count, ...raid }) => ({ ...raid, encounterCount: _count.encounters }));
   }
 
   async getRaid(slug: string, difficulty?: RaidDifficultyLevel): Promise<LootCatalogRaid | null> {

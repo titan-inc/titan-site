@@ -94,6 +94,7 @@ const catalogoWcl = (nome = 'Imperator Averzian') => ({
 describe('LootCatalogService', () => {
   const repo = {
     findRaids: jest.fn(),
+    findRaidSummaries: jest.fn(),
     findRaidBySlug: jest.fn(),
     upsertRaid: jest.fn(),
     upsertEncounter: jest.fn(),
@@ -133,6 +134,32 @@ describe('LootCatalogService', () => {
       ],
       [],
     ]);
+  });
+
+  it('resume a raid sem os drops, com a contagem de bosses', async () => {
+    // A lista existe para não trafegar meio megabyte de drops só para escolher
+    // qual raid abrir. O `_count` do Prisma vira `encounterCount` no contrato.
+    repo.findRaidSummaries.mockResolvedValue([
+      {
+        id: 'ckraid',
+        slug: 'the-voidspire',
+        name: 'The Voidspire',
+        seasonId: null,
+        instanceMapId: 2912,
+        _count: { encounters: 6 },
+      },
+    ]);
+
+    const resumos = await service.listRaidSummaries();
+
+    expect(primeira(resumos)).toEqual({
+      id: 'ckraid',
+      slug: 'the-voidspire',
+      name: 'The Voidspire',
+      seasonId: null,
+      instanceMapId: 2912,
+      encounterCount: 6,
+    });
   });
 
   it('mantém o boss que não tem drop na dificuldade filtrada', async () => {
