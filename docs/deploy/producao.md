@@ -95,6 +95,77 @@ genérico que o `aws` CLI reconhece sozinho — essa credencial só tem
 permissão neste bucket, e uma futura chave AWS de outro escopo não deve
 colidir com o nome desta.
 
+## Primeiro acesso (uma vez por dev)
+
+Todo comando da próxima seção começa dentro da instância, e chegar lá exige uma
+chave SSH sua no `authorized_keys` do usuário `ubuntu`. São três passos, e
+**nenhum depende de outro dev estar disponível** — o console da Lightsail é o
+que quebra essa dependência.
+
+O `<STATIC_IP>` é o IP estático da instância, o mesmo que o A record de
+`titaninc.com.br` resolve (o Caddy roda na própria instância).
+
+**1. Gerar o par de chaves.** `ssh` e `ssh-keygen` já vêm no Windows 11, não
+precisa instalar nada:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/titan-site-<seu-nome> -C "<seu-email> titan-site"
+```
+
+Vai perguntar a passphrase — deixar em branco é aceitável (é o que a chave do
+CI faz), mas aí quem copiar o arquivo entra em produção. Dá pra colocar depois
+com `ssh-keygen -p -f ~/.ssh/titan-site-<seu-nome>`.
+
+⚠️ No PowerShell, **não** passe `-N ""` pra pular a pergunta: ele grava uma
+passphrase literal de dois caracteres e a chave fica inutilizável sem que nada
+avise. Ou responde interativamente, ou passa uma variável vazia (`$v = ''`).
+
+**2. Subir a pública pelo console da Lightsail.** Console AWS → Lightsail →
+aba **Instances** → ícone de terminal no card da instância. Abre um SSH no
+navegador já logado como `ubuntu`, **sem precisar de chave nenhuma** — é
+exatamente por isso que este passo não precisa de outro dev. Lá dentro, colando
+o conteúdo do seu `.pub` (o botão de colar é o ícone de clipboard no canto
+inferior direito; `Ctrl+V` não funciona):
+
+```bash
+echo 'ssh-ed25519 AAAA... <seu-email> titan-site' >> ~/.ssh/authorized_keys
+```
+
+**3. Primeira conexão — `known_hosts`.** Máquina nova não tem o arquivo, então
+o SSH quer perguntar se você confia neste host. Fora de um terminal interativo
+ele não consegue perguntar e aborta com **`Host key verification failed`** —
+mensagem que não sugere a causa e faz a pessoa procurar defeito na chave, que
+está certa. Na primeira vez:
+
+```bash
+ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/titan-site-<seu-nome> ubuntu@<STATIC_IP>
+```
+
+Só na primeira; depois disso o host está gravado e o `ssh` normal funciona.
+Pra conferir que gravou o host certo em vez de confiar cegamente, compare o
+fingerprint com o que o console da Lightsail mostra:
+
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub   # no console
+ssh-keygen -lf ~/.ssh/known_hosts                  # na sua máquina
+```
+
+**Opcional, mas poupa digitação:** um `~/.ssh/config` na sua máquina troca
+`-i ~/.ssh/... ubuntu@<STATIC_IP>` por `titan-prod` em todos os comandos
+abaixo, inclusive nos túneis.
+
+```
+Host titan-prod
+  HostName <STATIC_IP>
+  User ubuntu
+  IdentityFile ~/.ssh/titan-site-<seu-nome>
+```
+
+Se o teste falhar com `Permission denied (publickey)`, o `echo` do passo 2 não
+chegou no arquivo certo. Se falhar com `UNPROTECTED PRIVATE KEY FILE`, é ACL do
+Windows na chave privada — `icacls` restringindo o arquivo ao seu usuário
+resolve.
+
 ## Comandos úteis
 
 Todos assumem `cd /opt/titan-site` antes (onde vive o `docker-compose.prod.yml`),
