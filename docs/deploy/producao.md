@@ -18,6 +18,30 @@ job de CI/CD, TIT-103) — não são editados à mão na instância, mudam pelo
 repositório e um novo deploy. `.env` é a exceção: existe só na instância,
 nunca é commitado, e é editado à mão via SSH quando precisa mudar.
 
+## O que roda fora do Docker, direto no host
+
+Três coisas instaladas manualmente na instância, fora do `docker-compose.prod.yml`
+— nenhuma delas é reproduzida por deploy automático nem por TIT-106:
+
+- **Swap de 1GB** (`/swapfile`, registrado em `/etc/fstab`) — a instância
+  não vinha com swap nenhum. Rede de segurança contra pico passageiro de
+  memória, não licença pra rodar processo pesado (TIT-110).
+- **AWS CLI v2** — necessário pro script de backup (`aws s3 cp`). O pacote
+  `awscli` do apt **não existe** no Ubuntu 24.04 (Noble); instalado via
+  instalador oficial:
+  ```bash
+  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  sudo apt-get install -y unzip
+  unzip awscliv2.zip
+  sudo ./aws/install
+  rm -rf awscliv2.zip aws
+  ```
+- **Node.js + `crontab-ui`** — dashboard web pro cron (ver "Comandos úteis"
+  abaixo). Instalado nativo no host de propósito, não containerizado: containerizar
+  exigiria dar ao container acesso ao `docker.sock` pra ele conseguir
+  disparar `docker compose exec`, o que equivale a root sobre todos os
+  outros containers (TIT-112).
+
 ## `.env` de produção — variáveis
 
 Mesma lista do `.env.example`, com estas diferenças:
@@ -112,6 +136,25 @@ psql "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5433/$POSTGRES_DB
 
 (precisa do `psql` instalado na sua máquina — não vem por padrão no
 Windows; um client gráfico dispensa isso.)
+
+**Túnel SSH pro `crontab-ui`** — dashboard web do cron do usuário `ubuntu`,
+rodando nativo no host (`systemctl status crontab-ui`), só na loopback:
+
+```bash
+ssh -i ~/.ssh/titan-site-<seu-nome> -L 8000:127.0.0.1:8000 ubuntu@<STATIC_IP>
+```
+
+Com o túnel de pé: **http://localhost:8000**.
+
+⚠️ Depois de criar/editar um job na UI, precisa clicar em **"Save to crontab"**
+— sem isso a mudança fica só no rascunho da UI e nunca vira cron de
+verdade (não roda, mas também não avisa que não vai rodar).
+
+Job cadastrado hoje: `backup-postgres`, `0 8 * * *` (5h BRT — o sistema
+roda em UTC, confirmado com `timedatectl`), rodando
+`scripts/deploy/backup-postgres-to-s3.sh >> /opt/titan-site/backup.log 2>&1`,
+com "Enable error logging" ligado na UI pra falha ficar visível ali
+também, não só no arquivo.
 
 **Migration depois de um deploy** — o container da api **não** roda migration
 no boot (ver comentário no `apps/api/Dockerfile`), é sempre passo manual:
