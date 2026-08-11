@@ -658,6 +658,12 @@ model LootCatalogEncounter {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  /// As entregas que resolveram para este boss.
+  ///
+  /// Nem toda linha de loot chega aqui: a FK é opcional porque 22% do histórico
+  /// importado não casa com o catálogo, por nome traduzido ou boss desconhecido.
+  lootLines LootLine[]
+
   /// Sem `@@index` para o `dungeonEncounterId`: o `@unique` dele já cria índice
   /// no Postgres, e um segundo seria peso morto na escrita.
   @@unique([raidId, position])
@@ -742,5 +748,165 @@ model LootResponseOption {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  /// As entregas que usaram esta opção.
+  ///
+  /// É o que torna `active` obrigatório e delete proibido: apagar a opção
+  /// arrastaria histórico, e o `onDelete: Restrict` do outro lado recusa.
+  lootLines LootLine[]
+
   @@index([active, position])
+}
+
+/// De onde a linha de loot veio.
+enum LootLineSource {
+  /// Import do export do RCLootCouncil. Histórico até 06/2026.
+  import_rc
+
+  /// Import do export do WoWAudit.
+  import_wowaudit
+
+  /// Sessão ao vivo do site, daqui para frente.
+  live_session
+}
+
+/// Uma peça entregue a alguém por decisão do conselho.
+///
+/// Uma tabela só para o histórico importado e para o resultado das sessões ao
+/// vivo, distinguidos por `source`. É o registro que a Regra 7 diz que só existe
+/// se a gente estiver gravando: nenhuma API externa responde "quem levou o quê na
+/// nossa guilda em março".
+///
+/// **Uma linha é um award, não a resposta de um candidato.** Medido no export
+/// real: 444 drops distintos em 445 linhas, e a única repetição são dois
+/// jogadores recebendo bonus loot do mesmo item no mesmo instante. Ou seja,
+/// `responseOptionSlug` é a resposta de **quem levou**, no momento em que levou.
+///
+/// **Só entra loot distribuído pelo conselho.** Bonus roll e personal loot vão
+/// direto para o jogador e são propriedade exclusiva dele — não houve decisão a
+/// registrar. Em 445 registros, os 151 desse tipo nunca receberam um único voto.
+model LootLine {
+  id String @id @default(cuid())
+
+  source LootLineSource
+
+  /// Id da linha na fonte. No RCLootCouncil é `servertime-índice`.
+  ///
+  /// É o que faz reimportar o mesmo arquivo não duplicar: único nos 445 do export
+  /// real. Nulo para sessão ao vivo, que nasce aqui e não tem id de fora.
+  externalId String?
+
+  /// Quando o item foi entregue.
+  ///
+  /// Vem do `servertime` (epoch), nunca de `date` + `time`: aqueles dois são
+  /// texto no fuso de quem exportou, e o epoch não tem ambiguidade.
+  awardedAt DateTime
+
+  /// Identidade de quem levou: o par nome + realm, nunca o nome sozinho.
+  ///
+  /// Regra 6 — `nameKey` por `toCharacterKey()` (MANTÉM acento, porque no roster
+  /// existem 7 grupos de personagens que só diferem por acento, com ranks
+  /// diferentes) e `realmSlug` por `toSlug()`.
+  winnerNameKey   String
+  winnerRealmSlug String
+
+  /// Grafia como veio na fonte, para exibir. Nunca para comparar.
+  ///
+  /// O realm também: `toSlug()` é lossy no caminho de volta — 58 dos 344 realms
+  /// US têm hífen no slug, e `area-52` não diz se o nome é "Area 52" ou
+  /// "Area-52". Para personagem que saiu da guilda (ver TIT-54) a fonte é a única
+  /// coisa que sobrou.
+  winnerName  String
+  winnerRealm String
+
+  /// Classe como token do cliente (`MAGE`, `DEATHKNIGHT`). NÃO é localizado.
+  ///
+  /// Guardado cru: alinhar com o vocabulário de `CLASSES` do shared é conversão de
+  /// leitura, e ninguém precisa disso ainda.
+  winnerClass String?
+
+  /// Quem lootou o item no jogo, quando difere de quem levou.
+  ///
+  /// É o `owner` do export. Mesmo par nome + realm, e nulo quando a fonte não diz.
+  looterNameKey   String?
+  looterRealmSlug String?
+  looterName      String?
+  looterRealm     String?
+
+  /// O item. `itemId` para casar com o catálogo, `itemString` cru e inteiro.
+  ///
+  /// O `itemString` é preservado sem interpretar porque hoje não sabemos o que
+  /// distingue o bônus `13333` do `13335`. Se alguém mapear a família de track daqui
+  /// a seis meses, dá para enriquecer o histórico inteiro retroativamente — mas só
+  /// se o bruto estiver lá. Mesmo instinto da Regra 7: grava o fato, interpreta
+  /// depois.
+  itemId     Int
+  itemString String
+
+  /// De onde foi lootado, **como a fonte disse**.
+  ///
+  /// Guardado sempre, mesmo quando resolve, porque é o único caminho de volta. E
+  /// resolve pouco: nos 294 registros de conselho o `instance` aparece em 11
+  /// grafias, incluindo `A Torre do Caos` (The Voidspire em ptBR) e `A Fenda
+  /// Onírica` (The Dreamrift), porque o rótulo vem do cliente de quem era loot
+  /// master. 56 registros têm boss `Unknown` ou `Desconhecido`.
+  rawInstance String
+  rawBoss     String
+
+  /// O boss do catálogo, **quando dá para resolver**.
+  ///
+  /// Nulável e sem obrigação: 22% dos registros de raid não casam, por nome
+  /// traduzido ou por boss desconhecido. FK obrigatório aqui recusaria histórico
+  /// legítimo.
+  encounterId String?
+  encounter   LootCatalogEncounter? @relation(fields: [encounterId], references: [id])
+
+  /// Dificuldade, **quando dá para determinar**.
+  ///
+  /// Nulável porque o sufixo do `instance` é texto localizado e nem é enum:
+  /// `Mythic - Flexible Raiding`, `Piedra angular mítica`. Gravar `normal` porque
+  /// não deu para parsear seria inventar fato — a Regra 7 manda tratar como
+  /// lacuna, nunca como zero.
+  difficulty RaidDifficulty?
+
+  /// A resposta, no vocabulário do sistema.
+  ///
+  /// Aponta para o `slug` e não para o `id` de propósito: slug é a identidade
+  /// declarada imutável, e assim a linha é legível em SQL cru (`bis`, e não um
+  /// cuid). `Restrict` porque opção com histórico não pode ser apagada — o que se
+  /// faz é desativar.
+  responseOptionSlug String
+  responseOption     LootResponseOption @relation(fields: [responseOptionSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+
+  /// O que a fonte escreveu, antes de traduzir.
+  ///
+  /// Os dois juntos são a chave do tradutor, e nenhum serve sozinho: o rótulo
+  /// varia de caixa e idioma, e o `responseID` é posicional — o `2` é `Big` num
+  /// raid e `Banking` noutro. Guardados para o dia em que alguém questionar uma
+  /// tradução, ou em que o mapeamento mudar e for preciso reprocessar.
+  rawResponse   String?
+  rawResponseId String?
+
+  /// Votos do conselho. Zero é resultado legítimo; nulo é fonte que não tem o
+  /// conceito.
+  votes Int?
+
+  /// Anotação de quem registrou, livre.
+  note String?
+
+  /// O que a peça substituiu, como a fonte disse (`gear1`/`gear2` do export).
+  ///
+  /// Texto localizado e sem consumidor hoje. Guardado porque é **irrecuperável**:
+  /// não existe fonte que diga depois o que a pessoa tinha equipado em março.
+  rawReplacedGear String[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Reimportar o mesmo arquivo não duplica.
+  @@unique([source, externalId])
+  /// "O histórico desta pessoa", que é a consulta central da Regra 7.
+  @@index([winnerNameKey, winnerRealmSlug, awardedAt])
+  @@index([itemId])
+  @@index([encounterId])
+  @@index([awardedAt])
 }
