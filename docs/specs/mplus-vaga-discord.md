@@ -1,10 +1,10 @@
 # M+: anúncio de vaga no Discord
 
-> **Status: PROPOSTA.** Escrita em 12/08/2026 contra `origin/main`.
-> Nada aqui foi implementado. Linear: **TIT-117**.
+> **Status: APROVADA, não implementada.** Escrita em 12/08/2026 contra `origin/main`.
+> Linear: **TIT-117** (desenho), **TIT-118** (implementação).
 >
-> Uma decisão continua em aberto e está isolada na seção 5 — persistir a vaga ou não.
-> Ela muda o tamanho da entrega, não a forma.
+> A decisão que estava em aberto foi tomada em 12/08/2026 e está na seção 5:
+> persistir, com expurgo automático em 7 dias.
 
 ---
 
@@ -114,29 +114,48 @@ por engano silencia o canal e some para sempre, inclusive para os anúncios que 
 
 ---
 
-## 5. Decisão em aberto: persistir a vaga?
+## 5. Persistência: sim, com expurgo em 7 dias
 
-**Recomendação: persistir.** Mas a decisão é do time, e o resto da spec vale nos dois casos.
+**Decidido em 12/08/2026.** A vaga é gravada, quem criou pode apagar à mão, e um job apaga
+sozinho o que passou de 7 dias.
 
-### A favor de gravar
+Os 7 dias são **faxina, não política de retenção**: a vaga vira lixo depois que a noite passa,
+e apagar à mão toda vez é trabalho que ninguém vai fazer.
 
-Com a agenda semanal (4.1) fora da mesa, **o histórico de vagas é o único caminho que sobra**
-para um dia saber o ritmo de M+ da guilda — que dia, que horário, que faixa de key. Regra 7:
-"gravar vem antes de exibir", e "semana não gravada não volta". Custa uma tabela, é invisível
-para quem usa e **não dá para fazer retroativo**.
+### O argumento que ganhou a discussão não sobreviveu à decisão
 
-### A favor de não gravar
+Registrado porque é exatamente o tipo de coisa que alguém reconstrói errado meses depois.
 
-O fluxo de candidatura (`docs/specs/discord-apply-flow.md`) escolheu deliberadamente não
-persistir, e o argumento era bom: ninguém abriria um segundo inbox. Se o registro sair daqui
-também, a tela perde metade da razão de existir e **isto vira um slash command de bot**, sem
-front nenhum — o que é uma resposta legítima, não um fracasso.
+A persistência foi defendida pelo **histórico**: com a agenda semanal (4.1) fora da mesa, o
+registro de vagas seria o único caminho para um dia saber o ritmo de M+ da guilda — que dia,
+que horário, que faixa de key. Regra 7, "gravar vem antes de exibir".
 
-### O custo que a versão sem persistência aceita
+**Sete dias não é ritmo, é a semana passada.** Esse argumento morreu junto com a janela, e
+ninguém deve construir leitura de ritmo em cima desta tabela: ela se apaga sozinha. Se um dia
+quiserem isso, é decisão nova, e provavelmente outra tabela.
 
-O mesmo do apply, e precisa estar escrito: **sem registro não há garantia de entrega**. Discord
-fora do ar no momento do envio = anúncio perdido, sem reprocessamento. Daí a regra da seção 9:
-nunca responder sucesso para mensagem que não chegou.
+O que a persistência compra, e que basta para justificá-la:
+
+- **apagar à mão** uma vaga que não vale mais — sem linha não há o que apagar;
+- **uma página da vaga** para o post do Discord linkar. Regra 7: linka fundo, na página exata;
+- **saber o que foi entregue**, em vez de mandar e esquecer.
+
+### O que continua valendo do desenho sem persistência
+
+**Sem registro não haveria garantia de entrega** — é o custo que o apply
+(`docs/specs/discord-apply-flow.md`) aceitou conscientemente. Aqui a linha existe, então o
+caminho de falha pode ser melhor: gravar antes de entregar e marcar o resultado depois
+(seção 8). Mesmo assim, a regra da seção 9 não muda — **nunca responder sucesso para mensagem
+que não chegou**.
+
+### Apagar a linha não apaga a mensagem do Discord
+
+O anúncio já foi entregue e fica no canal, independente do que o site faça depois. Apagar é
+**tirar do site**, e a tela não pode sugerir outra coisa — quem apagar achando que retirou o
+anúncio do ar vai continuar recebendo resposta no Discord.
+
+Remover a mensagem exigiria guardar o id dela e chamar o Discord de volta, o que o webhook até
+permite; **fora de escopo** e listado na seção 10.
 
 ---
 
@@ -228,12 +247,28 @@ que seria aceito.
 
 1. Pessoa logada, com personagem no roster (6.3), abre a tela e descreve a vaga.
 2. Front valida com `criarVagaSchema`; o Nest revalida com o mesmo schema — Regra 5.
-3. O service monta o embed, sanitiza texto livre (§7 da spec do apply, sem reescrever).
-4. `DiscordService.send(destino: 'mplus', payload)`.
-5. Discord aceitou → **201**. Falhou → erro honesto, valores preservados na tela.
-6. Se a decisão da seção 5 for persistir: a linha é gravada **antes** da entrega, com o
-   resultado da entrega marcado depois. Gravar depois perde exatamente o caso que a persistência
-   existe para cobrir.
+3. **A linha é gravada**, ainda sem resultado de entrega.
+4. O service monta o embed, sanitiza texto livre (§7 da spec do apply, sem reescrever).
+5. `DiscordService.send(destino: 'mplus', payload)`.
+6. O resultado da entrega é marcado na linha.
+7. Discord aceitou → **201**. Falhou → erro honesto, valores preservados na tela.
+
+Gravar **antes** de entregar é o que permite saber que existiu uma vaga cuja mensagem não
+chegou. Gravar depois perderia exatamente esse caso.
+
+### Ciclo de vida
+
+| Evento          | Quem           | Efeito                                       |
+| --------------- | -------------- | -------------------------------------------- |
+| apagar à mão    | quem criou     | linha some do site; mensagem fica no Discord |
+| expurgo, 7 dias | `@Cron` diário | idem, sem ninguém pedir                      |
+
+Os 7 dias contam a partir da **criação**, não do horário marcado para a key — assim uma vaga
+criada para daqui a duas semanas não some antes da hora. Se a seção 7 limitar o quanto se pode
+agendar à frente, as duas janelas precisam conversar.
+
+O job segue o padrão dos que já existem (`@Cron` em `snapshots.service.ts:60`), **não** um
+script que sobe `NestFactory` — Regra 8.
 
 ### Fuso horário
 
@@ -278,8 +313,12 @@ ferramenta de grupo é uma máquina de fazer isso se deixarem.
 - Ping direcionado por perfil (4.5).
 - Algoritmo de composição, confirmação de presença, sugestão de convite, fechamento
   automático do grupo.
-- Bot do Discord, slash command, leitura do Discord. A entrega é webhook, mão única. Se o
-  registro cair (seção 5), aí o bot volta à mesa como **substituto** da tela, não como adição.
+- Bot do Discord, slash command, leitura do Discord. A entrega é webhook, mão única.
+- **Apagar a mensagem no Discord** quando a vaga é apagada no site. Exigiria guardar o id da
+  mensagem e chamar o Discord de volta. Ver seção 5: apagar é tirar do site, e a tela precisa
+  dizer isso em vez de fingir que recolhe o anúncio.
+- **Leitura de ritmo de M+** — que dia e horário a guilda joga. Não dá para derivar de uma
+  tabela com janela de 7 dias, e fingir que dá é pior que não ter (seção 5).
 - Qualquer relação com rank de guilda, roster do WoWAudit ou o time de raid.
 
 ---
@@ -288,16 +327,16 @@ ferramenta de grupo é uma máquina de fazer isso se deixarem.
 
 Passos pequenos, cada um verde sozinho.
 
-1. **Decidir a seção 5.** Tudo abaixo depende, e é a única coisa que não dá para adiar.
-2. Generalizar `DiscordService` para múltiplos destinos + segunda variável de ambiente (6.2),
+1. Generalizar `DiscordService` para múltiplos destinos + segunda variável de ambiente (6.2),
    com teste de que os destinos não se confundem.
-3. Contrato no shared (seção 7) com testes de schema. `pnpm --filter @titan/shared build`.
-4. Guard de membership (6.3), com o teste da Regra 5: **sem cookie devolve 401**, e membro de
+2. Contrato no shared (seção 7) com testes de schema. `pnpm --filter @titan/shared build`.
+3. Guard de membership (6.3), com o teste da Regra 5: **sem cookie devolve 401**, e membro de
    rank acima do corte **passa** (que é o ponto).
+4. Model + migration da vaga.
 5. Endpoint + service + módulo, com o embed e a sanitização testados (`@everyone` inerte,
-   markdown escapado, truncamento).
-6. Persistência, se a seção 5 for por gravar.
-7. Tela.
+   markdown escapado, truncamento), gravando antes de entregar (seção 8).
+6. `DELETE` da vaga — só quem criou — e o `@Cron` de expurgo dos 7 dias.
+7. Tela, incluindo dizer que apagar não recolhe a mensagem do Discord.
 8. Ambiente: webhook do canal de M+ no `.env.example` (valor vazio) e no deploy. Testar contra
    **canal de teste descartável**, nunca o canal real.
 
@@ -321,3 +360,7 @@ pnpm format:check && pnpm build && pnpm lint && pnpm typecheck && pnpm test
    mensagem não entregue.
 6. Faixa de key não filtra a visibilidade de nada.
 7. Nenhuma URL de webhook aparece em log, em resposta de API ou no bundle do front.
+8. Uma vaga cuja entrega falhou **existe na tabela**, marcada como não entregue.
+9. Quem criou a vaga consegue apagá-la; **mais ninguém** consegue, e um teste garante.
+10. Vaga criada há mais de 7 dias some sozinha, sem ninguém rodar nada à mão.
+11. A tela deixa claro que apagar não remove a mensagem já publicada no Discord.
