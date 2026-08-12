@@ -1,10 +1,29 @@
 # M+: anúncio de vaga no Discord
 
-> **Status: APROVADA, não implementada.** Escrita em 12/08/2026 contra `origin/main`.
+> **Status: IMPLEMENTADA em 12/08/2026.** Escrita em 12/08/2026 contra `origin/main`.
 > Linear: **TIT-117** (desenho), **TIT-118** (implementação).
 >
 > A decisão que estava em aberto foi tomada em 12/08/2026 e está na seção 5:
 > persistir, com expurgo automático em 7 dias.
+>
+> Duas coisas que a implementação fechou e a spec deixava em aberto:
+>
+> - **quanto dá para agendar à frente** — a seção 8 avisa que as duas janelas
+>   precisam conversar. Ficou em `VAGA_EXPURGO_DIAS - 1` (6 dias), porque o
+>   expurgo conta da criação: agendar no limite exato da janela faria a vaga
+>   sumir no mesmo dia da noite, dependendo da hora em que o `@Cron` rodasse.
+> - **a menção de cargo** da seção 9 foi implementada, opcional e desligada por
+>   padrão: sem `DISCORD_MPLUS_ROLE_ID`, ninguém é mencionado.
+>
+> E uma correção de domínio na seção 7, achada testando com a guilda:
+>
+> - **`keyMin`/`keyMax` vão de 0 a 40, não de 2 a 40.** O `min(2)` da spec
+>   descreve keystone, que de fato começa no +2 — mas **M0 é nível válido**, e
+>   na pré-season é a única coisa que existe. Com o corte em 2, anunciar o que
+>   a guilda joga na semana da pré-season era impossível.
+> - Os níveis são **0, 2, 3, … 40**: **+1 não existe**, e o schema recusa.
+> - Zero é exibido como **"M0"**, nunca "+0" — "+0" faria o anúncio parecer bug
+>   para quem joga.
 
 ---
 
@@ -317,6 +336,27 @@ ferramenta de grupo é uma máquina de fazer isso se deixarem.
 - **Apagar a mensagem no Discord** quando a vaga é apagada no site. Exigiria guardar o id da
   mensagem e chamar o Discord de volta. Ver seção 5: apagar é tirar do site, e a tela precisa
   dizer isso em vez de fingir que recolhe o anúncio.
+
+### Marcar a vaga como preenchida — adiado para uma v2 (12/08/2026)
+
+Achado **usando** a feature no mesmo dia em que subiu: anunciou-se uma vaga, alguém respondeu
+no canal que ia curar, e não há o que fazer no site. Apagar a vaga tira ela da lista, mas o
+anúncio continua no canal dizendo que falta healer — o anúncio **sobrevive à necessidade que
+o gerou**.
+
+Isso não contradiz "não é matchmaking" (seção 1): ninguém está pedindo que o sistema escolha
+gente ou monte grupo. É manter verdadeiro um anúncio que o próprio sistema publicou.
+
+O mecanismo já está identificado e é barato: `POST` com `?wait=true` devolve o id da mensagem,
+que guardado numa coluna permite **editar** o anúncio depois — riscar o que fechou, em vez de
+publicar uma segunda mensagem. É o mesmo caminho de volta que o item acima adiou.
+
+Duas formas possíveis, e a escolha entre elas é o que ficou para a v2: um **"Fechou"** binário,
+ou **preencher por role** (o healer entrou, ainda falta o dps). A primeira é bem menor; a
+segunda transforma a vaga em algo que se edita várias vezes na mesma noite.
+
+Fica registrado aqui, e não só na cabeça de quem viu acontecer.
+
 - **Leitura de ritmo de M+** — que dia e horário a guilda joga. Não dá para derivar de uma
   tabela com janela de 7 dias, e fingir que dá é pior que não ter (seção 5).
 - Qualquer relação com rank de guilda, roster do WoWAudit ou o time de raid.

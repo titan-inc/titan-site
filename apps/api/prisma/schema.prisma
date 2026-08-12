@@ -58,6 +58,9 @@ model User {
 
   sessions Session[]
 
+  /// Vagas de M+ que esta conta anunciou. Some junto com a conta.
+  mplusVagas MplusVaga[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 }
@@ -755,4 +758,61 @@ model LootResponseOption {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([active, position])
+}
+
+/// Vaga de M+ anunciada no Discord — ver docs/specs/mplus-vaga-discord.md.
+///
+/// A linha é gravada ANTES da entrega, e o resultado é marcado depois. É o que
+/// permite saber que existiu uma vaga cuja mensagem não chegou; gravar depois
+/// perderia exatamente esse caso.
+///
+/// **A tabela se apaga sozinha em 7 dias** (`VAGA_EXPURGO_DIAS` no shared).
+/// Isso é faxina, não retenção — e é por isso que NADA aqui serve para ler o
+/// ritmo de M+ da guilda: sete dias é a semana passada, não ritmo. Se um dia
+/// quiserem essa leitura, é decisão nova e provavelmente outra tabela.
+model MplusVaga {
+  id String @id @default(cuid())
+
+  /// Quem anunciou. Só esta pessoa apaga a vaga.
+  ///
+  /// Dono é a CONTA, não o battletag: battletag a pessoa troca, e a dona da
+  /// linha continua sendo a mesma. O battletag exibido vem do join, sempre
+  /// atual.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Quantas vagas de cada role. Colunas, e não JSON, porque são três números
+  /// fixos de um grupo de 5 — o schema do banco confere o formato de graça.
+  tank   Int
+  healer Int
+  dps    Int
+
+  /// Instante da key, em UTC. A tela exibe no fuso de quem lê.
+  quando DateTime
+
+  /// Faixa de key como INTENÇÃO, nunca filtro: nenhuma consulta esconde vaga
+  /// por causa destes números. Ver a spec, seção 7.
+  keyMin Int
+  keyMax Int
+
+  /// O que o grupo NÃO tem. Booleanos em vez de lista porque são dois fatos
+  /// independentes, marcados à mão por quem anuncia.
+  semLust Boolean @default(false)
+  semBrez Boolean @default(false)
+
+  observacao String?
+
+  /// A mensagem chegou ao Discord?
+  ///
+  /// Falso é estado legítimo, não erro de leitura — é a vaga cuja entrega
+  /// falhou. A tela mostra, porque ninguém responde a um anúncio que não foi
+  /// publicado. Apagar esta linha NÃO apaga a mensagem já publicada.
+  entregue Boolean @default(false)
+
+  /// O relógio do expurgo. Conta da CRIAÇÃO, não de `quando`, e é por isso que
+  /// o schema limita o agendamento a menos dias do que a janela de expurgo.
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([quando])
+  @@index([createdAt])
 }

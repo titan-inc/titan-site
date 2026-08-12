@@ -34,7 +34,12 @@ export default async function InternoLayout({ children }: { children: React.Reac
         <p className="text-fg-subtle mb-3 hidden font-mono text-xs tracking-widest uppercase md:block">
           Área interna
         </p>
-        <SidebarNav oficial={user !== null && canManageOfficers(user)} />
+        {/* Quem está no roster mas fora do corte de rank vê só Home e M+ — as
+            outras seções o Nest recusaria. Ver Regra 4, o estado do meio. */}
+        <SidebarNav
+          oficial={user !== null && canManageOfficers(user)}
+          acessoInterno={user?.hasInternalAccess ?? false}
+        />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>

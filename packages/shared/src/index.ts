@@ -7,6 +7,7 @@ export * from './loot-catalog.js';
 export * from './loot-catalog-file.js';
 export * from './loot-response.js';
 export * from './membership.js';
+export * from './mplus.js';
 export * from './officers.js';
 export * from './progress.js';
 export * from './raid-progress.js';
