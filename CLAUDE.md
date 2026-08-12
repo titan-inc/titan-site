@@ -273,6 +273,25 @@ Não existe "bloquear outras regiões" como código separado: a verificação de
 
 **Nunca inferir região de IP, idioma do navegador ou nacionalidade.** Região US não quer dizer jogadores americanos — realms brasileiros (Azralon, Goldrinn, Nemesis, Tol Barad) são região US, e um membro legítimo pode morar na Europa e jogar em US. Filtro por geolocalização barraria membros de verdade.
 
+### A season de M+ abre uma semana depois do patch
+
+Sempre. E nesse intervalo **as fontes discordam sobre em que season estamos**:
+
+| fonte     | no dia do patch           |
+| --------- | ------------------------- |
+| Blizzard  | season nova, já publicada |
+| Raider.IO | ainda a anterior          |
+
+O `GameSeason` nasce da Blizzard, então a season nova existe no banco desde o dia do patch. O `mythic_plus_scores_by_season:current` do Raider.IO continua respondendo a season passada — score e acumulado de chaves do que acabou.
+
+Em 11/08/2026 isso gravou o acumulado da 12.0 carimbado como 12.1: 255 chaves na semana 1 da season nova. Enquanto o period corrente não fecha, o upsert diário corrige — mas ele fecha antes de o M+ abrir, e aí a semana congela com número de outra season dentro dela. É o corolário da Regra 7 no pior caso: lacuna é ruim, número da season errada é pior, porque tem cara de medido.
+
+**Quem separa as duas coisas é o slug que o Raider.IO nomeia, nunca o calendário.** Cada season tem o seu (`season-mn-1`), guardado em `GameSeason.raiderioSlug`. Slug que já pertence a uma season mais antiga significa que o M+ desta ainda não abriu, e nesse estado score e chaves da season são gravados como **nulo**. Offset fixo de uma semana seria promessa; o slug é o que a fonte está de fato respondendo.
+
+Item level continua sendo medido no intervalo — gear é de agora e não pertence a season nenhuma.
+
+O slug **não tem relação com o id da Blizzard** e não é derivável dele. Serve só para comparar leituras do Raider.IO entre si, e é por isso que a coluna é `@unique`: um slug pertence a exatamente uma season.
+
 ### Normalização de nomes — quatro funções, não uma
 
 Nunca compare string crua. Mas cada caso usa uma função diferente, e trocar uma pela outra é bug silencioso.

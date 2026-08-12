@@ -114,3 +114,26 @@ export const lootCatalogRaidSchema = z.object({
   encounters: lootCatalogEncounterSchema.array(),
 });
 export type LootCatalogRaid = z.infer<typeof lootCatalogRaidSchema>;
+
+/**
+ * A raid sem os drops, para a lista.
+ *
+ * Existe por tamanho de resposta, medido no endpoint: a resposta repete o item em
+ * cada dificuldade, e as quatro raids do tier corrente dão 468 drops com ~10 mil
+ * strings de spec. Isso é **306 KB** completo contra **553 bytes** resumido, e
+ * cresce um tier por vez.
+ *
+ * Quem precisa dos drops quer **uma** raid — 173 KB no caso do Voidspire, ou
+ * 58 KB filtrando uma dificuldade — então a lista devolve só o suficiente para
+ * escolher qual.
+ *
+ * Derivado do schema completo com `omit`, e não redeclarado: campo novo na raid
+ * aparece nos dois de graça, em vez de divergir calado.
+ */
+export const lootCatalogRaidSummarySchema = lootCatalogRaidSchema
+  .omit({ encounters: true })
+  .extend({
+    /** Quantos bosses a raid tem. A lista mostra, sem carregar os drops. */
+    encounterCount: z.number().int().nonnegative(),
+  });
+export type LootCatalogRaidSummary = z.infer<typeof lootCatalogRaidSummarySchema>;

@@ -206,6 +206,79 @@ describe('RaidProgressService', () => {
     expect(wcl.getRaidPulls).toHaveBeenCalledWith(season().startedAt, null);
   });
 
+  describe('qual season abre sozinha', () => {
+    const antiga = season({ id: 17, patch: '12.0', startedAt: new Date('2026-03-17T15:00:00Z') });
+    const nova = season({ id: 18, patch: '12.1', startedAt: new Date('2026-08-11T15:00:00Z') });
+
+    /** Season nova recém-criada pelo snapshot: existe, e ainda não teve raid. */
+    const soAAntigaTemPull = () =>
+      wcl.getRaidPulls.mockImplementation((inicio: Date) =>
+        inicio.getTime() === nova.startedAt.getTime() ? [] : [pull({ kill: true })],
+      );
+
+    beforeEach(() => {
+      repo.listSeasons.mockResolvedValue([nova, antiga]);
+    });
+
+    it('é a mais recente com pull, não a mais nova vazia', async () => {
+      // 11/08/2026: a season nasce no dia do patch, antes da primeira noite de
+      // raid. Abrir nela trocava a progressão do tier por "nenhuma pull".
+      soAAntigaTemPull();
+
+      const report = await service.getReport();
+
+      expect(report?.season.id).toBe(17);
+    });
+
+    it('mesmo assim o seletor lista as duas', async () => {
+      soAAntigaTemPull();
+
+      const report = await service.getReport();
+
+      expect(report?.availableSeasons.map((s) => s.id)).toEqual([18, 17]);
+    });
+
+    it('season que nasce depois do relatório cacheado entra no seletor na hora', async () => {
+      // O cache é por season e guardava a lista junto. A season nova entra no
+      // banco no dia do patch: um relatório cacheado minutos antes escondia
+      // ela do seletor por até 15 minutos, justo quando alguém vai olhar.
+      repo.listSeasons.mockResolvedValue([antiga]);
+      wcl.getRaidPulls.mockResolvedValue([pull({ kill: true })]);
+      await service.getReport();
+      const lidas = wcl.getRaidPulls.mock.calls.length;
+
+      // A season nova aparece, e está vazia: o passeio passa por ela e cai na
+      // 17, que já está cacheada.
+      repo.listSeasons.mockResolvedValue([nova, antiga]);
+      soAAntigaTemPull();
+      const report = await service.getReport();
+
+      expect(report?.season.id).toBe(17);
+      expect(report?.availableSeasons.map((s) => s.id)).toEqual([18, 17]);
+      // Só a season nova foi lida do WCL — a 17 veio mesmo do cache.
+      expect(wcl.getRaidPulls).toHaveBeenCalledTimes(lidas + 1);
+    });
+
+    it('season pedida à mão vale mesmo vazia', async () => {
+      soAAntigaTemPull();
+      repo.findSeason.mockResolvedValue(nova);
+
+      const report = await service.getReport(18);
+
+      expect(report?.season.id).toBe(18);
+      expect(report?.raids).toEqual([]);
+    });
+
+    it('sem pull em season nenhuma, abre na mais recente e mostra o vazio', async () => {
+      wcl.getRaidPulls.mockResolvedValue([]);
+
+      const report = await service.getReport();
+
+      expect(report?.season.id).toBe(18);
+      expect(report?.raids).toEqual([]);
+    });
+  });
+
   it('degrada para o cache anterior quando o WCL cai, rotulado como velho', async () => {
     // Regra 6: falha de API externa não derruba página. Mas o dado velho tem
     // que sair marcado — progressão desatualizada com cara de atual é pior.

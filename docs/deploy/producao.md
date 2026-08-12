@@ -95,6 +95,71 @@ genérico que o `aws` CLI reconhece sozinho — essa credencial só tem
 permissão neste bucket, e uma futura chave AWS de outro escopo não deve
 colidir com o nome desta.
 
+### Testar um restore (backup nunca testado não é backup)
+
+Validado em produção pela primeira vez em 11/08/2026 — 14 tabelas, dados
+reais (`RaidAttendance` com 3198 linhas, batendo com o que o
+`attendance-sync` já reportava). Roda periodicamente, não só na primeira
+vez.
+
+Tudo via SSH na instância, num Postgres **descartável** — nunca no banco
+de produção:
+
+```bash
+# 1. Credenciais do backup-bot só existem dentro do .env, o `aws` cli
+#    solto no terminal não acha sozinho.
+set -a
+source /opt/titan-site/.env
+set +a
+export AWS_ACCESS_KEY_ID="$BACKUP_AWS_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$BACKUP_AWS_SECRET_ACCESS_KEY"
+export AWS_DEFAULT_REGION="$BACKUP_AWS_REGION"
+
+# 2. Backup mais recente
+aws s3 ls s3://titan-site-db-backups/ | sort | tail -3
+aws s3 cp s3://titan-site-db-backups/<arquivo-mais-novo>.sql.gz /tmp/restore-test.sql.gz
+gunzip -k /tmp/restore-test.sql.gz
+
+# 3. Postgres descartável -- mesma major version da produção
+#    (postgres:18-alpine), pra não arriscar diferença de formato de dump.
+#    Porta e nome diferentes do container real, de propósito.
+docker run -d --name titan-restore-test \
+  -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test \
+  -p 127.0.0.1:5555:5432 \
+  postgres:18-alpine
+sleep 5
+docker exec titan-restore-test pg_isready -U test
+
+# 4. Restaura e filtra os erros que IMPORTAM
+cat /tmp/restore-test.sql | docker exec -i titan-restore-test psql -U test -d test > /tmp/restore-output.log 2>&1
+grep -i "error" /tmp/restore-output.log | grep -v 'role "titan" does not exist'
+```
+
+O `grep` do passo 4 tem que voltar **vazio**. `ERROR: role "titan" does not
+exist` é esperado e não é sinal de dump ruim — é o `pg_dump` incluindo
+`ALTER TABLE ... OWNER TO titan` pra cada tabela (dono é `titan` em
+produção; o container de teste só tem o usuário `test`). Só a troca de
+dono falha; `CREATE TABLE` e os dados em si não dependem disso. Qualquer
+**outro** tipo de erro nessa saída é sinal real de problema.
+
+Confirma tabela e dado de verdade, não só estrutura vazia:
+
+```bash
+docker exec titan-restore-test psql -U test -d test -c "\dt"
+docker exec titan-restore-test psql -U test -d test -c "
+SELECT 'GuildCharacter' AS tabela, count(*) FROM \"GuildCharacter\"
+UNION ALL SELECT 'User', count(*) FROM \"User\"
+UNION ALL SELECT 'RaidAttendance', count(*) FROM \"RaidAttendance\";
+"
+```
+
+Limpa tudo depois:
+
+```bash
+docker rm -f titan-restore-test
+rm -f /tmp/restore-test.sql /tmp/restore-test.sql.gz /tmp/restore-output.log
+```
+
 ## Primeiro acesso (uma vez por dev)
 
 Todo comando da próxima seção começa dentro da instância, e chegar lá exige uma

@@ -104,6 +104,7 @@ export class SnapshotsRepository {
         id: true,
         patch: true,
         name: true,
+        raiderioSlug: true,
         firstPeriod: true,
         periodCount: true,
         startedAt: true,
@@ -119,11 +120,30 @@ export class SnapshotsRepository {
         id: true,
         patch: true,
         name: true,
+        raiderioSlug: true,
         firstPeriod: true,
         periodCount: true,
         startedAt: true,
       },
     });
+  }
+
+  /**
+   * De quem é este slug do Raider.IO, se de alguém.
+   *
+   * A pergunta que importa é "já pertence a uma season mais antiga?" — se sim,
+   * o M+ da season nova ainda não abriu. Ver `SnapshotsService`.
+   */
+  findSeasonByRaiderioSlug(slug: string) {
+    return this.prisma.gameSeason.findUnique({
+      where: { raiderioSlug: slug },
+      select: { id: true },
+    });
+  }
+
+  /** Marca a season como aberta no Raider.IO, e com qual slug. */
+  async setRaiderioSlug(id: number, slug: string): Promise<void> {
+    await this.prisma.gameSeason.update({ where: { id }, data: { raiderioSlug: slug } });
   }
 
   /** Todas as fotos de uma season, para montar o relatório de uma vez só. */

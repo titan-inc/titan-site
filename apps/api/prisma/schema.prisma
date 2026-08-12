@@ -187,6 +187,18 @@ model GameSeason {
   /// APENAS exibição — nunca decide nada. Nulo se a fonte falhar.
   patch String?
 
+  /// Slug do Raider.IO para esta season: "season-mn-1".
+  ///
+  /// NULO ENQUANTO O M+ NÃO ABRIU. A season de M+ começa uma semana depois do
+  /// patch: a Blizzard publica a season nova no dia do patch, e nessa semana o
+  /// Raider.IO ainda responde a anterior. Enquanto isto é nulo, número de M+
+  /// que chegar é da season passada e não pode ser gravado nesta — vira lacuna.
+  ///
+  /// Gravado na primeira leitura em que o slug não pertence a nenhuma season
+  /// mais antiga. Não tem relação com o id da Blizzard e não é derivável dele;
+  /// serve só para comparar leituras do Raider.IO entre si.
+  raiderioSlug String? @unique
+
   /// Primeiro period da season. `periodCorrente - firstPeriod + 1` é a semana.
   firstPeriod Int
 
@@ -690,4 +702,57 @@ model EncounterDrop {
   /// o que faz editar o catálogo nunca corromper histórico já gravado.
   @@id([encounterId, difficulty, itemId])
   @@index([itemId])
+}
+
+/// Opção de resposta que o jogador (ou o loot master) escolhe sobre um item.
+///
+/// **Tabela, e não enum, porque é configurável no app.** A liderança ajusta a
+/// lista sem deploy — é o que a Regra 4 quer quando diz que o processo não pode
+/// depender de um dev estar disponível.
+///
+/// O vocabulário é UM só: a sessão ao vivo escolhe daqui, e o histórico importado
+/// do RCLootCouncil é traduzido para cá. Dado velho e dado novo falam a mesma
+/// língua.
+enum LootResponseKind {
+  /// O jogador declara o quanto quer a peça.
+  player
+
+  /// Decisão do loot master sobre o destino do item, não interesse de ninguém.
+  /// `banking` é o caso: o próprio RCLootCouncil o marca com `isAwardReason`.
+  loot_master
+}
+
+model LootResponseOption {
+  id String @id @default(cuid())
+
+  /// Identidade ESTÁVEL e imutável. É por ela que o tradutor do histórico
+  /// aponta, e é o que a linha de loot antiga continua encontrando.
+  ///
+  /// Nunca renomear: renomear slug é reescrever passado. Para trocar o texto
+  /// exibido, mude `label`.
+  slug String @unique
+
+  /// Texto que aparece na tela. Editável, e por isso NUNCA usado como chave.
+  label String
+
+  kind LootResponseKind @default(player)
+
+  /// Ordem na tela.
+  ///
+  /// Deliberadamente separada do `slug`: o `responseID` do RCLootCouncil juntava
+  /// posição e identidade num número só, e reordenar os botões fez o id `2`
+  /// significar `Big` num raid e `Banking` noutro — sem erro nenhum. Mesma
+  /// armadilha do `guildRank` na Regra 4.
+  position Int
+
+  /// Opção retirada da tela **continua existindo**.
+  ///
+  /// Nunca apagar linha daqui: linha de loot antiga aponta para ela, e apagar
+  /// reescreveria histórico. Desativar some do seletor e preserva o registro.
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([active, position])
 }
