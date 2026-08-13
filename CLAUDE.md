@@ -374,7 +374,7 @@ Então o sistema grava o fato observável ("Não Raidou") e oferece ao raid lead
 
 ### Visibilidade do histórico
 
-Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico:
+Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico **de presença**:
 
 - **Oficial** vê o detalhe de qualquer pessoa.
 - **Membro** vê o próprio histórico, inteiro.
@@ -383,6 +383,24 @@ Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico:
 **O motivo é social, não sigilo.** O dado está aberto no Logs e no WoWAudit; o que o site evita é apresentá-lo pronto em forma de ranking, que gera treta e não ajuda o raid leader — quem lidera já tem o detalhe.
 
 A régua para caso novo é "isto vira comparação entre membros?", não "isto é confidencial?". Média da guilda passa; lista ordenada por falta, não.
+
+#### Loot é o caso que responde diferente (13/08/2026)
+
+**O histórico de loot é visível para todo mundo que entra na área interna.** Sem corte próprio, sem restrição por identidade: o endpoint usa o `MemberGuard`, igual ao do catálogo.
+
+Aplicar a régua acima dá resposta oposta à de presença, e o motivo é o que separa os dois casos:
+
+|                    | presença                                          | loot                             |
+| ------------------ | ------------------------------------------------- | -------------------------------- |
+| o que é            | **comportamento de uma pessoa**                   | **decisão que o conselho tomou** |
+| quem viu acontecer | ninguém — furo e banco são indistinguíveis no log | a raid inteira, ao vivo          |
+| o que expor faz    | expõe alguém                                      | torna o conselho auditável       |
+
+Quem estava na raid **viu** a peça ser distribuída. Esconder depois não guarda segredo nenhum — só torna a ferramenta pior que a memória das pessoas, que é o pior lugar onde uma ferramenta pode ficar. E o conselho decide melhor quando as decisões dele são visíveis.
+
+Isso **não** afrouxa nada de presença, que continua exatamente como está acima. E não cria permissão nova: o corte da área interna já é o time de raid, e um segundo corte com o mesmo valor só criaria dois lugares para divergirem em silêncio.
+
+Registrado como caso nomeado, e não como reversão, porque a régua não mudou — ela é que dá respostas diferentes para dados diferentes. Se alguém propuser abrir presença citando este parágrafo, a resposta é não: a diferença está na tabela.
 
 ## Regra 8 — Ferramenta de operação roda contra a app já rodando, nunca sobe instância própria
 
