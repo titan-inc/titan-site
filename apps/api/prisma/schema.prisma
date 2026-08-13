@@ -815,18 +815,28 @@ model LootLine {
 
   /// Identidade de quem levou: o par nome + realm, nunca o nome sozinho.
   ///
-  /// Regra 6 — `nameKey` por `toCharacterKey()` (MANTÉM acento, porque no roster
-  /// existem 7 grupos de personagens que só diferem por acento, com ranks
-  /// diferentes) e `realmSlug` por `toSlug()`.
-  winnerNameKey   String
-  winnerRealmSlug String
+  /// Regra 6 — `nameKey` por `toCharacterKey()`, que MANTÉM acento, porque no
+  /// roster existem 7 grupos de personagens que só diferem por acento, com ranks
+  /// diferentes.
+  ///
+  /// O realm é `toRealmMatchKey()`, a chave FROUXA, e não `toSlug()`. Mesma razão
+  /// do `Attendance.realmKey`: a linha nasce de fonte que escreve realm à moda do
+  /// cliente do jogo. No export do RCLootCouncil o campo vem `Nome-Realm` com
+  /// `Area52` e `DemonSoul`, enquanto o roster da Blizzard guarda `area-52` e
+  /// `demon-soul`. Por `toSlug()` os dois lados nunca casariam, e o sintoma seria
+  /// o histórico da pessoa partido em dois sem erro nenhum.
+  ///
+  /// Para cruzar com `GuildCharacter`, aplique `toRealmMatchKey()` no `realmSlug`
+  /// de lá — a função é idempotente sobre o slug.
+  winnerNameKey  String
+  winnerRealmKey String
 
   /// Grafia como veio na fonte, para exibir. Nunca para comparar.
   ///
-  /// O realm também: `toSlug()` é lossy no caminho de volta — 58 dos 344 realms
-  /// US têm hífen no slug, e `area-52` não diz se o nome é "Area 52" ou
-  /// "Area-52". Para personagem que saiu da guilda (ver TIT-54) a fonte é a única
-  /// coisa que sobrou.
+  /// O realm também, e aqui vale ainda mais que antes: a chave frouxa colapsa
+  /// todo separador, então `area52` não reconstrói nem "Area 52" nem "Area-52".
+  /// Para personagem que saiu da guilda (ver TIT-54) a fonte é a única coisa que
+  /// sobrou.
   winnerName  String
   winnerRealm String
 
@@ -839,10 +849,10 @@ model LootLine {
   /// Quem lootou o item no jogo, quando difere de quem levou.
   ///
   /// É o `owner` do export. Mesmo par nome + realm, e nulo quando a fonte não diz.
-  looterNameKey   String?
-  looterRealmSlug String?
-  looterName      String?
-  looterRealm     String?
+  looterNameKey  String?
+  looterRealmKey String?
+  looterName     String?
+  looterRealm    String?
 
   /// O item. `itemId` para casar com o catálogo, `itemString` cru e inteiro.
   ///
@@ -872,12 +882,20 @@ model LootLine {
   encounterId String?
   encounter   LootCatalogEncounter? @relation(fields: [encounterId], references: [id])
 
-  /// Dificuldade, **quando dá para determinar**.
+  /// Dificuldade **da peça**, do `itemContext` do `itemString`.
   ///
-  /// Nulável porque o sufixo do `instance` é texto localizado e nem é enum:
-  /// `Mythic - Flexible Raiding`, `Piedra angular mítica`. Gravar `normal` porque
-  /// não deu para parsear seria inventar fato — a Regra 7 manda tratar como
-  /// lacuna, nunca como zero.
+  /// Não é a dificuldade da sala onde o item foi entregue, e as duas divergem
+  /// legitimamente: em 20 dos 294 registros de conselho o contexto do item não
+  /// bate com o sufixo da instância — farm heroico distribuído já dentro do
+  /// mítico enquanto o grupo alinhava estratégia, e o inverso. Não é anomalia, e
+  /// não há nada a corrigir aqui.
+  ///
+  /// O contexto ganha do sufixo porque é fato sobre o item: peça mítica tradeável
+  /// só existe se caiu no mítico. Já o sufixo é texto localizado e nem é enum
+  /// (`Mythic - Flexible Raiding`), e diz apenas onde as pessoas estavam de pé.
+  ///
+  /// Nulável para peça que não é de raid ou `itemString` sem o campo. Lacuna,
+  /// nunca `normal` por omissão — Regra 7.
   difficulty RaidDifficulty?
 
   /// A resposta, no vocabulário do sistema.
@@ -917,7 +935,7 @@ model LootLine {
   /// Reimportar o mesmo arquivo não duplica.
   @@unique([source, externalId])
   /// "O histórico desta pessoa", que é a consulta central da Regra 7.
-  @@index([winnerNameKey, winnerRealmSlug, awardedAt])
+  @@index([winnerNameKey, winnerRealmKey, awardedAt])
   @@index([itemId])
   @@index([encounterId])
   @@index([awardedAt])

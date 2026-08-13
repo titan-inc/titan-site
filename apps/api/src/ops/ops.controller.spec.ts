@@ -4,6 +4,7 @@ import type { AttendanceService } from '../attendance/attendance.service';
 import type { BlizzardService } from '../blizzard/blizzard.service';
 import type { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
 import type { LootCatalogService } from '../loot-catalog/loot-catalog.service';
+import type { RcImportService } from '../loot-lines/rc-import.service';
 import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
 import { OpsController } from './ops.controller';
@@ -34,6 +35,18 @@ describe('OpsController', () => {
   const raidProgress = {
     getReport: jest.fn(() => Promise.resolve({ season: { id: 17 } })),
   };
+  const rcImport = {
+    importar: jest.fn(() =>
+      Promise.resolve({
+        lidos: 445,
+        gravados: 294,
+        descartados: 151,
+        bossResolvido: 238,
+        bossNaoResolvido: 56,
+        semDificuldade: 0,
+      }),
+    ),
+  };
   const ops = {
     probeRoster: jest.fn(() => Promise.resolve({ guild: 'Titan Inc' })),
     checkOauth: jest.fn(() => Promise.resolve({ ok: true, stale: false })),
@@ -50,6 +63,7 @@ describe('OpsController', () => {
       catalogGenerator as unknown as LootCatalogGeneratorService,
       catalogService as unknown as LootCatalogService,
       raidProgress as unknown as RaidProgressService,
+      rcImport as unknown as RcImportService,
       ops as unknown as OpsService,
     );
   });

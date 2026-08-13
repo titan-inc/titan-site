@@ -13,9 +13,9 @@ const linha = (over: Record<string, unknown> = {}) => ({
   id: 'ckline',
   source: LOOT_LINE_SOURCES.IMPORT_RC,
   awardedAt: '2026-03-19T23:12:00.000Z',
-  winner: { name: 'Fulano', realm: 'Area 52', nameKey: 'fulano', realmSlug: 'area-52' },
+  winner: { name: 'Fulano', realm: 'Area52', nameKey: 'fulano', realmKey: 'area52' },
   winnerClass: 'MAGE',
-  looter: { name: 'Ciclano', realm: 'Azralon', nameKey: 'ciclano', realmSlug: 'azralon' },
+  looter: { name: 'Ciclano', realm: 'Azralon', nameKey: 'ciclano', realmKey: 'azralon' },
   itemId: 249308,
   itemString: 'item:249308::::::::90:252::5:4:6652:13577:13334:12794',
   rawInstance: 'The Voidspire-Heroic',
@@ -71,6 +71,15 @@ describe('lootLineSchema', () => {
       expect(
         lootLineSchema.safeParse(linha({ winner: { name: 'Fulano', nameKey: 'fulano' } })).success,
       ).toBe(false);
+    });
+
+    it('o realm da identidade é a chave frouxa, não o slug', () => {
+      // A fonte escreve `Area52` e o roster guarda `area-52`. Se este campo
+      // fosse `toSlug()` da grafia da fonte, o histórico da pessoa apareceria
+      // partido em dois — sem erro nenhum. Ver Attendance.realmKey.
+      const lido = lootLineSchema.safeParse(linha());
+
+      expect(lido.success && lido.data.winner.realmKey).toBe('area52');
     });
 
     it('recusa linha sem o bruto de onde veio', () => {

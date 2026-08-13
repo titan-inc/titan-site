@@ -2,8 +2,10 @@ import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } fr
 import {
   catalogFileSchema,
   parseJournalDump,
+  rcExportSchema,
   type CatalogFile,
   type RaidProgressReport,
+  type RcExport,
 } from '@titan/shared';
 import { z } from 'zod';
 import { AttendanceService, type SyncResult } from '../attendance/attendance.service';
@@ -11,6 +13,7 @@ import { BlizzardService } from '../blizzard/blizzard.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
 import { LootCatalogService } from '../loot-catalog/loot-catalog.service';
+import { RcImportService, type RcImportResult } from '../loot-lines/rc-import.service';
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
 import { OpsTokenGuard } from './ops-token.guard';
@@ -72,6 +75,7 @@ export class OpsController {
     private readonly catalogGenerator: LootCatalogGeneratorService,
     private readonly catalogService: LootCatalogService,
     private readonly raidProgress: RaidProgressService,
+    private readonly rcImport: RcImportService,
     private readonly ops: OpsService,
   ) {}
 
@@ -153,6 +157,23 @@ export class OpsController {
     return this.catalogService.carregarArquivo(body.catalog, {
       semConferencia: body.semConferencia ?? false,
     });
+  }
+
+  /**
+   * Importa o export do RCLootCouncil — TIT-53.
+   *
+   * O arquivo vai no corpo, igual ao `catalog-load`, porque o container não tem
+   * o arquivo e é efêmero. São ~304 KB, acima do teto público de 16kb: quem
+   * libera é o `json({ limit: '2mb' })` do prefixo de ops no `main.ts`.
+   *
+   * Idempotente. Rodar de novo atualiza as mesmas linhas e devolve os mesmos
+   * números.
+   */
+  @Post('loot-import-rc')
+  async lootImportRc(
+    @Body(new ZodValidationPipe(rcExportSchema)) arquivo: RcExport,
+  ): Promise<RcImportResult> {
+    return this.rcImport.importar(arquivo);
   }
 
   /** Era `node scripts/roster-probe.js "<Guilda>" <realm> [personagem...]`. */
