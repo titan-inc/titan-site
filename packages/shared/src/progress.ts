@@ -71,6 +71,19 @@ export const progressReportSchema = z.object({
   /** Quantas semanas a season tem até agora. */
   periodCount: z.number().int(),
 
+  /**
+   * false = a season existe, mas o M+ dela ainda não abriu.
+   *
+   * A season de M+ **abre uma semana depois do patch**. Nesse intervalo a
+   * Blizzard já publicou a season nova e o Raider.IO ainda responde a anterior,
+   * então `keysInSeason` e o score saem nulos de propósito — o número que
+   * existe é da season passada, e gravá-lo aqui seria atribuí-lo a esta.
+   *
+   * A tela precisa disto para dizer por que a coluna está vazia. Coluna vazia
+   * sem explicação é lida como "o site quebrou".
+   */
+  mythicPlusOpen: z.boolean(),
+
   /** Médias do time na semana. Nulas quando ninguém tem o dado. */
   average: z.object({
     itemLevel: z.number().nullable(),

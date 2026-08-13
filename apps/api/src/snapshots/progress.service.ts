@@ -1,5 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import type { ProgressReport, ProgressRow, SeasonOption } from '@titan/shared';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  toCharacterKey,
+  toSlug,
+  type ProgressReport,
+  type ProgressRow,
+  type SeasonOption,
+} from '@titan/shared';
+import { WowAuditService } from '../wowaudit/wowaudit.service';
 import { SnapshotsRepository } from './snapshots.repository';
 
 /** Quantas seasons aparecem no seletor. */
@@ -20,12 +27,18 @@ function delta(a: number | null, b: number | null): number | null {
 /**
  * Relatório de progressão da season.
  *
- * Lê o que o job de snapshot gravou. Não chama API externa nenhuma — é o
- * pagamento do que foi guardado semana a semana.
+ * Lê o que o job de snapshot gravou — é o pagamento do que foi guardado semana
+ * a semana. A única API externa que ele consulta é o WoWAudit, e só para saber
+ * quem ainda está no time; ver `somenteDoTime()`.
  */
 @Injectable()
 export class ProgressService {
-  constructor(private readonly repo: SnapshotsRepository) {}
+  private readonly logger = new Logger(ProgressService.name);
+
+  constructor(
+    private readonly repo: SnapshotsRepository,
+    private readonly wowaudit: WowAuditService,
+  ) {}
 
   /**
    * @param seasonId season pedida; sem ela, a mais recente gravada.
@@ -47,7 +60,13 @@ export class ProgressService {
 
     if (atual === undefined) return null;
 
-    const daSemana = snapshots.filter((s) => s.period === atual);
+    // Só a season mais recente tem "semana corrente". Numa season passada a
+    // última semana gravada é história, e o time de hoje não a descreve.
+    const corrente = escolhida.id === seasons[0]?.id;
+    const daSemana = await this.somenteDoTime(
+      snapshots.filter((s) => s.period === atual),
+      corrente,
+    );
 
     // Média do time na semana. É o que o raid leader compara contra cada um.
     const average = {
@@ -90,8 +109,66 @@ export class ProgressService {
       period: atual,
       weekInSeason: atual - escolhida.firstPeriod + 1,
       periodCount: escolhida.periodCount,
+      // Sem slug do Raider.IO, o M+ desta season ainda não abriu — ver
+      // `SnapshotsService.mythicPlusAberto()`.
+      mythicPlusOpen: escolhida.raiderioSlug !== null,
       average,
       rows,
     };
+  }
+
+  /**
+   * Tira da foto corrente quem já saiu do time.
+   *
+   * O job só faz upsert, nunca remove: quem entrou no WoWAudit e saiu depois
+   * deixa para trás a linha da semana. Ela não é erro — descreve a semana — mas
+   * o relatório se propõe a descrever o **time de hoje**, e o resíduo entra na
+   * média e desloca o `vs média` de todo mundo, que é a coluna sobre a qual o
+   * raid leader decide.
+   *
+   * **Semana passada nunca é filtrada**: quem estava no time naquela semana
+   * estava no time naquela semana. Reescrever isso contraria a Regra 7.
+   *
+   * Não custa salto de rede: `getTeamCharacters()` tem cache no service, e a
+   * aba de roster já o mantém quente.
+   */
+  private async somenteDoTime<T extends { nameKey: string; realmSlug: string }>(
+    daSemana: T[],
+    corrente: boolean,
+  ): Promise<T[]> {
+    if (!corrente) return daSemana;
+
+    let noTime: Set<string>;
+    try {
+      const time = await this.wowaudit.getTeamCharacters();
+      noTime = new Set(time.map((c) => `${toSlug(c.realm)}/${toCharacterKey(c.name)}`));
+    } catch (err: unknown) {
+      // Regra 6: falha de API externa não derruba página. Sem a lista não dá
+      // para filtrar, então sai sem filtro — uma linha a mais é o que já
+      // acontece hoje, e é melhor que uma tela que não abre.
+      const motivo = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Time do WoWAudit não veio; relatório sai sem filtro: ${motivo}`);
+      return daSemana;
+    }
+
+    const doTime = daSemana.filter((s) => noTime.has(`${s.realmSlug}/${s.nameKey}`));
+
+    // Zerar a semana inteira é sintoma de chave divergente ou de time vazio na
+    // resposta, nunca de guilda sem ninguém — mesma leitura que o job faz ao
+    // abortar. Entregar tabela vazia ao raid leader seria pior que não filtrar.
+    if (doTime.length === 0 && daSemana.length > 0) {
+      this.logger.warn(
+        `Nenhum dos ${daSemana.length} personagens da semana casou com o time do WoWAudit; ` +
+          `relatório sai sem filtro`,
+      );
+      return daSemana;
+    }
+
+    const foraDoTime = daSemana.length - doTime.length;
+    if (foraDoTime > 0) {
+      this.logger.log(`${foraDoTime} personagem(ns) fora do time atual saíram da foto corrente`);
+    }
+
+    return doTime;
   }
 }

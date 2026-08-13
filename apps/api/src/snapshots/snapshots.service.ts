@@ -4,7 +4,7 @@ import { toCharacterKey, toSlug } from '@titan/shared';
 import { BlizzardService } from '../blizzard/blizzard.service';
 import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
 import { GameVersionService } from '../gameversion/gameversion.service';
-import { RaiderIoService } from '../raiderio/raiderio.service';
+import { RaiderIoService, type CharacterProgress } from '../raiderio/raiderio.service';
 import { WowAuditService } from '../wowaudit/wowaudit.service';
 import { SnapshotsRepository, type SnapshotInput } from './snapshots.repository';
 
@@ -18,6 +18,8 @@ export type SnapshotResult =
       recorded: number;
       /** Quantos ficaram sem item level. Lacuna, não zero. */
       withoutItemLevel: number;
+      /** false = a season existe mas o M+ dela ainda não abriu no Raider.IO. */
+      mythicPlusOpen: boolean;
     };
 
 /**
@@ -110,6 +112,8 @@ export class SnapshotsService {
       time.map((c) => this.raiderio.getProgress(c.name, c.realm, this.guild.region)),
     );
 
+    const mythicPlusOpen = await this.mythicPlusAberto(season.id, progresso);
+
     const entradas: SnapshotInput[] = time.map((c, i) => {
       const chave = `${toSlug(c.realm)}/${toCharacterKey(c.name)}`;
       const keys = keysPorPersonagem.get(chave);
@@ -123,14 +127,20 @@ export class SnapshotsService {
         name: c.name,
         // Nulo quando não deu para medir. NUNCA zero: o gráfico tem que
         // mostrar lacuna, senão vira "a pessoa parou de jogar".
+        //
+        // Item level é o gear de agora e não pertence a season nenhuma, então
+        // continua sendo medido mesmo na pré-season.
         itemLevel: p?.itemLevel ?? null,
-        mythicPlusScore: p?.mythicPlusScore ?? null,
+        // Estes três são da season, e na pré-season o Raider.IO ainda responde
+        // a anterior. Lacuna é a resposta certa: gravar o número da season
+        // velha aqui seria dizer que o time chegou nele nesta season.
+        mythicPlusScore: mythicPlusOpen ? (p?.mythicPlusScore ?? null) : null,
         keysDone: keys?.count ?? null,
         highestKey: keys?.highest ?? null,
         // Acumulado da season, completo. Diferente de `keysDone`, que é a
         // semana e depende do WoWAudit ter acompanhado.
-        seasonRuns: p?.seasonRuns ?? null,
-        seasonRunsTimed: p?.seasonRunsTimed ?? null,
+        seasonRuns: mythicPlusOpen ? (p?.seasonRuns ?? null) : null,
+        seasonRunsTimed: mythicPlusOpen ? (p?.seasonRunsTimed ?? null) : null,
       };
     });
 
@@ -140,7 +150,8 @@ export class SnapshotsService {
     this.logger.log(
       `Snapshot period=${season.currentPeriod} season=${season.id} ` +
         `(${patch ?? 'patch?'}, semana ${season.weekInSeason}/${season.periodCount}) — ` +
-        `${recorded} personagens, ${withoutItemLevel} sem item level`,
+        `${recorded} personagens, ${withoutItemLevel} sem item level` +
+        `${mythicPlusOpen ? '' : ', M+ ainda não aberto (sem score nem chaves da season)'}`,
     );
 
     return {
@@ -150,7 +161,51 @@ export class SnapshotsService {
       weekInSeason: season.weekInSeason,
       recorded,
       withoutItemLevel,
+      mythicPlusOpen,
     };
+  }
+
+  /**
+   * O M+ desta season já abriu, ou ainda estamos na semana entre patch e season?
+   *
+   * A season de M+ **sempre abre uma semana depois do patch**. A Blizzard
+   * publica a season nova no dia do patch — é dela que sai o `GameSeason` — e
+   * nessa semana o Raider.IO ainda responde a season anterior. Sem separar as
+   * duas coisas, o acumulado da season velha entra no banco carimbado como
+   * season nova, e depois não há como saber qual número era de qual.
+   *
+   * A verificação é o slug que o próprio Raider.IO nomeia, nunca um offset de
+   * uma semana no calendário: a data é promessa, o slug é o que ele está de
+   * fato respondendo. Se o slug já pertence a outra season, o M+ desta ainda
+   * não abriu; se não pertence a ninguém, esta season o adota e passa a valer.
+   */
+  private async mythicPlusAberto(
+    seasonId: number,
+    progresso: CharacterProgress[],
+  ): Promise<boolean> {
+    const slug = progresso.find((p) => p.season !== null)?.season;
+    if (!slug) {
+      // Ninguém do time tem perfil de M+ legível. Não há número para gravar de
+      // qualquer jeito, e afirmar que a season abriu sem evidência seria pior.
+      this.logger.warn('Raider.IO não nomeou season nenhuma; M+ tratado como ainda não aberto');
+      return false;
+    }
+
+    const dono = await this.repo.findSeasonByRaiderioSlug(slug);
+    if (dono) return dono.id === seasonId;
+
+    try {
+      await this.repo.setRaiderioSlug(seasonId, slug);
+    } catch (err: unknown) {
+      // Duas rodadas ao mesmo tempo disputando o mesmo slug. Perder a corrida
+      // custa uma rodada de lacuna, que o upsert da próxima corrige.
+      const motivo = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Não foi possível marcar ${slug} na season ${seasonId}: ${motivo}`);
+      return false;
+    }
+
+    this.logger.log(`M+ da season ${seasonId} abriu no Raider.IO como ${slug}`);
+    return true;
   }
 
   /**

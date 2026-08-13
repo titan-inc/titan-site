@@ -187,6 +187,18 @@ model GameSeason {
   /// APENAS exibição — nunca decide nada. Nulo se a fonte falhar.
   patch String?
 
+  /// Slug do Raider.IO para esta season: "season-mn-1".
+  ///
+  /// NULO ENQUANTO O M+ NÃO ABRIU. A season de M+ começa uma semana depois do
+  /// patch: a Blizzard publica a season nova no dia do patch, e nessa semana o
+  /// Raider.IO ainda responde a anterior. Enquanto isto é nulo, número de M+
+  /// que chegar é da season passada e não pode ser gravado nesta — vira lacuna.
+  ///
+  /// Gravado na primeira leitura em que o slug não pertence a nenhuma season
+  /// mais antiga. Não tem relação com o id da Blizzard e não é derivável dele;
+  /// serve só para comparar leituras do Raider.IO entre si.
+  raiderioSlug String? @unique
+
   /// Primeiro period da season. `periodCorrente - firstPeriod + 1` é a semana.
   firstPeriod Int
 
