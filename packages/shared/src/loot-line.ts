@@ -5,22 +5,29 @@ import { raidDifficultyLevelSchema } from './wow.js';
 /**
  * Um personagem numa linha de loot.
  *
- * Sempre o par nome + realm, nunca o nome sozinho — Regra 6. Mesma forma que o
- * `officers.ts` usa: identidade normalizada para comparar, grafia da fonte para
- * exibir.
+ * Sempre o par nome + realm, nunca o nome sozinho — Regra 6. Identidade
+ * normalizada para comparar, grafia da fonte para exibir.
  *
- * O realm de exibição é guardado, e não derivado do slug, porque o caminho de
- * volta é lossy: 58 dos 344 realms US têm hífen, e `area-52` não diz se o nome é
- * "Area 52" ou "Area-52".
+ * O realm de exibição é guardado, e não derivado da chave, porque o caminho de
+ * volta é lossy: a chave frouxa colapsa todo separador, e `area52` não reconstrói
+ * "Area 52".
  */
 export const lootCharacterSchema = z.object({
   /** Grafia da fonte. Para exibir, nunca para comparar. */
   name: z.string(),
   realm: z.string(),
 
-  /** Identidade. `nameKey` mantém acento (`toCharacterKey`), realm é `toSlug`. */
+  /**
+   * Identidade. `nameKey` mantém acento (`toCharacterKey`).
+   *
+   * O realm é a chave FROUXA (`toRealmMatchKey`), não `toSlug`: a linha de loot
+   * nasce de fonte que escreve realm à moda do cliente do jogo — o export do
+   * RCLootCouncil traz `Area52` e `DemonSoul`, e o roster da Blizzard guarda
+   * `area-52` e `demon-soul`. Mesma escolha do `Attendance.realmKey`, pelo mesmo
+   * motivo, e é `toRealmMatchKey()` no slug do roster que faz a ponte.
+   */
   nameKey: z.string(),
-  realmSlug: z.string(),
+  realmKey: z.string(),
 });
 export type LootCharacter = z.infer<typeof lootCharacterSchema>;
 
@@ -95,7 +102,12 @@ export const lootLineSchema = z.object({
    */
   encounterId: z.string().nullable(),
 
-  /** Nulo quando não deu para determinar. Lacuna, nunca `normal` por omissão. */
+  /**
+   * Dificuldade **da peça**, do `itemContext` — não a da sala onde ela foi
+   * entregue. As duas divergem legitimamente; ver `raidDifficultyFromItemString`.
+   *
+   * Nulo quando não deu para determinar. Lacuna, nunca `normal` por omissão.
+   */
   difficulty: raidDifficultyLevelSchema.nullable(),
 
   /**

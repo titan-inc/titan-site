@@ -14,6 +14,13 @@ alcançável de dentro do container (`docker compose exec`) ou por túnel SSH
 
 Em dev local (`pnpm dev`), a base é `http://localhost:3001`.
 
+**Corpo até 2mb neste prefixo**, contra 16kb no resto da app (`main.ts`). As duas
+rotas que carregam arquivo — `catalog-load` e `loot-import-rc` — não caberiam no
+teto público: o maior catálogo tem 92 KB e o export do RC tem 304 KB. O teto
+público existe para o `/applications`, que é anônimo; aqui não há ator anônimo,
+mas o teto continua existindo contra engano de operador (`--data-binary @` com o
+caminho errado), que é o modo de falha da TIT-109.
+
 ## Como implementar uma rota nova
 
 Segue o mesmo desenho das sete que já existem — **nunca** chama
@@ -155,6 +162,45 @@ curl -X POST "http://localhost:3001/internal/ops/catalog-load" \
   -H "Content-Type: application/json" \
   -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/the-voidspire.json"), semConferencia: true}))')"
 ```
+
+## Histórico — importar o export do RCLootCouncil
+
+Rota nova (TIT-53), sem script antigo equivalente. O arquivo vai no corpo, igual
+ao `catalog-load`: o container não tem o arquivo e é efêmero.
+
+**Idempotente** pelo campo `id` do RC (`servertime-índice`). Rodar de novo
+atualiza as mesmas linhas e devolve os mesmos números.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/loot-import-rc" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @rclootcouncil_export.json
+```
+
+Resposta do export real (445 registros, 17/03 a 25/06/2026):
+
+```json
+{
+  "lidos": 445,
+  "gravados": 294,
+  "descartados": 151,
+  "bossResolvido": 217,
+  "bossNaoResolvido": 77,
+  "semDificuldade": 0
+}
+```
+
+- **`descartados`** são bonus roll e personal loot — foram direto para o jogador,
+  sem decisão do conselho a registrar. Descarte é resultado esperado, não erro.
+- **`bossNaoResolvido`** é o nome do boss que não casou com o catálogo, por vir
+  traduzido ou como `Unknown`. A linha entra assim mesmo, com o nome cru; exigir
+  o vínculo recusaria histórico legítimo.
+
+**Rótulo de resposta desconhecido recusa o arquivo inteiro**, com `400` listando
+todas as combinações novas de uma vez. É deliberado: rótulo não mapeado é lacuna,
+e gravar o resto em silêncio esconderia que faltou histórico. Acrescentar o rótulo
+é um PR de uma linha em `packages/shared/src/loot-response.ts`.
 
 ## Sonda de roster (Raider.IO)
 
