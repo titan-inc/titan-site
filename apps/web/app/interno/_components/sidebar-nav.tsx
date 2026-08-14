@@ -16,6 +16,11 @@ const ITENS = [
   { segment: 'progressao', href: '/interno/progressao', label: 'Progressão' },
   { segment: 'raid', href: '/interno/raid', label: 'Raid' },
   { segment: 'presenca', href: '/interno/presenca', label: 'Presença' },
+
+  // Em ITENS e não em ITENS_OFICIAL: a área de Loot é do "core", que é
+  // exatamente quem já passou pelo corte da área interna. Um segundo corte com
+  // o mesmo valor seria só mais um lugar para divergir do primeiro em silêncio.
+  { segment: 'loot', href: '/interno/loot', label: 'Loot' },
 ] as const;
 
 /**

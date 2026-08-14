@@ -176,6 +176,11 @@ export function canManageOfficers(user: OfficerCheck): boolean {
  *
  * Delegar a `isActingOfficer` não é o mesmo que colapsar: mudar esta permissão
  * é substituir o corpo desta função, sem tocar na outra.
+ *
+ * **Não vale para loot.** O histórico de loot é visível a todos que entram na
+ * área interna, porque é decisão que o conselho tomou na frente da raid, não
+ * comportamento de uma pessoa — ver a Regra 7 do CLAUDE.md. Quem for construir
+ * tela de loot não deve chamar esta função.
  */
 export function canSeeOthersHistory(user: OfficerCheck): boolean {
   return isActingOfficer(user);
