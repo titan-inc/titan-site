@@ -241,6 +241,78 @@ describe('parseSessionPaste', () => {
     });
   });
 
+  describe('a colagem REAL de Kazzara, com o loot de um boss inteiro', () => {
+    /*
+      Capturada em 14/08/2026, boss morto em Aberrus. Sete itens de uma kill.
+
+      Vale mais que qualquer fixture inventada porque traz junto, sem ninguém
+      procurar: o item de contexto vazio, duas cópias byte-a-byte idênticas, e
+      contadores de bônus de 5 e 7 com cauda de modifier depois.
+
+      Nome do jogador trocado por fictício — o repo é público.
+    */
+    const KAZZARA = [
+      'TILC/1\tencounter=2688\tencounterName=Kazzara, the Hellforged\tdifficulty=14\tinstance=2569\tinstanceName=Aberrus, the Shadowed Crucible',
+      'item:204717::::::::90:250:::::::::\tFulano-Azralon\tauto',
+      'item:202612::::::::90:250::3:5:9323:7979:6652:1472:8767:1:28:2645:::::\tFulano-Azralon\tauto',
+      'item:202573::::::::90:250::3:7:9321:7979:6652:9222:9220:1472:8767:1:28:2645:::::\tFulano-Azralon\tauto',
+      'item:202573::::::::90:250::3:7:9321:7979:6652:9222:9220:1472:8767:1:28:2645:::::\tFulano-Azralon\tauto',
+      'item:202583::::::::90:250::3:7:9321:7979:41:9222:9218:1472:8767:1:28:2645:::::\tFulano-Azralon\tauto',
+      'item:202590::::::::90:250::3:7:9321:7979:6652:9222:9218:1472:8767:1:28:2645:::::\tFulano-Azralon\tauto',
+      'item:202616::::::::90:250::3:5:9321:7979:6652:1472:8767:1:28:2645:::::\tFulano-Azralon\tauto',
+    ].join('\n');
+
+    it('lê a kill inteira sem um problema', () => {
+      const lido = parseSessionPaste(KAZZARA);
+
+      expect(lido.items).toHaveLength(7);
+      expect(lido.problemas).toEqual([]);
+    });
+
+    it('o cabeçalho traz os ids que o resto do sistema já conhece', () => {
+      // 2688 é Kazzara, um dos sete `dungeonEncounterId` que a Regra 6 lista
+      // como verificados contra o Warcraft Logs. E 2569 é o `instanceMapID` que
+      // o comentário do schema usa de exemplo — o mesmo cuja zona no WCL é 33.
+      const lido = parseSessionPaste(KAZZARA);
+
+      expect(lido).toMatchObject({
+        encounterId: 2688,
+        instanceId: 2569,
+        difficulty: 'normal',
+        rawDifficultyId: 14,
+      });
+    });
+
+    it('duas cópias byte-a-byte idênticas viram dois drops', () => {
+      // O caso que motivou "uma linha por drop, não por item" — agora em dado
+      // real. Deduplicar aqui apagaria uma decisão do conselho.
+      const lido = parseSessionPaste(KAZZARA);
+      const copias = lido.items.filter((i) => i.itemId === 202573);
+
+      expect(copias).toHaveLength(2);
+      expect(copias.map((c) => c.position)).toEqual([3, 4]);
+    });
+
+    it('o contador corta os bônus antes da cauda de modifiers', () => {
+      // A cauda real é `:1:28:2645:::::`. Fatiar até o fim traria 28 e 2645
+      // como se fossem bônus.
+      const lido = parseSessionPaste(KAZZARA);
+
+      expect(lido.items[1]?.bonusIds).toEqual([9323, 7979, 6652, 1472, 8767]);
+      expect(lido.items[2]?.bonusIds).toEqual([9321, 7979, 6652, 9222, 9220, 1472, 8767]);
+    });
+
+    it('o item de contexto vazio aparece sozinho no meio do loot normal', () => {
+      // `item:204717:...:90:250:::::::::` — uma receita. Contexto vazio E
+      // contador vazio na mesma linha, querendo dizer coisas diferentes.
+      const lido = parseSessionPaste(KAZZARA);
+
+      expect(lido.items[0]).toMatchObject({ itemId: 204717, itemContext: null, bonusIds: [] });
+      // E os outros seis, do mesmo boss, têm contexto de raid normal.
+      expect(lido.items.slice(1).every((i) => i.itemContext === 3)).toBe(true);
+    });
+  });
+
   describe('a sexta armadilha: campo vazio quer dizer coisas diferentes', () => {
     // Os dois casos vieram de loot de boss real: um reagente épico e uma
     // receita. Nenhum item "normal" de raid expõe isso, que é justamente por que
