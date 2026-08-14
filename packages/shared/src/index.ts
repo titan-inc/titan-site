@@ -6,6 +6,7 @@ export * from './item-string.js';
 export * from './journal-dump.js';
 export * from './loot-catalog.js';
 export * from './loot-catalog-file.js';
+export * from './loot-history.js';
 export * from './loot-line.js';
 export * from './loot-response.js';
 export * from './membership.js';

@@ -1,21 +1,28 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
+import { LootHistoryController } from './loot-history.controller';
+import { LootHistoryService } from './loot-history.service';
 import { LootLinesRepository } from './loot-lines.repository';
 import { RcImportService } from './rc-import.service';
 
 /**
  * O histórico de loot: uma linha por peça entregue por decisão do conselho.
  *
- * **Sem controller.** O único jeito de escrever aqui hoje é importar um arquivo,
- * que é operação de bastidor e vive em `/internal/ops/loot-import-rc` sob
- * `OpsTokenGuard` — ator diferente do modelo de permissão da Regra 4, pela Regra
- * 8. Mesmo arranjo do `LootCatalogModule` na parte de escrita.
+ * **Leitura e escrita entram por portas diferentes**, e é de propósito.
  *
- * A leitura por membro (o explorador da Regra 7) é a TIT-58, e ganha controller
- * com guard próprio quando existir. Criar um vazio agora seria completar padrão
- * sem chamador.
+ * A escrita de hoje é importar um arquivo: operação de bastidor, que vive em
+ * `/internal/ops/loot-import-rc` sob `OpsTokenGuard` — automação/CLI, ator
+ * diferente do modelo de permissão da Regra 4, pela Regra 8.
+ *
+ * A leitura é o explorador, com `MemberGuard`: sessão de Battle.net, qualquer
+ * pessoa da área interna. Mesmo arranjo do `LootCatalogModule`.
+ *
+ * `AuthModule` entra pelo `MemberGuard` do controller de leitura.
  */
 @Module({
-  providers: [RcImportService, LootLinesRepository],
+  imports: [AuthModule],
+  controllers: [LootHistoryController],
+  providers: [RcImportService, LootHistoryService, LootLinesRepository],
   exports: [RcImportService],
 })
 export class LootLinesModule {}

@@ -8,6 +8,7 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
 import { LootCatalogModule } from './loot-catalog/loot-catalog.module';
+import { LootLinesModule } from './loot-lines/loot-lines.module';
 import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
@@ -35,6 +36,10 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     MembershipModule,
     OfficersModule,
     LootCatalogModule,
+    // Explícito, e não só via OpsModule: o módulo tem controller próprio agora,
+    // e depender de ele entrar no grafo de carona faria a rota sumir no dia em
+    // que alguém removesse o import lá.
+    LootLinesModule,
     HealthModule,
     ApplicationsModule,
     OpsModule,

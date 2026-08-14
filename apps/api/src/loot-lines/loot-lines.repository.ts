@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LootLineSource, RaidDifficultyLevel } from '@titan/shared';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -95,4 +96,90 @@ export class LootLinesRepository {
   countBySource(source: LootLineSource): Promise<number> {
     return this.prisma.lootLine.count({ where: { source } });
   }
+
+  /**
+   * Uma página do histórico, com o total sob os mesmos filtros.
+   *
+   * Os dois numa transação só para a contagem não discordar da página quando um
+   * import roda no meio — a tela diria "37 entregas" mostrando 38.
+   *
+   * Ordem: mais recente primeiro, com o `id` desempatando. Sem o desempate, duas
+   * entregas do mesmo instante — o export tem esse caso — podem trocar de lugar
+   * entre uma página e outra, e a mesma linha aparece duas vezes ou some.
+   */
+  async findHistoryPage(
+    where: Prisma.LootLineWhereInput,
+    page: number,
+    pageSize: number,
+  ): Promise<{ linhas: LootHistoryRow[]; total: number }> {
+    const [linhas, total] = await this.prisma.$transaction([
+      this.prisma.lootLine.findMany({
+        where,
+        orderBy: [{ awardedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: historySelect,
+      }),
+      this.prisma.lootLine.count({ where }),
+    ]);
+
+    return { linhas, total };
+  }
+
+  /**
+   * Os itens do catálogo referenciados por estas linhas.
+   *
+   * Consulta separada, e não `include`, porque **não existe FK de `LootLine`
+   * para `WowItem`** — de propósito. FK obrigatória recusaria histórico cujo
+   * item o catálogo ainda não tem, e catálogo atrasado não pode barrar registro
+   * que não volta (Regra 7). Mesmo motivo pelo qual `encounterId` é nulável.
+   */
+  findItems(itemIds: number[]): Promise<CatalogItemRow[]> {
+    return this.prisma.wowItem.findMany({
+      where: { itemId: { in: itemIds } },
+      select: { itemId: true, name: true, icon: true, equipLoc: true },
+    });
+  }
+
+  /** Os `itemId` de um slot, para o filtro de slot virar `itemId IN (...)`. */
+  async findItemIdsBySlot(equipLoc: string): Promise<number[]> {
+    const itens = await this.prisma.wowItem.findMany({
+      where: { equipLoc },
+      select: { itemId: true },
+    });
+
+    return itens.map((i) => i.itemId);
+  }
 }
+
+/**
+ * Colunas que a tela do histórico precisa.
+ *
+ * `rawBoss` e `rawInstance` entram porque são o fallback de 26% das linhas, que
+ * não resolveram para boss do catálogo.
+ */
+const historySelect = {
+  id: true,
+  awardedAt: true,
+  winnerNameKey: true,
+  winnerRealmKey: true,
+  winnerName: true,
+  winnerRealm: true,
+  winnerClass: true,
+  itemId: true,
+  rawBoss: true,
+  rawInstance: true,
+  difficulty: true,
+  votes: true,
+  note: true,
+  encounter: { select: { id: true, name: true, raid: { select: { name: true } } } },
+  responseOption: { select: { slug: true, label: true } },
+} as const;
+
+export type LootHistoryRow = Prisma.LootLineGetPayload<{ select: typeof historySelect }>;
+export type CatalogItemRow = {
+  itemId: number;
+  name: string | null;
+  icon: string | null;
+  equipLoc: string | null;
+};
