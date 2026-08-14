@@ -1,0 +1,133 @@
+import { z } from 'zod';
+
+/**
+ * Ciclo de vida da sessão de loot council.
+ *
+ * Quatro estados, e não cinco: "awardada" **não é estado**, é consequência de
+ * todo item estar resolvido. Guardar como flag criaria a chance de ela discordar
+ * dos itens — mesmo defeito que a Regra 4 evita ao não gravar `isOfficer` na
+ * conta.
+ *
+ * | estado        | quem age     | o que é mutável                          |
+ * | ------------- | ------------ | ---------------------------------------- |
+ * | `rascunho`    | loot master  | a lista de itens                         |
+ * | `aberta`      | jogadores    | resposta de cada um; a lista congela     |
+ * | `deliberando` | conselho     | votos; resposta só reabre a pedido       |
+ * | `encerrada`   | ninguém      | nada — virou linha de histórico          |
+ */
+export const LOOT_SESSION_STATUS = {
+  /** O loot master colou e ainda está corrigindo a lista. */
+  RASCUNHO: 'rascunho',
+
+  /** Jogadores respondendo. A lista de itens está congelada. */
+  ABERTA: 'aberta',
+
+  /** Respostas fechadas, conselho votando. */
+  DELIBERANDO: 'deliberando',
+
+  /** Acabou. Os itens viraram linha em `LootLine`. */
+  ENCERRADA: 'encerrada',
+} as const;
+
+export const lootSessionStatusSchema = z.nativeEnum(LOOT_SESSION_STATUS);
+export type LootSessionStatus = z.infer<typeof lootSessionStatusSchema>;
+
+/**
+ * Para onde cada estado pode ir.
+ *
+ * `deliberando → aberta` existe de propósito: o conselho pode reabrir as
+ * respostas quando percebe que alguém não respondeu, ou que respondeu errado.
+ * É a correção humana que a Regra 7 manda permitir, e sem ela o loot master
+ * teria que refazer a sessão inteira por causa de uma pessoa.
+ *
+ * Não existe caminho de volta de `encerrada`: dali saiu histórico, e reabrir
+ * significaria reescrever passado. Sessão encerrada por engano se resolve
+ * corrigindo a linha de loot, não ressuscitando a sessão.
+ */
+const TRANSICOES: Readonly<Record<LootSessionStatus, readonly LootSessionStatus[]>> = {
+  [LOOT_SESSION_STATUS.RASCUNHO]: [LOOT_SESSION_STATUS.ABERTA],
+  [LOOT_SESSION_STATUS.ABERTA]: [LOOT_SESSION_STATUS.DELIBERANDO],
+  [LOOT_SESSION_STATUS.DELIBERANDO]: [LOOT_SESSION_STATUS.ABERTA, LOOT_SESSION_STATUS.ENCERRADA],
+  [LOOT_SESSION_STATUS.ENCERRADA]: [],
+};
+
+/** A transição é permitida? Estado igual conta como não — não é transição. */
+export function podeTransicionar(de: LootSessionStatus, para: LootSessionStatus): boolean {
+  return TRANSICOES[de].includes(para);
+}
+
+/** Para onde dá para ir a partir daqui. Vazio em `encerrada`. */
+export function proximosEstados(de: LootSessionStatus): readonly LootSessionStatus[] {
+  return TRANSICOES[de];
+}
+
+/** A lista de itens só muda no rascunho. Depois disso ela é o que foi anunciado. */
+export function podeEditarItens(status: LootSessionStatus): boolean {
+  return status === LOOT_SESSION_STATUS.RASCUNHO;
+}
+
+/**
+ * Jogador pode responder?
+ *
+ * Também em `deliberando`, e não só em `aberta`: é lá que o conselho reabre para
+ * uma pessoa específica. Quem controla quem pode responder naquele momento é o
+ * serviço; aqui a pergunta é só se a sessão ainda aceita resposta.
+ */
+export function podeResponder(status: LootSessionStatus): boolean {
+  return status === LOOT_SESSION_STATUS.ABERTA || status === LOOT_SESSION_STATUS.DELIBERANDO;
+}
+
+/** Conselho só vota depois que as respostas fecharam. */
+export function podeVotar(status: LootSessionStatus): boolean {
+  return status === LOOT_SESSION_STATUS.DELIBERANDO;
+}
+
+/**
+ * O que aconteceu na sessão.
+ *
+ * O log é a **fonte da verdade**; as tabelas de estado são projeção escrita na
+ * mesma transação e reconstruível a partir daqui. Se um dia divergirem, quem
+ * está certo é o log.
+ *
+ * Existe porque três coisas dependem dele: auditoria ("quem mudou meu voto?"),
+ * idempotência (o cliente manda um id e reenviar não duplica) e reconexão
+ * ("eventos desde X" em vez de re-sincronizar tudo).
+ */
+export const LOOT_SESSION_EVENTS = {
+  SESSAO_CRIADA: 'sessao_criada',
+  ITEM_ADICIONADO: 'item_adicionado',
+  ITEM_REMOVIDO: 'item_removido',
+  STATUS_ALTERADO: 'status_alterado',
+
+  /** Jogador declarou o que quer. O `roll` nasce junto e não muda. */
+  RESPOSTA_DADA: 'resposta_dada',
+
+  /**
+   * Conselho trocou a resposta de alguém.
+   *
+   * Separado de `resposta_dada` de propósito: os dois mudam o mesmo campo, mas
+   * respondem perguntas diferentes na auditoria — "o que eu declarei" e "o que
+   * mudaram no que eu declarei".
+   */
+  RESPOSTA_ALTERADA: 'resposta_alterada',
+
+  /** Conselho pediu para a pessoa responder de novo. */
+  RESPOSTA_REABERTA: 'resposta_reaberta',
+
+  VOTO_DADO: 'voto_dado',
+  ITEM_AWARDADO: 'item_awardado',
+} as const;
+
+export const lootSessionEventTypeSchema = z.nativeEnum(LOOT_SESSION_EVENTS);
+export type LootSessionEventType = z.infer<typeof lootSessionEventTypeSchema>;
+
+/**
+ * O roll do jogador para um item.
+ *
+ * 1 a 100, **gerado pelo servidor** e imutável. Se fosse regerado a cada
+ * resposta, dava para trocar de resposta até tirar um número bom; e se viesse do
+ * cliente, dava para mandar 100.
+ */
+export const ROLL_MINIMO = 1;
+export const ROLL_MAXIMO = 100;
+export const rollSchema = z.number().int().min(ROLL_MINIMO).max(ROLL_MAXIMO);
