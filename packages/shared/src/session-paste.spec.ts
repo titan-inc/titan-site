@@ -313,6 +313,42 @@ describe('parseSessionPaste', () => {
     });
   });
 
+  describe('mesmo itemID, itens DIFERENTES', () => {
+    /*
+      Da colagem real de The Amalgamation Chamber, 14/08/2026, com dois
+      jogadores no grupo. Nomes trocados por fictícios — o repo é público.
+
+      As duas linhas de 202593 têm o mesmo itemID e bônus diferentes: `9415` numa
+      e `9414` na outra. São peças distintas, e foram para pessoas distintas.
+    */
+    const DOIS_JOGADORES = [
+      'TILC/1\tencounter=2687\tencounterName=The Amalgamation Chamber\tdifficulty=14\tinstance=2569\tinstanceName=Aberrus, the Shadowed Crucible',
+      'item:202593::::::::90:250::3:8:9321:7979:6652:9415:9222:9220:1472:8767:1:28:2645:::::\tFulano-Azralon\tauto',
+      'item:202593::::::::90:250::3:8:9321:7979:6652:9414:9222:9220:1472:8767:1:28:2645:::::\tCiclano-Azralon\tauto',
+    ].join('\n');
+
+    it('as duas cópias sobrevivem, com bônus diferentes', () => {
+      // Deduplicar por itemID juntaria duas peças que não são a mesma coisa, e
+      // apagaria uma decisão do conselho. É o que sustenta `position` fazer
+      // parte da identidade do drop.
+      const lido = parseSessionPaste(DOIS_JOGADORES);
+
+      expect(lido.items).toHaveLength(2);
+      expect(lido.items[0]?.itemId).toBe(lido.items[1]?.itemId);
+      expect(lido.items[0]?.bonusIds).not.toEqual(lido.items[1]?.bonusIds);
+      expect(lido.items[0]?.bonusIds).toContain(9415);
+      expect(lido.items[1]?.bonusIds).toContain(9414);
+    });
+
+    it('cada peça guarda quem a lootou no jogo', () => {
+      // Looters diferentes na mesma colagem: é o caminho de quando OUTRA pessoa
+      // loota, que só passou a ser exercitado com dois no grupo.
+      const lido = parseSessionPaste(DOIS_JOGADORES);
+
+      expect(lido.items.map((i) => i.looter?.name)).toEqual(['Fulano', 'Ciclano']);
+    });
+  });
+
   describe('a sexta armadilha: campo vazio quer dizer coisas diferentes', () => {
     // Os dois casos vieram de loot de boss real: um reagente épico e uma
     // receita. Nenhum item "normal" de raid expõe isso, que é justamente por que
