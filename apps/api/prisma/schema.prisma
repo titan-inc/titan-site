@@ -683,6 +683,9 @@ model LootCatalogEncounter {
   /// importado não casa com o catálogo, por nome traduzido ou boss desconhecido.
   lootLines LootLine[]
 
+  /// As sessões de loot council abertas neste boss. Opcional pelo mesmo motivo.
+  lootSessions LootSession[]
+
   /// Sem `@@index` para o `dungeonEncounterId`: o `@unique` dele já cria índice
   /// no Postgres, e um segundo seria peso morto na escrita.
   @@unique([raidId, position])
@@ -772,6 +775,11 @@ model LootResponseOption {
   /// É o que torna `active` obrigatório e delete proibido: apagar a opção
   /// arrastaria histórico, e o `onDelete: Restrict` do outro lado recusa.
   lootLines LootLine[]
+
+  /// Os mesmos dois usos dentro da sessão ao vivo: o que o jogador declarou, e
+  /// o que ficou congelado no award. Ambos com `Restrict`, pelo mesmo motivo.
+  sessionResponses LootSessionResponse[]
+  sessionAwards    LootSessionAward[]
 
   @@index([active, position])
 }
@@ -970,4 +978,260 @@ model LootLine {
   @@index([awardedAt])
   /// Filtro principal da aba de histórico — toda consulta da tela passa por ele.
   @@index([seasonId, awardedAt])
+}
+
+/// Etapa da sessão de loot council. Ver `LOOT_SESSION_STATUS` no shared.
+enum LootSessionStatus {
+  rascunho
+  aberta
+  deliberando
+  encerrada
+}
+
+/// O que aconteceu numa sessão. Ver `LOOT_SESSION_EVENTS` no shared.
+enum LootSessionEventType {
+  sessao_criada
+  item_adicionado
+  item_removido
+  status_alterado
+  resposta_dada
+  resposta_alterada
+  resposta_reaberta
+  voto_dado
+  item_awardado
+}
+
+/// Uma sessão de loot council: um boss, os itens que caíram, e a decisão.
+///
+/// **Por boss, não por noite.** É o que faz "awardar tudo para quem tem mais
+/// votos" operar sobre 3-5 itens em vez de 10+. O addon já exporta um grupo por
+/// encontro pelo mesmo motivo, então uma colagem é uma sessão.
+///
+/// Quem criou é o loot master. Não existe papel "loot master" no sistema, e não
+/// vai existir: quem pode criar é oficial, decidido pelo `OfficerGuard`.
+///
+/// O ator é gravado SEM FK para `User`, de propósito — `createdByUserId` mais
+/// `createdByBattletag`. Mesmo precedente do `OfficerGrant.grantedBy`: isto é
+/// registro, e registro não pode ser apagado por exclusão de conta. O battletag
+/// junto deixa a auditoria legível sem join.
+model LootSession {
+  id String @id @default(cuid())
+
+  status LootSessionStatus @default(rascunho)
+
+  /// O boss do catálogo, quando o `encounter` da colagem casa com ele.
+  ///
+  /// Nulo é esperado: o catálogo é cadastro manual e o addon exporta qualquer
+  /// boss que o grupo matar. Sessão de boss não cadastrado funciona igual — só
+  /// não liga ao catálogo, e a linha sai com o boss cru, exatamente como já
+  /// acontece com 26% do histórico importado.
+  encounterId String?
+  encounter   LootCatalogEncounter? @relation(fields: [encounterId], references: [id])
+
+  /// O cabeçalho da colagem, como veio. É o caminho de volta quando o boss não
+  /// casa — e `encounterName`/`instanceName` são LOCALIZADOS, só para leitura
+  /// humana. A decisão é sempre pelos ids.
+  rawEncounterId   Int?
+  rawEncounterName String
+  rawInstanceName  String
+
+  /// Convertida do `difficultyID` do cliente (14 Normal, 15 Heroico, 16 Mítico).
+  ///
+  /// É a TERCEIRA numeração de dificuldade do sistema — o WarcraftLogs usa 3/4/5
+  /// e o vocabulário do site usa slug. A conversão é explícita, nunca implícita.
+  difficulty RaidDifficulty?
+
+  createdByUserId    String
+  createdByBattletag String
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  openedAt  DateTime?
+  closedAt  DateTime?
+
+  items  LootSessionItem[]
+  events LootSessionEvent[]
+
+  @@index([status, createdAt])
+  @@index([encounterId])
+}
+
+/// Uma peça em disputa.
+///
+/// Uma linha por DROP, não por item: duas cópias do mesmo item caem no mesmo
+/// boss, e são duas decisões separadas. Por isso `position` faz parte da
+/// identidade, e não há unique em `itemId`.
+model LootSessionItem {
+  id String @id @default(cuid())
+
+  sessionId String
+  session   LootSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  /// Ordem na colagem. Junto do `sessionId` distingue cópias do mesmo item.
+  position Int
+
+  itemId Int
+
+  /// O `itemString` inteiro e cru, com socket, terciário e nível de upgrade.
+  ///
+  /// É o que o conselho precisa ver para votar sabendo o que está em jogo: duas
+  /// peças com o mesmo `itemID` podem ser coisas bem diferentes.
+  itemString String
+
+  /// Quem lootou NO JOGO — entrada para a decisão, nunca o resultado dela.
+  ///
+  /// Ler isto como destinatário final inverte o propósito da ferramenta. Quem
+  /// fica com o item é o award.
+  looterName  String
+  looterRealm String
+
+  responses LootSessionResponse[]
+  votes     LootSessionVote[]
+  award     LootSessionAward?
+
+  @@unique([sessionId, position])
+  @@index([sessionId])
+}
+
+/// O que um jogador declarou para uma peça.
+///
+/// Projeção: a verdade está no log de eventos. Existe como tabela para o
+/// `UNIQUE` impedir duas respostas da mesma pessoa para o mesmo item, e para a
+/// tela ler sem dobrar o log.
+model LootSessionResponse {
+  id String @id @default(cuid())
+
+  itemId String
+  item   LootSessionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  /// O personagem que está disputando — o par nome + realm da Regra 6. Mesma
+  /// normalização da linha de loot: `toCharacterKey` e `toRealmMatchKey`.
+  nameKey  String
+  realmKey String
+  name     String
+  realm    String
+
+  /// Quem respondeu, para a auditoria. Sem FK — ver `LootSession`.
+  userId String
+
+  responseOptionSlug String
+  responseOption     LootResponseOption @relation(fields: [responseOptionSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+
+  /// 1 a 100, gerado pelo SERVIDOR na primeira resposta e imutável.
+  ///
+  /// Regerar a cada resposta deixaria trocar de resposta até tirar um número
+  /// bom; vir do cliente deixaria mandar 100.
+  roll Int
+
+  /// O conselho reabriu esta resposta e ela ainda não foi refeita.
+  aguardandoNovaResposta Boolean @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Uma resposta por personagem por item.
+  @@unique([itemId, nameKey, realmKey])
+  @@index([itemId])
+}
+
+/// O voto de um conselheiro numa peça.
+///
+/// **Um voto por conselheiro por item**, apontando para um candidato — é o que
+/// torna a contagem por candidato honesta. Trocar o voto atualiza a linha e
+/// acrescenta evento; o log é que guarda o histórico da troca.
+model LootSessionVote {
+  id String @id @default(cuid())
+
+  itemId String
+  item   LootSessionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  /// Em quem votou. O par nome + realm, igual à resposta.
+  candidateNameKey  String
+  candidateRealmKey String
+
+  /// Quem votou. Sem FK — ver `LootSession`.
+  voterUserId    String
+  voterBattletag String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([itemId, voterUserId])
+  @@index([itemId])
+}
+
+/// Quem levou a peça.
+///
+/// `@@unique` no item, e é isso que resolve a concorrência que a TIT-68 levanta:
+/// dois conselheiros awardando ao mesmo tempo não geram dois vencedores — o
+/// segundo simplesmente falha, sem lock e sem lógica de aplicação.
+model LootSessionAward {
+  id String @id @default(cuid())
+
+  /// Um award por item. A unicidade é a trava.
+  itemId String          @unique
+  item   LootSessionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  /// Quem ficou com a peça.
+  ///
+  /// Sempre um personagem, inclusive quando vai para o banco: ali o vencedor é
+  /// quem guardou, e o que marca o destino é a resposta `banking`. Sem caso
+  /// especial, e é assim que o histórico importado já registra.
+  winnerNameKey  String
+  winnerRealmKey String
+  winnerName     String
+  winnerRealm    String
+
+  /// A resposta do vencedor no momento do award. É ela que vai para a linha de
+  /// loot — congelada aqui porque a resposta pode ser corrigida depois.
+  responseOptionSlug String
+  responseOption     LootResponseOption @relation(fields: [responseOptionSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+
+  /// Quantos votos o vencedor tinha quando levou.
+  votes Int
+
+  awardedByUserId    String
+  awardedByBattletag String
+  awardedAt          DateTime @default(now())
+}
+
+/// O log da sessão. **Fonte da verdade**; as tabelas acima são projeção.
+///
+/// Se um dia o estado divergir do log, quem está certo é o log — e a projeção se
+/// reconstrói a partir daqui.
+///
+/// ## O `id` serve de cursor, com uma ressalva
+///
+/// `autoincrement()` dá ordem para "eventos desde X" sem tabela de sequência.
+/// A ressalva: transações concorrentes podem receber ids em ordem e **commitar
+/// fora dela**, então um cliente que pede "desde 42" pode perder um evento 41
+/// que commitou depois. Na escala daqui — alguns eventos por minuto — o risco é
+/// pequeno, mas é real, e é a TIT-68 que precisa resolver ao desenhar a
+/// reconexão.
+model LootSessionEvent {
+  id Int @id @default(autoincrement())
+
+  sessionId String
+  session   LootSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  type LootSessionEventType
+
+  /// Quem fez. Sem FK — ver `LootSession`.
+  actorUserId    String
+  actorBattletag String
+
+  /// Id gerado pelo CLIENTE, para reenviar não duplicar.
+  ///
+  /// Nulo para evento que nasce no servidor. `NULL` é distinto de `NULL` no
+  /// Postgres, então o unique não atrapalha esses.
+  clientEventId String?
+
+  /// O que mudou, na forma do tipo. Deliberadamente sem schema no banco: o
+  /// formato de cada tipo vive no shared, onde dá para versionar com Zod.
+  payload Json
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([sessionId, clientEventId])
+  @@index([sessionId, id])
 }
