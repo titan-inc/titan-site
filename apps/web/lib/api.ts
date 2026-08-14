@@ -2,6 +2,8 @@ import 'server-only';
 
 import {
   attendanceReportSchema,
+  lootHistoryFacetsSchema,
+  lootHistoryPageSchema,
   myAttendanceSchema,
   officerListSchema,
   progressReportSchema,
@@ -9,6 +11,8 @@ import {
   rosterSchema,
   sessionUserSchema,
   type AttendanceReport,
+  type LootHistoryFacets,
+  type LootHistoryPage,
   type MyAttendance,
   type OfficerList,
   type ProgressReport,
@@ -211,6 +215,54 @@ export async function getOfficers(): Promise<OfficerList | null> {
     if (!res.ok) return null;
 
     const parsed = officerListSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Uma página do histórico de loot, já filtrada.
+ *
+ * Os filtros são repassados como vieram da URL — quem valida é o schema do
+ * shared no Nest, e um valor inválido volta 400, que aqui vira `null`. Validar
+ * dos dois lados criaria duas regras para divergirem.
+ */
+export async function getLootHistory(
+  filtros: Record<string, string>,
+): Promise<LootHistoryPage | null> {
+  const query = new URLSearchParams(filtros).toString();
+
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-history?${query}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootHistoryPageSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** As opções dos filtros, dentro da season pedida. */
+export async function getLootHistoryFacets(season?: string): Promise<LootHistoryFacets | null> {
+  const query = season ? `?season=${encodeURIComponent(season)}` : '';
+
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-history/facets${query}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootHistoryFacetsSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
