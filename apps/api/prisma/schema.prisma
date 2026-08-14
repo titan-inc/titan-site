@@ -213,6 +213,13 @@ model GameSeason {
   /// lado — ver o comentário em `LootCatalogRaid.seasonId`.
   lootCatalogRaids LootCatalogRaid[]
 
+  /// Entregas de loot feitas DURANTE esta season.
+  ///
+  /// Não confundir com `lootCatalogRaids`, que é o tier: uma entrega desta
+  /// season pode ser de peça de raid de uma season anterior. Ver o comentário
+  /// em `LootLine.seasonId`.
+  lootLines LootLine[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 }
@@ -813,6 +820,28 @@ model LootLine {
   /// texto no fuso de quem exportou, e o epoch não tem ambiguidade.
   awardedAt DateTime
 
+  /// A season em que a entrega ACONTECEU, derivada do `awardedAt`.
+  ///
+  /// **Não é o tier da peça.** Hoje as duas leituras coincidem — o histórico
+  /// importado é loot do tier da season 1, entregue durante a season 1 — mas
+  /// separam-se na virada: farmar The Voidspire em setembro é entrega da season
+  /// 2 com peça de tier da season 1.
+  ///
+  /// "Quando" ganha por dois motivos. É a pergunta que a aba de histórico
+  /// responde ("o que o conselho distribuiu nesta season"), e é a única leitura
+  /// que cobre tudo: 77 das 294 linhas importadas não têm boss resolvido, então
+  /// pelo tier — que viria de `LootCatalogRaid.seasonId` — um quarto do
+  /// histórico ficaria sem season e sumiria de todo filtro.
+  ///
+  /// Nulável, e não porque seja opcional: é lacuna. Linha anterior a qualquer
+  /// season conhecida, ou importada antes de o job de snapshot criar a linha da
+  /// season, fica sem. O conserto é rederivar, nunca chutar a mais próxima.
+  ///
+  /// `SetNull` no delete pelo mesmo motivo do `LootCatalogRaid`: apagar uma
+  /// season não pode arrastar histórico junto.
+  seasonId Int?
+  season   GameSeason? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+
   /// Identidade de quem levou: o par nome + realm, nunca o nome sozinho.
   ///
   /// Regra 6 — `nameKey` por `toCharacterKey()`, que MANTÉM acento, porque no
@@ -939,4 +968,6 @@ model LootLine {
   @@index([itemId])
   @@index([encounterId])
   @@index([awardedAt])
+  /// Filtro principal da aba de histórico — toda consulta da tela passa por ele.
+  @@index([seasonId, awardedAt])
 }

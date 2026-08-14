@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { LootLineSource, RaidDifficultyLevel } from '@titan/shared';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import type { SeasonInicio } from './season-da-entrega';
 
 /**
  * Uma linha pronta para gravar.
@@ -34,6 +35,9 @@ export interface LootLineUpsert {
   encounterId: string | null;
   difficulty: RaidDifficultyLevel | null;
 
+  /** A season em que a entrega aconteceu. Nula quando não dá para datar. */
+  seasonId: number | null;
+
   responseOptionSlug: string;
   rawResponse: string;
   rawResponseId: string;
@@ -62,6 +66,16 @@ export class LootLinesRepository {
    */
   findEncounters(): Promise<EncounterRef[]> {
     return this.prisma.lootCatalogEncounter.findMany({ select: { id: true, name: true } });
+  }
+
+  /**
+   * As seasons, para datar cada entrega.
+   *
+   * Todas de uma vez: são poucas — uma por patch — e o import precisa comparar
+   * cada uma das 294 linhas contra elas.
+   */
+  findSeasons(): Promise<SeasonInicio[]> {
+    return this.prisma.gameSeason.findMany({ select: { id: true, startedAt: true } });
   }
 
   /** Os slugs de resposta que existem hoje, para conferir antes de gravar. */
@@ -139,6 +153,66 @@ export class LootLinesRepository {
       where: { itemId: { in: itemIds } },
       select: { itemId: true, name: true, icon: true, equipLoc: true },
     });
+  }
+
+  /**
+   * Quantas entregas por season, incluindo a fatia sem season.
+   *
+   * Sem filtro de season de propósito: é o seletor de season, e ele precisa
+   * oferecer para onde ir, não só onde se está.
+   */
+  // Sem anotação de retorno: o `groupBy` do Prisma é genérico e infere o tipo a
+  // partir dos argumentos. Anotar faz o TS tentar unificar as duas coisas e
+  // devolver um erro que aponta para o lugar errado.
+  contarPorSeason() {
+    // Sem `orderBy`: quem ordena é o serviço, que precisa pôr a fatia sem season
+    // por último — regra que não cabe no `groupBy`.
+    return this.prisma.lootLine.groupBy({ by: ['seasonId'], _count: true });
+  }
+
+  /** Nome das seasons que aparecem no histórico. */
+  findSeasonNames(ids: number[]): Promise<Array<{ id: number; name: string }>> {
+    return this.prisma.gameSeason.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    });
+  }
+
+  /** Personagens que aparecem, com a grafia da fonte para exibir. */
+  contarPorPersonagem(where: Prisma.LootLineWhereInput) {
+    return this.prisma.lootLine.groupBy({
+      by: ['winnerNameKey', 'winnerRealmKey', 'winnerName', 'winnerRealm'],
+      where,
+      _count: true,
+    });
+  }
+
+  /** Bosses que aparecem, já resolvidos — linha sem boss não vira opção. */
+  contarPorBoss(where: Prisma.LootLineWhereInput) {
+    return this.prisma.lootLine.groupBy({
+      by: ['encounterId'],
+      where: { ...where, encounterId: { not: null } },
+      _count: true,
+    });
+  }
+
+  /** Nome e raid dos bosses, para o rótulo do seletor. */
+  findEncounterLabels(ids: string[]) {
+    return this.prisma.lootCatalogEncounter.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, raid: { select: { name: true } } },
+    });
+  }
+
+  /**
+   * Quantas entregas por item.
+   *
+   * O slot sai daqui somando por `equipLoc`, e não de um `groupBy` direto, porque
+   * **não há FK entre linha de loot e catálogo** — o Prisma não tem como juntar
+   * as duas tabelas numa consulta só.
+   */
+  contarPorItem(where: Prisma.LootLineWhereInput) {
+    return this.prisma.lootLine.groupBy({ by: ['itemId'], where, _count: true });
   }
 
   /** Os `itemId` de um slot, para o filtro de slot virar `itemId IN (...)`. */

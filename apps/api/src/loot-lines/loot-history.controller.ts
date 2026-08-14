@@ -1,5 +1,10 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { lootHistoryQuerySchema, type LootHistoryPage, type LootHistoryQuery } from '@titan/shared';
+import {
+  lootHistoryQuerySchema,
+  type LootHistoryFacets,
+  type LootHistoryPage,
+  type LootHistoryQuery,
+} from '@titan/shared';
 import { MemberGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LootHistoryService } from './loot-history.service';
@@ -34,5 +39,23 @@ export class LootHistoryController {
     filtros: LootHistoryQuery,
   ): Promise<LootHistoryPage> {
     return this.history.consultar(filtros);
+  }
+
+  /**
+   * As opções dos filtros, dentro da season pedida.
+   *
+   * Rota própria, e não um campo da consulta acima: as opções não mudam quando a
+   * pessoa mexe em personagem ou boss, então devolvê-las junto de cada página
+   * seria recalcular quatro agregações a cada clique de paginação.
+   *
+   * Reaproveita o mesmo schema da consulta e lê só a `season`, para o formato do
+   * parâmetro ser idêntico nas duas rotas.
+   */
+  @Get('facets')
+  facets(
+    @Query(new ZodValidationPipe(lootHistoryQuerySchema, 'Filtro'))
+    filtros: LootHistoryQuery,
+  ): Promise<LootHistoryFacets> {
+    return this.history.facets(filtros.season);
   }
 }
