@@ -53,6 +53,41 @@ describe('LootHistoryService', () => {
     >(() => Promise.resolve({ linhas: [linhaDoBanco()], total: 1 })),
     findItems: jest.fn<Promise<CatalogItemRow[]>, [number[]]>(() => Promise.resolve([item()])),
     findItemIdsBySlot: jest.fn<Promise<number[]>, [string]>(() => Promise.resolve([249308])),
+
+    contarPorSeason: jest.fn(() =>
+      Promise.resolve([
+        { seasonId: 17, _count: 294 },
+        { seasonId: null, _count: 3 },
+      ]),
+    ),
+    findSeasonNames: jest.fn<Promise<Array<{ id: number; name: string }>>, [number[]]>(() =>
+      Promise.resolve([{ id: 17, name: 'Mythic+ Dungeons (Midnight Season 1)' }]),
+    ),
+    contarPorPersonagem: jest.fn(() =>
+      Promise.resolve([
+        {
+          winnerNameKey: 'fulano',
+          winnerRealmKey: 'area52',
+          winnerName: 'Fulano',
+          winnerRealm: 'Area52',
+          _count: 19,
+        },
+        {
+          winnerNameKey: 'beltrano',
+          winnerRealmKey: 'azralon',
+          winnerName: 'Beltrano',
+          winnerRealm: 'Azralon',
+          _count: 4,
+        },
+      ]),
+    ),
+    contarPorBoss: jest.fn(() => Promise.resolve([{ encounterId: 'enc-1', _count: 12 }])),
+    findEncounterLabels: jest.fn(() =>
+      Promise.resolve([
+        { id: 'enc-1', name: 'Chimaerus the Undreamt God', raid: { name: 'The Voidspire' } },
+      ]),
+    ),
+    contarPorItem: jest.fn(() => Promise.resolve([{ itemId: 249308, _count: 7 }])),
   };
 
   let service: LootHistoryService;
@@ -146,6 +181,15 @@ describe('LootHistoryService', () => {
 
       expect(whereUsado()).toMatchObject({ encounterId: 'enc-1', difficulty: 'mythic' });
     });
+
+    it('season filtra, e ausente significa todas', async () => {
+      await service.consultar(filtros({ season: '17' }));
+      expect(whereUsado()).toMatchObject({ seasonId: 17 });
+
+      jest.clearAllMocks();
+      await service.consultar(filtros());
+      expect(whereUsado().seasonId).toBeUndefined();
+    });
   });
 
   describe('a entrada montada', () => {
@@ -233,6 +277,140 @@ describe('LootHistoryService', () => {
 
       expect(repo.findItems).toHaveBeenCalledWith([249308]);
     });
+  });
+});
+
+describe('LootHistoryService.facets', () => {
+  const repo = {
+    contarPorSeason: jest.fn(() =>
+      Promise.resolve([
+        { seasonId: 17, _count: 294 },
+        { seasonId: 18, _count: 5 },
+        { seasonId: null, _count: 3 },
+      ]),
+    ),
+    findSeasonNames: jest.fn<Promise<Array<{ id: number; name: string }>>, [number[]]>(() =>
+      Promise.resolve([
+        { id: 17, name: 'Midnight Season 1' },
+        { id: 18, name: 'Midnight Season 2' },
+      ]),
+    ),
+    contarPorPersonagem: jest.fn(() =>
+      Promise.resolve([
+        {
+          winnerNameKey: 'zulu',
+          winnerRealmKey: 'azralon',
+          winnerName: 'Zulu',
+          winnerRealm: 'Azralon',
+          _count: 4,
+        },
+        {
+          winnerNameKey: 'alfa',
+          winnerRealmKey: 'area52',
+          winnerName: 'Alfa',
+          winnerRealm: 'Area52',
+          _count: 19,
+        },
+      ]),
+    ),
+    contarPorBoss: jest.fn(() =>
+      Promise.resolve([
+        { encounterId: 'enc-1', _count: 12 },
+        { encounterId: 'enc-sumido', _count: 2 },
+      ]),
+    ),
+    findEncounterLabels: jest.fn(() =>
+      Promise.resolve([
+        { id: 'enc-1', name: 'Chimaerus the Undreamt God', raid: { name: 'The Voidspire' } },
+      ]),
+    ),
+    contarPorItem: jest.fn(() =>
+      Promise.resolve([
+        { itemId: 1, _count: 7 },
+        { itemId: 2, _count: 3 },
+        { itemId: 99, _count: 5 },
+      ]),
+    ),
+    findItems: jest.fn<Promise<CatalogItemRow[]>, [number[]]>(() =>
+      Promise.resolve([
+        { itemId: 1, name: 'A', icon: null, equipLoc: 'HEAD' },
+        { itemId: 2, name: 'B', icon: null, equipLoc: 'HEAD' },
+        // 99 fica de fora do catálogo de propósito.
+      ]),
+    ),
+  };
+
+  let service: LootHistoryService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new LootHistoryService(repo as unknown as LootLinesRepository);
+  });
+
+  it('a lista de seasons ignora a season selecionada', async () => {
+    // É o seletor de season: precisa oferecer para onde ir, não só onde se está.
+    await service.facets(17);
+
+    expect(repo.contarPorSeason).toHaveBeenCalledWith();
+    const f = await service.facets(17);
+    expect(f.seasons.map((s) => s.id)).toEqual([18, 17, null]);
+  });
+
+  it('a fatia sem season aparece rotulada, e por último', async () => {
+    // Esconder deixaria entregas fora de qualquer filtro — lacuna invisível.
+    const f = await service.facets(undefined);
+
+    expect(f.seasons.at(-1)).toEqual({ id: null, name: 'Sem season', total: 3 });
+  });
+
+  it('season que sumiu da tabela mostra o id em vez de esconder o histórico', async () => {
+    repo.findSeasonNames.mockResolvedValueOnce([{ id: 17, name: 'Midnight Season 1' }]);
+
+    const f = await service.facets(undefined);
+
+    expect(f.seasons.find((s) => s.id === 18)?.name).toBe('Season 18');
+  });
+
+  it('personagens saem ordenados por nome, com o valor pronto para o filtro', async () => {
+    const f = await service.facets(17);
+
+    expect(f.characters).toEqual([
+      { name: 'Alfa', realm: 'Area52', value: 'Alfa-Area52', total: 19 },
+      { name: 'Zulu', realm: 'Azralon', value: 'Zulu-Azralon', total: 4 },
+    ]);
+  });
+
+  it('boss sem rótulo no catálogo não vira opção', async () => {
+    // Oferecer um filtro cujo nome não sabemos mostrar seria opção em branco.
+    const f = await service.facets(17);
+
+    expect(f.bosses).toEqual([
+      {
+        encounterId: 'enc-1',
+        name: 'Chimaerus the Undreamt God',
+        raid: 'The Voidspire',
+        total: 12,
+      },
+    ]);
+  });
+
+  it('slot soma as entregas dos itens daquele slot', async () => {
+    // 7 + 3 do HEAD; o item 99 não está no catálogo e não tem slot a oferecer.
+    const f = await service.facets(17);
+
+    expect(f.slots).toEqual([{ equipLoc: 'HEAD', total: 10 }]);
+  });
+
+  it('histórico vazio devolve listas vazias, sem consultar rótulo à toa', async () => {
+    repo.contarPorPersonagem.mockResolvedValueOnce([]);
+    repo.contarPorBoss.mockResolvedValueOnce([]);
+    repo.contarPorItem.mockResolvedValueOnce([]);
+
+    const f = await service.facets(18);
+
+    expect(f).toMatchObject({ characters: [], bosses: [], slots: [] });
+    expect(repo.findEncounterLabels).not.toHaveBeenCalled();
+    expect(repo.findItems).not.toHaveBeenCalled();
   });
 });
 

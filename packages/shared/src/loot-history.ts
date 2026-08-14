@@ -17,6 +17,18 @@ export const LOOT_HISTORY_MAX_PAGE_SIZE = 200;
  */
 export const lootHistoryQuerySchema = z.object({
   /**
+   * A season em que a entrega aconteceu — o filtro principal da aba.
+   *
+   * **Ausente significa "todas as seasons"**, que é uma opção legítima da tela e
+   * não um estado de erro. A tela abre na season mais recente e manda o id; quem
+   * escolhe "todas" simplesmente não manda o parâmetro.
+   *
+   * Linha sem season (lacuna) só aparece em "todas" — pedir uma season é pedir o
+   * que se sabe estar nela.
+   */
+  season: z.coerce.number().int().positive().optional(),
+
+  /**
    * `Nome-Realm`, no formato do cliente do jogo — `Fulano-Area52`.
    *
    * Um campo só, e não dois, porque é assim que o personagem é identificado em
@@ -115,3 +127,57 @@ export const lootHistoryPageSchema = z.object({
   pageSize: z.number().int().positive(),
 });
 export type LootHistoryPage = z.infer<typeof lootHistoryPageSchema>;
+
+/**
+ * Os valores que os filtros podem assumir — as opções dos seletores da tela.
+ *
+ * Existe porque a API aceita filtrar por personagem, boss e slot mas não diz
+ * quais existem, e sem isso a tela vira campo de texto livre. Digitar
+ * `Shrëwd-Area52` com o trema certo não é filtro, é adivinhação: é a Regra 6
+ * batendo na interface.
+ *
+ * **Só o que de fato aparece no histórico.** Um filtro que devolve zero não é
+ * oferecido, então nenhuma combinação da tela leva a uma tela vazia por engano.
+ *
+ * Cada opção traz `total` para a tela poder mostrar o peso de cada uma antes do
+ * clique.
+ */
+export const lootHistoryFacetsSchema = z.object({
+  /**
+   * TODAS as seasons que têm histórico, independente da selecionada — é o
+   * seletor de season, e ele precisa oferecer para onde ir.
+   *
+   * `id` nulo é a fatia sem season: linhas que não deu para datar. Aparece só
+   * quando existe alguma, e é lacuna visível em vez de linha sumida.
+   */
+  seasons: z.array(
+    z.object({
+      id: z.number().int().positive().nullable(),
+      name: z.string(),
+      total: z.number().int().nonnegative(),
+    }),
+  ),
+
+  /** Personagens da season selecionada, com a grafia da fonte para exibir. */
+  characters: z.array(
+    z.object({
+      name: z.string(),
+      realm: z.string(),
+      /** `Nome-Realm`, pronto para mandar de volta no filtro `character`. */
+      value: z.string(),
+      total: z.number().int().nonnegative(),
+    }),
+  ),
+
+  bosses: z.array(
+    z.object({
+      encounterId: z.string(),
+      name: z.string(),
+      raid: z.string(),
+      total: z.number().int().nonnegative(),
+    }),
+  ),
+
+  slots: z.array(z.object({ equipLoc: z.string(), total: z.number().int().nonnegative() })),
+});
+export type LootHistoryFacets = z.infer<typeof lootHistoryFacetsSchema>;

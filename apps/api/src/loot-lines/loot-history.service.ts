@@ -5,6 +5,7 @@ import {
   toCharacterKey,
   toRealmMatchKey,
   type LootHistoryEntry,
+  type LootHistoryFacets,
   type LootHistoryPage,
   type LootHistoryQuery,
 } from '@titan/shared';
@@ -58,9 +59,119 @@ export class LootHistoryService {
     };
   }
 
+  /**
+   * As opções dos filtros, dentro da season escolhida.
+   *
+   * Quatro consultas de agregação, todas sobre poucas centenas de linhas. A
+   * lista de seasons vem sem filtro de propósito: é o seletor de season.
+   */
+  async facets(season: number | undefined): Promise<LootHistoryFacets> {
+    const where: Prisma.LootLineWhereInput = season === undefined ? {} : { seasonId: season };
+
+    const [porSeason, porPersonagem, porBoss, porItem] = await Promise.all([
+      this.repo.contarPorSeason(),
+      this.repo.contarPorPersonagem(where),
+      this.repo.contarPorBoss(where),
+      this.repo.contarPorItem(where),
+    ]);
+
+    const [seasons, bosses, slots] = await Promise.all([
+      this.montarSeasons(porSeason),
+      this.montarBosses(porBoss),
+      this.montarSlots(porItem),
+    ]);
+
+    return {
+      seasons,
+      characters: porPersonagem
+        .map((p) => ({
+          name: p.winnerName,
+          realm: p.winnerRealm,
+          value: `${p.winnerName}-${p.winnerRealm}`,
+          total: p._count,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      bosses,
+      slots,
+    };
+  }
+
+  /** Mais recente primeiro, e a fatia sem season por último. */
+  private async montarSeasons(
+    porSeason: Array<{ seasonId: number | null; _count: number }>,
+  ): Promise<LootHistoryFacets['seasons']> {
+    const ids = porSeason.map((s) => s.seasonId).filter((id): id is number => id !== null);
+    const nomes = new Map((await this.repo.findSeasonNames(ids)).map((s) => [s.id, s.name]));
+
+    return porSeason
+      .map((s) => ({
+        id: s.seasonId,
+        // Season que sumiu da GameSeason ainda tem histórico apontando para ela;
+        // mostrar o id cru é melhor que esconder as entregas.
+        name:
+          s.seasonId === null ? 'Sem season' : (nomes.get(s.seasonId) ?? `Season ${s.seasonId}`),
+        total: s._count,
+      }))
+      .sort((a, b) => (b.id ?? -1) - (a.id ?? -1));
+  }
+
+  private async montarBosses(
+    porBoss: Array<{ encounterId: string | null; _count: number }>,
+  ): Promise<LootHistoryFacets['bosses']> {
+    const ids = porBoss.map((b) => b.encounterId).filter((id): id is string => id !== null);
+    if (ids.length === 0) return [];
+
+    const rotulos = new Map((await this.repo.findEncounterLabels(ids)).map((e) => [e.id, e]));
+
+    return porBoss
+      .flatMap((b) => {
+        const rotulo = b.encounterId === null ? undefined : rotulos.get(b.encounterId);
+        if (!rotulo || b.encounterId === null) return [];
+
+        return [
+          {
+            encounterId: b.encounterId,
+            name: rotulo.name,
+            raid: rotulo.raid.name,
+            total: b._count,
+          },
+        ];
+      })
+      .sort((a, b) => a.raid.localeCompare(b.raid) || a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Slot sai somando as entregas de cada item por `equipLoc`.
+   *
+   * Não é `groupBy` direto porque não há FK entre linha de loot e catálogo. Item
+   * fora do catálogo não entra: sem `equipLoc` não há slot a oferecer.
+   */
+  private async montarSlots(
+    porItem: Array<{ itemId: number; _count: number }>,
+  ): Promise<LootHistoryFacets['slots']> {
+    if (porItem.length === 0) return [];
+
+    const itens = await this.repo.findItems(porItem.map((i) => i.itemId));
+    const slotDoItem = new Map(itens.map((i) => [i.itemId, i.equipLoc]));
+
+    const totais = new Map<string, number>();
+    for (const item of porItem) {
+      const slot = slotDoItem.get(item.itemId);
+      if (!slot) continue;
+      totais.set(slot, (totais.get(slot) ?? 0) + item._count);
+    }
+
+    return [...totais]
+      .map(([equipLoc, total]) => ({ equipLoc, total }))
+      .sort((a, b) => a.equipLoc.localeCompare(b.equipLoc));
+  }
+
   /** Os filtros da query viram o `where` do Prisma. */
   private async montarWhere(filtros: LootHistoryQuery): Promise<Prisma.LootLineWhereInput> {
     const where: Prisma.LootLineWhereInput = {};
+
+    // Ausente é "todas as seasons", e não um estado de erro: é opção da tela.
+    if (filtros.season !== undefined) where.seasonId = filtros.season;
 
     const personagem = identidadeDoPersonagem(filtros.character);
     if (personagem) {

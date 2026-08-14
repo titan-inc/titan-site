@@ -34,6 +34,10 @@ describe('RcImportService', () => {
       Promise.resolve([{ id: 'enc-chimaerus', name: 'Chimaerus the Undreamt God' }]),
     ),
     findResponseOptionSlugs: jest.fn(() => Promise.resolve(Object.values(LOOT_RESPONSES))),
+    // O `servertime` do registro padrão é 2026-03-25, então cai na season 17.
+    findSeasons: jest.fn(() =>
+      Promise.resolve([{ id: 17, startedAt: new Date('2026-03-17T15:00:00.000Z') }]),
+    ),
     upsertMany: jest.fn((linhas: LootLineUpsert[]) => Promise.resolve(linhas.length)),
     countBySource: jest.fn(() => Promise.resolve(0)),
   };
@@ -230,6 +234,36 @@ describe('RcImportService', () => {
       await service.importar([registro({ note: '' })]);
 
       expect(linha().note).toBeNull();
+    });
+  });
+
+  describe('season da entrega', () => {
+    it('grava a season em que a entrega aconteceu', async () => {
+      const resultado = await service.importar([registro()]);
+
+      expect(linha().seasonId).toBe(17);
+      expect(resultado.semSeason).toBe(0);
+    });
+
+    it('entrega anterior a toda season conhecida fica sem season, e entra assim mesmo', async () => {
+      // Lacuna, não erro: a linha é histórico legítimo. Chutar a season mais
+      // próxima poria loot na season errada sem ninguém perceber.
+      const resultado = await service.importar([registro({ servertime: '1700000000' })]);
+
+      expect(linha().seasonId).toBeNull();
+      expect(resultado.gravados).toBe(1);
+      expect(resultado.semSeason).toBe(1);
+    });
+
+    it('sem season nenhuma no banco, importa tudo sem season', async () => {
+      // Acontece se o import rodar antes de o job de snapshot passar. O conserto
+      // é rederivar depois, não recusar o arquivo.
+      repo.findSeasons.mockResolvedValueOnce([]);
+
+      const resultado = await service.importar([registro()]);
+
+      expect(resultado.gravados).toBe(1);
+      expect(resultado.semSeason).toBe(1);
     });
   });
 

@@ -16,6 +16,7 @@ import {
   type EncounterRef,
   type LootLineUpsert,
 } from './loot-lines.repository';
+import { seasonDaEntrega, type SeasonInicio } from './season-da-entrega';
 
 export interface RcImportResult {
   /** Registros no arquivo. */
@@ -33,6 +34,15 @@ export interface RcImportResult {
 
   /** Quantas ficaram sem dificuldade — `itemString` sem contexto de raid. */
   semDificuldade: number;
+
+  /**
+   * Quantas ficaram sem season.
+   *
+   * Sinal de que o job de snapshot ainda não criou a linha da season, ou de que
+   * o histórico é anterior a toda season conhecida. Não é erro — é lacuna a
+   * rederivar depois.
+   */
+  semSeason: number;
 }
 
 /** Um problema que impede o arquivo de entrar, com o registro que o causou. */
@@ -54,13 +64,19 @@ export class RcImportService {
    * do RC (`servertime-índice`), único nos 445 registros do arquivo real.
    */
   async importar(arquivo: RcExport): Promise<RcImportResult> {
-    const [encounters, slugsValidos] = await Promise.all([
+    const [encounters, slugsValidos, seasons] = await Promise.all([
       this.repo.findEncounters(),
       this.repo.findResponseOptionSlugs(),
+      this.repo.findSeasons(),
     ]);
 
     const bosses = this.indexarBosses(encounters);
-    const { linhas, descartados, problemas } = this.traduzir(arquivo, bosses, slugsValidos);
+    const { linhas, descartados, problemas } = this.traduzir(
+      arquivo,
+      bosses,
+      slugsValidos,
+      seasons,
+    );
 
     this.recusarSeHouveProblema(problemas);
 
@@ -69,7 +85,8 @@ export class RcImportService {
 
     this.logger.log(
       `import_rc: ${resultado.gravados} gravados, ${resultado.descartados} descartados, ` +
-        `${resultado.bossNaoResolvido} sem boss, ${resultado.semDificuldade} sem dificuldade`,
+        `${resultado.bossNaoResolvido} sem boss, ${resultado.semDificuldade} sem dificuldade, ` +
+        `${resultado.semSeason} sem season`,
     );
     return resultado;
   }
@@ -100,6 +117,7 @@ export class RcImportService {
     arquivo: RcExport,
     bosses: Map<string, string | null>,
     slugsValidos: string[],
+    seasons: readonly SeasonInicio[],
   ): { linhas: LootLineUpsert[]; descartados: number; problemas: Problema[] } {
     const conhecidos = new Set(slugsValidos);
     const linhas: LootLineUpsert[] = [];
@@ -125,7 +143,7 @@ export class RcImportService {
         continue;
       }
 
-      const linha = this.montarLinha(registro, resposta.response, bosses);
+      const linha = this.montarLinha(registro, resposta.response, bosses, seasons);
       if (linha === null) {
         problemas.push({ id: registro.id, motivo: 'não deu para separar nome e realm' });
         continue;
@@ -142,6 +160,7 @@ export class RcImportService {
     registro: RcExportRecord,
     responseOptionSlug: string,
     bosses: Map<string, string | null>,
+    seasons: readonly SeasonInicio[],
   ): LootLineUpsert | null {
     const vencedor = splitNomeRealm(registro.player);
     if (vencedor === null) return null;
@@ -149,10 +168,17 @@ export class RcImportService {
     // Quem lootou pode ser a mesma pessoa; nulo só quando não dá para ler.
     const lootador = splitNomeRealm(registro.owner);
 
+    const awardedAt = new Date(Number(registro.servertime) * 1_000);
+
     return {
       source: LOOT_LINE_SOURCES.IMPORT_RC,
       externalId: registro.id,
-      awardedAt: new Date(Number(registro.servertime) * 1_000),
+      awardedAt,
+
+      // Pela data da entrega, não pelo tier da peça — ver `seasonDaEntrega`.
+      // Nulo aqui é lacuna: se o job de snapshot ainda não criou a linha da
+      // season, rederivar depois é melhor que gravar a season errada agora.
+      seasonId: seasonDaEntrega(awardedAt, seasons),
 
       winnerNameKey: toCharacterKey(vencedor.name),
       winnerRealmKey: toRealmMatchKey(vencedor.realm),
@@ -239,6 +265,7 @@ export class RcImportService {
   ): RcImportResult {
     const bossResolvido = linhas.filter((l) => l.encounterId !== null).length;
     const semDificuldade = linhas.filter((l) => l.difficulty === null).length;
+    const semSeason = linhas.filter((l) => l.seasonId === null).length;
 
     return {
       lidos,
@@ -247,6 +274,7 @@ export class RcImportService {
       bossResolvido,
       bossNaoResolvido: linhas.length - bossResolvido,
       semDificuldade,
+      semSeason,
     };
   }
 }
