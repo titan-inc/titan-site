@@ -1,3 +1,4 @@
+import { parseItemString } from './item-string.js';
 import { splitNomeRealm } from './rc-export.js';
 import { RAID_DIFFICULTIES, type RaidDifficultyLevel } from './wow.js';
 
@@ -41,6 +42,18 @@ export interface SessionPasteItem {
   itemString: string;
 
   /**
+   * De onde a peça veio, do próprio `itemString`. Nulo é "não sei", nunca zero.
+   *
+   * Vale mais que o `difficulty` do cabeçalho para dizer a origem da peça: o
+   * cabeçalho diz em que sala o grupo estava, o contexto diz de onde o item
+   * caiu. Ver TIT-76.
+   */
+  itemContext: number | null;
+
+  /** Os bônus, delimitados pelo contador. Vazio é zero bônus, não erro. */
+  bonusIds: number[];
+
+  /**
    * Quem lootou NO JOGO — entrada para a decisão, nunca o resultado dela.
    *
    * Nulo quando o addon não soube dizer. Ler isto como destinatário final
@@ -75,6 +88,19 @@ export interface SessionPaste {
   instanceName: string;
 
   items: SessionPasteItem[];
+
+  /**
+   * Linhas que não deu para ler, com o número da linha e o motivo.
+   *
+   * **Linha torta não derruba a colagem.** Colagem parcial acontece — o jogo
+   * corta, o Ctrl+C pega pela metade — e perder cinco itens porque o sexto veio
+   * errado é pior que reportar o sexto. Quem chama mostra a lista ao loot
+   * master, que corrige à mão o que faltou.
+   *
+   * O cabeçalho é o oposto: cabeçalho errado lança, porque sem ele não há
+   * sessão a montar.
+   */
+  problemas: Array<{ linha: number; motivo: string }>;
 }
 
 function campo(partes: string[], nome: string): string | undefined {
@@ -95,22 +121,6 @@ function inteiroOpcional(partes: string[], nome: string): number | null {
 
   const valor = Number(bruto);
   return Number.isInteger(valor) && valor > 0 ? valor : null;
-}
-
-/**
- * O `itemID` do `itemString`.
- *
- * Posição 1, e não 0: a string começa com o literal `item`. Ler o 0 devolveria
- * `NaN` sempre — o mesmo erro de deslocamento que custou uma leitura inteira do
- * `itemContext` antes.
- */
-function itemIdDoItemString(itemString: string, onde: string): number {
-  const valor = Number(itemString.split(':')[1]);
-
-  if (!Number.isInteger(valor) || valor <= 0) {
-    throw new Error(`${onde}: não consegui ler o itemID de "${itemString}"`);
-  }
-  return valor;
 }
 
 /**
@@ -142,14 +152,18 @@ export function parseSessionPaste(texto_: string): SessionPaste {
       return;
     }
 
-    colagem.items.push(lerItem(partes, colagem.items.length + 1, onde));
+    const item = lerItem(partes, colagem.items.length + 1);
+
+    if (typeof item === 'string') {
+      colagem.problemas.push({ linha: indice + 1, motivo: item });
+      return;
+    }
+
+    colagem.items.push(item);
   });
 
   if (colagem === undefined) {
     throw new Error(`a colagem está vazia ou não começa com "${SESSION_PASTE_VERSION}"`);
-  }
-  if (colagem.items.length === 0) {
-    throw new Error('a colagem não tem item nenhum — o grupo do addon estava vazio?');
   }
 
   return colagem;
@@ -175,22 +189,27 @@ function lerCabecalho(partes: string[], onde: string): SessionPaste {
     instanceId: inteiroOpcional(partes, 'instance'),
     instanceName: texto(partes, 'instanceName'),
     items: [],
+    problemas: [],
   };
 }
 
-function lerItem(partes: string[], position: number, onde: string): SessionPasteItem {
+/** O item lido, ou o motivo de não ter dado — string é a falha. */
+function lerItem(partes: string[], position: number): SessionPasteItem | string {
   const [itemString, looterBruto, origem] = partes;
 
   if (!itemString || !itemString.startsWith('item:')) {
-    throw new Error(
-      `${onde}: esperava uma linha de item começando com "item:", veio "${itemString ?? ''}"`,
-    );
+    return `esperava uma linha de item começando com "item:", veio "${itemString ?? ''}"`;
   }
+
+  const lido = parseItemString(itemString);
+  if (lido === null) return `não consegui ler o itemID de "${itemString}"`;
 
   return {
     position,
-    itemId: itemIdDoItemString(itemString, onde),
+    itemId: lido.itemId,
     itemString,
+    itemContext: lido.itemContext,
+    bonusIds: lido.bonusIds,
     // O addon escreve `Nome-Realm`, à moda do cliente do jogo. Quem normaliza é
     // quem for gravar — Regra 6.
     looter:

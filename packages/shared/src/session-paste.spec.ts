@@ -131,8 +131,8 @@ describe('parseSessionPaste', () => {
     ).toBe('manual');
   });
 
-  describe('o que faz a colagem ser recusada', () => {
-    it('cabeçalho de outra versão', () => {
+  describe('cabeçalho errado LANÇA — sem ele não há sessão', () => {
+    it('outra versão do formato', () => {
       // Versão diferente precisa de parser próprio. Tentar ler assim mesmo
       // gravaria dado errado sem ninguém notar.
       expect(() => parseSessionPaste('TILC/2\tencounter=1\n' + item(MITICO))).toThrow(/TILC\/1/);
@@ -142,22 +142,124 @@ describe('parseSessionPaste', () => {
       expect(() => parseSessionPaste('oi tudo bem')).toThrow(/TILC\/1/);
       expect(() => parseSessionPaste('')).toThrow(/vazia/);
     });
+  });
 
-    it('colagem só com o cabeçalho', () => {
-      // O addon emite "-- nenhum item neste grupo --" nesse caso, e a linha de
-      // comentário é ignorada. Sobra uma sessão sem item, que não serve.
-      expect(() => parseSessionPaste(cabecalho)).toThrow(/item nenhum/);
-      expect(() => parseSessionPaste(`${cabecalho}\n-- nenhum item neste grupo --`)).toThrow(
-        /item nenhum/,
+  describe('linha torta NÃO derruba a colagem', () => {
+    it('reporta a linha e mantém as boas', () => {
+      // Colagem parcial acontece — o jogo corta, o Ctrl+C pega pela metade.
+      // Perder cinco itens porque o sexto veio errado é pior que reportar o
+      // sexto, e o loot master corrige à mão o que faltou.
+      const lido = parseSessionPaste(
+        colagem(item(MITICO), 'lixo\tFulano-Azralon\tauto', item(HEROICO)),
       );
+
+      expect(lido.items).toHaveLength(2);
+      expect(lido.problemas).toEqual([
+        { linha: 3, motivo: expect.stringContaining('item:') as unknown as string },
+      ]);
     });
 
-    it('linha de item que não começa com `item:`, com o número da linha', () => {
-      // Colar pela metade é o modo normal de errar, e o número da linha é o que
-      // diz onde parou.
-      expect(() => parseSessionPaste(colagem(item(MITICO), 'lixo\tFulano-Azralon\tauto'))).toThrow(
-        /linha 3/,
-      );
+    it('a numeração das posições ignora as linhas ruins', () => {
+      // Position é a identidade do drop dentro da sessão. Se a linha ruim
+      // consumisse um número, haveria buraco e a segunda cópia de um item
+      // pareceria ser a terceira.
+      const lido = parseSessionPaste(colagem('lixo', item(MITICO), item(HEROICO)));
+
+      expect(lido.items.map((i) => i.position)).toEqual([1, 2]);
+    });
+
+    it('itemString sem itemID legível também é problema, não exceção', () => {
+      const lido = parseSessionPaste(colagem(item('item:abc::::::::80:0::6:0')));
+
+      expect(lido.items).toHaveLength(0);
+      expect(lido.problemas[0]?.motivo).toMatch(/itemID/);
+    });
+  });
+
+  it('colagem só com o cabeçalho devolve zero itens, sem estourar', () => {
+    // O addon emite "-- nenhum item neste grupo --", e a linha de comentário é
+    // ignorada. Quem decide o que fazer com sessão vazia é o construtor, que tem
+    // como avisar o loot master — melhor que uma exceção sem contexto.
+    const lido = parseSessionPaste(`${cabecalho}\n-- nenhum item neste grupo --`);
+
+    expect(lido.items).toEqual([]);
+    expect(lido.problemas).toEqual([]);
+    expect(lido.encounterId).toBe(3176);
+  });
+
+  describe('a colagem REAL de raid, da TIT-79', () => {
+    /*
+      Capturada em Tomb of Sargeras, dois bosses seguidos, com `/tilc debug`.
+      É a única colagem de verdade que existe, e é o que valida o cabeçalho.
+
+      O nome do jogador foi trocado por um fictício: o repo é público e o
+      CLAUDE.md proíbe versionar nome real de membro. Todo o resto é literal.
+    */
+    const REAL = [
+      'TILC/1\tencounter=2036\tencounterName=Harjatan\tdifficulty=14\tinstance=1676\tinstanceName=Tomb of Sargeras',
+      'item:147146::::::::90:252::3:1:9091:1:28:498:::::\tFulano-Azralon\tauto',
+      'item:147129::::::::90:252::3:1:9091:1:28:498:::::\tFulano-Azralon\tauto',
+    ].join('\n');
+
+    it('lê o cabeçalho inteiro', () => {
+      const lido = parseSessionPaste(REAL);
+
+      expect(lido).toMatchObject({
+        encounterId: 2036,
+        encounterName: 'Harjatan',
+        difficulty: 'normal',
+        rawDifficultyId: 14,
+        instanceId: 1676,
+        instanceName: 'Tomb of Sargeras',
+      });
+      expect(lido.problemas).toEqual([]);
+    });
+
+    it('o itemContext concorda com a dificuldade do cabeçalho', () => {
+      // `itemContext=3` é RaidNormal e `difficulty=14` é Normal — os dois
+      // dizendo a mesma coisa por caminhos independentes. É a conferência que a
+      // TIT-79 registrou ao validar o addon em raid.
+      const lido = parseSessionPaste(REAL);
+
+      expect(lido.items[0]?.itemContext).toBe(3);
+      expect(lido.difficulty).toBe('normal');
+    });
+
+    it('lê os bônus pelo contador, sem levar os modifiers junto', () => {
+      // A cauda real é `:1:9091:1:28:498:::::` — um bônus (9091), depois um
+      // modifier (28, 498) e colons vazios. Fatiar até o fim traria tudo.
+      const lido = parseSessionPaste(REAL);
+
+      expect(lido.items[0]?.bonusIds).toEqual([9091]);
+    });
+
+    it('as duas cópias entram como drops separados', () => {
+      const lido = parseSessionPaste(REAL);
+
+      expect(lido.items.map((i) => i.itemId)).toEqual([147146, 147129]);
+      expect(lido.items.map((i) => i.position)).toEqual([1, 2]);
+    });
+  });
+
+  describe('a sexta armadilha: campo vazio quer dizer coisas diferentes', () => {
+    // Os dois casos vieram de loot de boss real: um reagente épico e uma
+    // receita. Nenhum item "normal" de raid expõe isso, que é justamente por que
+    // ninguém pensa em usá-los como fixture.
+
+    it('numBonusIDs vazio é ZERO bônus', () => {
+      const lido = parseSessionPaste(colagem(item('item:193873::::::::90:252::5::1:28:2646:::::')));
+
+      expect(lido.items[0]?.bonusIds).toEqual([]);
+      expect(lido.items[0]?.itemContext).toBe(5);
+    });
+
+    it('itemContext vazio é DESCONHECIDO, não zero', () => {
+      // Colapsar em 0 afirmaria "contexto 0", que é valor válido de outra coisa.
+      const lido = parseSessionPaste(colagem(item('item:204717::::::::90:252:::::::::')));
+
+      expect(lido.items[0]?.itemContext).toBeNull();
+      expect(lido.items[0]?.bonusIds).toEqual([]);
+      expect(lido.items[0]?.itemId).toBe(204717);
     });
   });
 
