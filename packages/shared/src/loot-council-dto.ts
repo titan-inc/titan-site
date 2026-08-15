@@ -73,6 +73,23 @@ export const candidatoSchema = z.object({
 });
 export type Candidato = z.infer<typeof candidatoSchema>;
 
+/**
+ * Quem levou a peça.
+ *
+ * A resposta e a contagem de votos ficam **congeladas no momento do award** —
+ * depois disso a resposta pode ser corrigida, e o histórico tem que guardar o
+ * que valia quando a decisão foi tomada, não o que ficou depois.
+ */
+export const awardDaPecaSchema = z.object({
+  winnerName: z.string(),
+  winnerRealm: z.string(),
+  responseOptionSlug: z.string(),
+  votes: z.number().int().nonnegative(),
+  awardedByBattletag: z.string(),
+  awardedAt: z.string().datetime(),
+});
+export type AwardDaPeca = z.infer<typeof awardDaPecaSchema>;
+
 /** Uma peça em disputa, do ponto de vista de quem decide. */
 export const itemDoPainelSchema = z.object({
   itemId: z.string(),
@@ -84,6 +101,9 @@ export const itemDoPainelSchema = z.object({
    * o sistema que decide sozinho a reputação de alguém erra em público — Regra 7.
    */
   candidatos: z.array(candidatoSchema),
+
+  /** Nulo enquanto ninguém levou. Preenchido, a peça está resolvida. */
+  award: awardDaPecaSchema.nullable(),
 });
 export type ItemDoPainel = z.infer<typeof itemDoPainelSchema>;
 
@@ -140,3 +160,34 @@ export const alterarRespostaSchema = alvoDaAcaoSchema.extend({
   responseOptionSlug: z.string().min(1),
 });
 export type AlterarResposta = z.infer<typeof alterarRespostaSchema>;
+
+/** O conselho entrega a peça a uma pessoa específica. */
+export const awardarSchema = alvoDaAcaoSchema;
+export type Awardar = z.infer<typeof awardarSchema>;
+
+/**
+ * Entrega por maioria: a peça vai para quem tem mais votos.
+ *
+ * Com `itemId`, uma peça; sem, **todas as que ainda não foram entregues**. São a
+ * mesma regra aplicada a um item ou a todos — separar em duas rotas duplicaria a
+ * regra de desempate, que é justamente a parte delicada.
+ *
+ * Empate de votos resolve pelo maior roll. Empate de votos **e** de roll não
+ * resolve sozinho: o conselho escolhe à mão. Ver `LootCouncilPanel`.
+ */
+export const awardPorMaioriaSchema = z.object({
+  itemId: z.string().min(1).optional(),
+});
+export type AwardPorMaioria = z.infer<typeof awardPorMaioriaSchema>;
+
+/**
+ * O que a entrega em massa fez, peça por peça.
+ *
+ * Traz os pulos com o motivo, em vez de só o total: entregar 3 de 7 sem dizer o
+ * que houve com as outras 4 faria o loot master descobrir na hora de encerrar.
+ */
+export const awardEmMassaResultadoSchema = z.object({
+  entregues: z.number().int().nonnegative(),
+  pulados: z.array(z.object({ itemId: z.string(), motivo: z.string() })),
+});
+export type AwardEmMassaResultado = z.infer<typeof awardEmMassaResultadoSchema>;

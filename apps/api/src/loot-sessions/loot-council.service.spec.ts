@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { LootCouncilService } from './loot-council.service';
 import type { Ator, LootSessionsRepository, SessionRow } from './loot-sessions.repository';
 
@@ -27,6 +27,15 @@ const resposta = (over: Record<string, unknown> = {}) => ({
   responseOptionSlug: 'bis',
   roll: 40,
   aguardandoNovaResposta: false,
+  ...over,
+});
+
+/** Um voto, como o repositório devolve. Um por conselheiro por peça. */
+const voto = (over: Record<string, unknown> = {}) => ({
+  itemId: 'item-1',
+  candidateNameKey: 'fulano',
+  candidateRealmKey: 'azralon',
+  voterUserId: ATOR.userId,
   ...over,
 });
 
@@ -66,6 +75,21 @@ describe('LootCouncilService', () => {
       >,
       [Array<{ nameKey: string; realmKey: string }>]
     >(() => Promise.resolve([])),
+    findAwards: jest.fn<
+      Promise<
+        Array<{
+          itemId: string;
+          winnerName: string;
+          winnerRealm: string;
+          responseOptionSlug: string;
+          votes: number;
+          awardedByBattletag: string;
+          awardedAt: Date;
+        }>
+      >,
+      [string]
+    >(() => Promise.resolve([])),
+    awardar: jest.fn<Promise<boolean>, [unknown]>(() => Promise.resolve(true)),
     findItems: jest.fn<
       Promise<
         Array<{ itemId: number; name: string | null; icon: string | null; equipLoc: string | null }>
@@ -84,6 +108,8 @@ describe('LootCouncilService', () => {
     repo.itemPertence.mockResolvedValue(true);
     repo.findHistoricoDosCandidatos.mockResolvedValue([]);
     repo.findItems.mockResolvedValue([]);
+    repo.findAwards.mockResolvedValue([]);
+    repo.awardar.mockResolvedValue(true);
 
     service = new LootCouncilService(repo as unknown as LootSessionsRepository);
   });
@@ -413,6 +439,238 @@ describe('LootCouncilService', () => {
           ATOR,
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('o award no painel', () => {
+    it('a peça entregue mostra o que valia no momento da decisão', async () => {
+      // Congelado de propósito: depois do award a resposta ainda pode ser
+      // corrigida, e o histórico guarda a decisão, não o que ficou depois.
+      repo.findAwards.mockResolvedValue([
+        {
+          itemId: 'item-1',
+          winnerName: 'Fulano',
+          winnerRealm: 'Azralon',
+          responseOptionSlug: 'bis',
+          votes: 3,
+          awardedByBattletag: 'Loot#0001',
+          awardedAt: new Date('2026-08-15T01:00:00.000Z'),
+        },
+      ]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.award).toMatchObject({
+        winnerName: 'Fulano',
+        votes: 3,
+        awardedByBattletag: 'Loot#0001',
+        awardedAt: '2026-08-15T01:00:00.000Z',
+      });
+      // A peça sem dono continua distinguível da entregue.
+      expect(p.itens[1]?.award).toBeNull();
+    });
+  });
+
+  describe('awardar item a item', () => {
+    const paraFulano = { characterName: 'Fulano', characterRealm: 'Azralon' };
+
+    it('entrega à pessoa escolhida, com a resposta e os votos congelados', async () => {
+      repo.findVotos.mockResolvedValue([voto(), voto({ voterUserId: OUTRO.userId })]);
+
+      await service.awardar('sess-1', 'item-1', paraFulano, ATOR);
+
+      expect(repo.awardar.mock.calls[0]?.[0]).toMatchObject({
+        itemId: 'item-1',
+        vencedor: { nameKey: 'fulano', realmKey: 'azralon' },
+        responseOptionSlug: 'bis',
+        votes: 2,
+        ator: ATOR,
+      });
+    });
+
+    it('só vale em deliberando', async () => {
+      repo.findById.mockResolvedValue(sessao({ status: 'aberta' }));
+
+      await expect(service.awardar('sess-1', 'item-1', paraFulano, ATOR)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.awardar).not.toHaveBeenCalled();
+    });
+
+    it('não entrega a quem não se candidatou', async () => {
+      // Entregar a quem não pediu inverteria o que a sessão registra. Se a
+      // pessoa deveria estar na disputa, o caminho é reabrir a resposta dela.
+      await expect(
+        service.awardar(
+          'sess-1',
+          'item-1',
+          { characterName: 'Ninguem', characterRealm: 'Azralon' },
+          ATOR,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.awardar).not.toHaveBeenCalled();
+    });
+
+    it('entrega a quem está com a resposta reaberta — aqui a escolha é explícita', async () => {
+      // O contrário do award por maioria, que pula esse caso. A assimetria é o
+      // ponto: item a item, quem decide está olhando a linha na tela.
+      repo.findTodasAsRespostas.mockResolvedValue([resposta({ aguardandoNovaResposta: true })]);
+
+      await service.awardar('sess-1', 'item-1', paraFulano, ATOR);
+
+      expect(repo.awardar).toHaveBeenCalled();
+    });
+
+    it('dois conselheiros entregando a mesma peça: o segundo recebe conflito', async () => {
+      // O `@@unique` no item é a trava. Sem ela seria sobrescrita silenciosa, e
+      // duas pessoas sairiam da raid achando que levaram a peça.
+      repo.awardar.mockResolvedValueOnce(false);
+
+      await expect(service.awardar('sess-1', 'item-1', paraFulano, ATOR)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
+
+    it('item de outra sessão é 404', async () => {
+      repo.itemPertence.mockResolvedValueOnce(false);
+
+      await expect(service.awardar('sess-1', 'de-outra', paraFulano, ATOR)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('awardar por maioria', () => {
+    /** Três candidatos na mesma peça, com rolls distintos. */
+    const tresCandidatos = () => {
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ nameKey: 'a', name: 'A', roll: 90 }),
+        resposta({ nameKey: 'b', name: 'B', roll: 50 }),
+        resposta({ nameKey: 'c', name: 'C', roll: 10 }),
+      ]);
+    };
+
+    it('a peça vai para quem tem mais votos, mesmo com o roll menor', async () => {
+      tresCandidatos();
+      repo.findVotos.mockResolvedValue([voto({ candidateNameKey: 'c' })]);
+
+      const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(r).toEqual({ entregues: 1, pulados: [] });
+      expect(repo.awardar.mock.calls[0]?.[0]).toMatchObject({
+        vencedor: { name: 'C' },
+        votes: 1,
+      });
+    });
+
+    it('empate de votos resolve pelo maior roll', async () => {
+      tresCandidatos();
+      repo.findVotos.mockResolvedValue([
+        voto({ candidateNameKey: 'b' }),
+        voto({ candidateNameKey: 'a', voterUserId: OUTRO.userId }),
+      ]);
+
+      await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      // A e B com um voto cada; A tem roll 90.
+      expect(repo.awardar.mock.calls[0]?.[0]).toMatchObject({ vencedor: { name: 'A' } });
+    });
+
+    it('empate de votos E de roll não resolve sozinho', async () => {
+      // Roll é 1 a 100, então colisão acontece. Desempatar por ordem de chegada
+      // seria o sistema decidindo por critério que a tela não mostra.
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ nameKey: 'a', name: 'A', roll: 70 }),
+        resposta({ nameKey: 'b', name: 'B', roll: 70 }),
+      ]);
+      repo.findVotos.mockResolvedValue([
+        voto({ candidateNameKey: 'a' }),
+        voto({ candidateNameKey: 'b', voterUserId: OUTRO.userId }),
+      ]);
+
+      const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(r.entregues).toBe(0);
+      expect(r.pulados[0]?.motivo).toMatch(/empate de votos e roll/);
+      expect(repo.awardar).not.toHaveBeenCalled();
+    });
+
+    it('disputa sem voto nenhum não vira sorteio', async () => {
+      // "Tudo de uma vez" clicado antes de o conselho votar sortearia a noite
+      // inteira pelo roll — e o award é imutável.
+      tresCandidatos();
+
+      const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(r.entregues).toBe(0);
+      expect(r.pulados[0]?.motivo).toMatch(/ainda não votou/);
+    });
+
+    it('candidato único passa sem voto: não há disputa para decidir', async () => {
+      const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(r.entregues).toBe(1);
+    });
+
+    it('quem está com a resposta reaberta não leva por maioria', async () => {
+      // Entregar congelaria justamente a resposta de que o conselho duvidou.
+      repo.findTodasAsRespostas.mockResolvedValue([resposta({ aguardandoNovaResposta: true })]);
+
+      const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(r.entregues).toBe(0);
+      expect(r.pulados[0]?.motivo).toMatch(/resposta reaberta/);
+    });
+
+    it('peça sem candidato é pulada com o motivo, não some do resultado', async () => {
+      repo.findTodasAsRespostas.mockResolvedValue([]);
+
+      const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(r.pulados).toEqual([{ itemId: 'item-1', motivo: 'ninguém se candidatou' }]);
+    });
+
+    it('sem itemId, percorre a sessão inteira e diz o que pulou', async () => {
+      // Entregar 1 de 2 sem dizer o que houve com a outra faria o loot master
+      // descobrir na hora de encerrar.
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ itemId: 'item-1' }),
+        resposta({ itemId: 'item-2', nameKey: 'b', name: 'B' }),
+      ]);
+      repo.findAwards.mockResolvedValue([
+        {
+          itemId: 'item-2',
+          winnerName: 'B',
+          winnerRealm: 'Azralon',
+          responseOptionSlug: 'bis',
+          votes: 1,
+          awardedByBattletag: OUTRO.battletag,
+          awardedAt: new Date('2026-08-15T01:00:00.000Z'),
+        },
+      ]);
+
+      const r = await service.awardarPorMaioria('sess-1', {}, ATOR);
+
+      expect(r).toEqual({ entregues: 1, pulados: [{ itemId: 'item-2', motivo: 'já entregue' }] });
+      expect(repo.awardar).toHaveBeenCalledTimes(1);
+    });
+
+    it('lê as respostas uma vez só para a sessão inteira', async () => {
+      // Recalcular por peça seriam quatro consultas vezes o número de peças,
+      // para chegar sempre no mesmo lugar.
+      await service.awardarPorMaioria('sess-1', {}, ATOR);
+
+      expect(repo.findTodasAsRespostas).toHaveBeenCalledTimes(1);
+      expect(repo.findVotos).toHaveBeenCalledTimes(1);
+    });
+
+    it('só vale em deliberando', async () => {
+      repo.findById.mockResolvedValue(sessao({ status: 'aberta' }));
+
+      await expect(service.awardarPorMaioria('sess-1', {}, ATOR)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.awardar).not.toHaveBeenCalled();
     });
   });
 });
