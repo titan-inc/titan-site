@@ -26,6 +26,7 @@ const resposta = (over: Record<string, unknown> = {}) => ({
   realm: 'Azralon',
   responseOptionSlug: 'bis',
   roll: 40,
+  note: null,
   aguardandoNovaResposta: false,
   ...over,
 });
@@ -239,14 +240,31 @@ describe('LootCouncilService', () => {
       expect(porNome.get('Calado')).toBe(false);
     });
 
+    it('a nota do jogador some junto com a escolha e o roll', async () => {
+      // Ela é parte da declaração: esconder a escolha e deixar a nota
+      // ("preciso pra offspec") entregaria a mesma informação pela porta ao lado.
+      naFaseDeRoll();
+      repo.findTodasAsRespostas.mockResolvedValue([resposta({ note: 'tanko o segundo boss' })]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos[0]).toMatchObject({ respondeu: true, note: null });
+    });
+
     it('quando as respostas fecham, o painel volta a mostrar tudo', async () => {
       const p = await service.painel('sess-1', ATOR);
 
-      expect(p.itens[0]?.candidatos[0]).toMatchObject({
+      repo.findTodasAsRespostas.mockResolvedValue([resposta({ note: 'tanko o segundo boss' })]);
+
+      const p2 = await service.painel('sess-1', ATOR);
+
+      expect(p2.itens[0]?.candidatos[0]).toMatchObject({
         respondeu: true,
         responseOptionSlug: 'bis',
         roll: 40,
+        note: 'tanko o segundo boss',
       });
+      expect(p.itens[0]?.candidatos[0]).toMatchObject({ respondeu: true, roll: 40 });
     });
   });
 
@@ -703,6 +721,19 @@ describe('LootCouncilService', () => {
       expect(repo.alterarResposta).toHaveBeenCalledWith(
         expect.objectContaining({ responseOptionSlug: 'upgrade' }),
       );
+    });
+
+    it('NÃO mexe na nota de ninguém', async () => {
+      // Corrigir a escolha de alguém é corrigir um clique; mudar a nota seria
+      // pôr palavra na boca. Se a nota estiver errada, o caminho é reabrir.
+      await service.alterarResposta(
+        'sess-1',
+        'item-1',
+        { characterName: 'Fulano', characterRealm: 'Azralon', responseOptionSlug: 'upgrade' },
+        ATOR,
+      );
+
+      expect(JSON.stringify(repo.alterarResposta.mock.calls[0]?.[0])).not.toContain('note');
     });
 
     it('opção inativa é recusada', async () => {

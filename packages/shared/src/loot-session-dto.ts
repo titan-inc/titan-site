@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notaSchema } from './nota.js';
 import { lootSessionStatusSchema } from './loot-session.js';
 import { raidDifficultyLevelSchema } from './wow.js';
 
@@ -79,6 +80,14 @@ export type Participante = z.infer<typeof participanteSchema>;
  */
 export const respondToLootItemSchema = z.object({
   responseOptionSlug: z.string().min(1),
+
+  /**
+   * O motivo por trás do rótulo. Opcional, e editável junto da resposta.
+   *
+   * **Ausente mantém, vazio apaga.** Se omitir apagasse, um cliente que
+   * mandasse só a escolha limparia a nota da pessoa em silêncio.
+   */
+  note: notaSchema.optional(),
 });
 export type RespondToLootItem = z.infer<typeof respondToLootItemSchema>;
 
@@ -110,6 +119,9 @@ export const minhaRespostaSchema = z.object({
   /** O conselho pediu para esta pessoa responder de novo. */
   aguardandoNovaResposta: z.boolean(),
 
+  /** O que a pessoa escreveu junto da escolha. Nula quando não escreveu. */
+  note: z.string().nullable(),
+
   characterName: z.string(),
 });
 export type MinhaResposta = z.infer<typeof minhaRespostaSchema>;
@@ -134,6 +146,9 @@ export const respostaNaSessaoSchema = z.object({
 
   /** Nulo em `noop`: quem não respondeu nunca rolou. */
   roll: z.number().int().nullable(),
+
+  /** O que a pessoa escreveu ao pedir. Segue a mesma fase da resposta. */
+  note: z.string().nullable(),
 });
 export type RespostaNaSessao = z.infer<typeof respostaNaSessaoSchema>;
 

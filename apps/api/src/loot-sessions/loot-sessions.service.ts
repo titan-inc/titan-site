@@ -44,6 +44,7 @@ interface RespostaDoBanco {
   itemId: string;
   responseOptionSlug: string;
   roll: number | null;
+  note: string | null;
   aguardandoNovaResposta: boolean;
   name: string;
 }
@@ -155,6 +156,7 @@ export class LootSessionsService {
         realm: r.realm,
         responseOptionSlug: r.responseOptionSlug,
         roll: r.roll,
+        note: r.note,
       });
       porItem.set(r.itemId, lista);
     }
@@ -317,6 +319,7 @@ export class LootSessionsService {
       personagem,
       responseOptionSlug: dados.responseOptionSlug,
       roll: sortearRoll(),
+      note: dados.note,
       ator,
     });
 
@@ -658,6 +661,7 @@ function montarItem(
         : {
             responseOptionSlug: minha.responseOptionSlug,
             roll: minha.roll,
+            note: minha.note,
             aguardandoNovaResposta: minha.aguardandoNovaResposta,
             characterName: minha.name,
           },

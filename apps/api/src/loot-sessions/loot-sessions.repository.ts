@@ -171,9 +171,11 @@ export class LootSessionsRepository {
     personagem: { nameKey: string; realmKey: string; name: string; realm: string };
     responseOptionSlug: string;
     roll: number;
+    /** `undefined` mantém a nota que já existe; `null` apaga. */
+    note: string | null | undefined;
     ator: Ator;
   }): Promise<void> {
-    const { sessionId, itemId, personagem, responseOptionSlug, roll, ator } = dados;
+    const { sessionId, itemId, personagem, responseOptionSlug, roll, note, ator } = dados;
 
     // Transação interativa, e não a forma de array: o evento precisa do roll que
     // FICOU, e só a resposta do upsert sabe qual é. Com o array, o evento
@@ -195,10 +197,18 @@ export class LootSessionsRepository {
           userId: ator.userId,
           responseOptionSlug,
           roll,
+          // `undefined` aqui vira nulo, que é o certo: quem nunca mandou nota
+          // não tem nota.
+          note,
         },
         // Sem `roll` — de propósito. Ver o comentário acima.
-        update: { responseOptionSlug, aguardandoNovaResposta: false },
-        select: { roll: true, createdAt: true, updatedAt: true },
+        //
+        // Com `note`, e a semântica é a do Prisma: `undefined` não entra no
+        // UPDATE, então trocar só a escolha preserva o que a pessoa escreveu.
+        // Apagar exige mandar o campo vazio — se omitir apagasse, um cliente
+        // que esquecesse o campo limparia a nota em silêncio.
+        update: { responseOptionSlug, note, aguardandoNovaResposta: false },
+        select: { roll: true, note: true, createdAt: true, updatedAt: true },
       });
 
       await tx.lootSessionEvent.create({
@@ -212,6 +222,10 @@ export class LootSessionsRepository {
             personagem: `${personagem.name}-${personagem.realm}`,
             responseOptionSlug,
             roll: gravada.roll,
+            // O texto não vai para o log: a linha da resposta já é o registro
+            // dele, e duplicar criaria duas cópias do mesmo texto de pessoa em
+            // tabelas com propósitos diferentes.
+            comNota: gravada.note !== null,
             // Deixa explícito no log que esta resposta não criou roll novo. Sem
             // isto, quem lê quatro eventos com o mesmo roll não sabe se o roll
             // foi mantido ou re-sorteado igual por coincidência.
@@ -304,6 +318,7 @@ export class LootSessionsRepository {
           userId: p.userId,
           responseOptionSlug: LOOT_RESPONSES.NOOP,
           roll: null,
+          note: null,
         })),
     );
 
@@ -335,6 +350,7 @@ export class LootSessionsRepository {
         itemId: true,
         responseOptionSlug: true,
         roll: true,
+        note: true,
         aguardandoNovaResposta: true,
         name: true,
       },
@@ -371,6 +387,7 @@ export class LootSessionsRepository {
         realm: true,
         responseOptionSlug: true,
         roll: true,
+        note: true,
         aguardandoNovaResposta: true,
       },
     });

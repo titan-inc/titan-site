@@ -1182,6 +1182,22 @@ model LootSessionResponse {
   /// a ausência de roll. Lacuna nunca vira zero — Regra 7.
   roll Int?
 
+  /// O que a pessoa quis dizer junto da escolha. Opcional.
+  ///
+  /// "Quero pra offspec porque tanko o segundo boss" — o motivo por trás do
+  /// rótulo, que às vezes é o que muda a decisão do conselho. Hoje isso é dito
+  /// por voz no Discord, some, e não fica no histórico.
+  ///
+  /// **Não é a nota do loot master** (`LootSessionAward.note`). As duas podem
+  /// existir na mesma peça e para a mesma pessoa: uma é a pessoa sobre si mesma
+  /// ao pedir, a outra é o conselho sobre a decisão. Cada uma na sua tabela.
+  ///
+  /// Editável nas mesmas condições da resposta — em `aberta` livre, em
+  /// `deliberando` só para quem foi reaberto. É parte da declaração, e não um
+  /// campo com regra própria. **O conselho não a edita**: corrigir a escolha de
+  /// alguém é corrigir um clique, mudar a nota seria pôr palavra na boca.
+  note String?
+
   /// O conselho reabriu esta resposta e ela ainda não foi refeita.
   aguardandoNovaResposta Boolean @default(false)
 
