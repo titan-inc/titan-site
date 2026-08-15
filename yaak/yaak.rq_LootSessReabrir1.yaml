@@ -1,24 +1,29 @@
 type: http_request
 model: http_request
-id: rq_LootSessDet1
+id: rq_LootSessReabrir1
 createdAt: 2026-08-15T18:00:00.000000
 updatedAt: 2026-08-15T18:00:00.000000
 workspaceId: wk_8LmjjnEbam
 folderId: fl_LootSessions1
 authentication: {}
 authenticationType: null
-body: {}
-bodyType: null
-description: 'MemberGuard. Traz a própria resposta e o próprio roll, os participantes, e a contagem de respostas por peça — nunca a resposta alheia enquanto a sessão corre.'
+body:
+  text: '{"characterName": "", "characterRealm": ""}'
+bodyType: application/json
+description: 'OfficerGuard. É o escape do deliberando: depois que as respostas fecham, só responde de novo quem o conselho reabriu. Só funciona para quem já respondeu.'
 headers:
 - enabled: true
   name: Cookie
   value: titan_session=${[ session_cookie ]}
   id: null
-method: GET
-name: 'Detalhe da sessão'
-sortPriority: 1000
-url: ${[ base_url ]}/internal/loot-sessions/:id
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Reabrir a resposta de alguém'
+sortPriority: 10000
+url: ${[ base_url ]}/internal/loot-sessions/:id/itens/:itemId/reabrir
 urlParameters: []
 settingSendCookies:
   enabled: false

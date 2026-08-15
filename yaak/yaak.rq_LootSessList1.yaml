@@ -1,6 +1,6 @@
 type: http_request
 model: http_request
-id: rq_LootSessDet1
+id: rq_LootSessList1
 createdAt: 2026-08-15T18:00:00.000000
 updatedAt: 2026-08-15T18:00:00.000000
 workspaceId: wk_8LmjjnEbam
@@ -9,16 +9,16 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'MemberGuard. Traz a própria resposta e o próprio roll, os participantes, e a contagem de respostas por peça — nunca a resposta alheia enquanto a sessão corre.'
+description: 'MemberGuard. As sessões que ainda não encerraram — é o que a aba de Sessão abre.'
 headers:
 - enabled: true
   name: Cookie
   value: titan_session=${[ session_cookie ]}
   id: null
 method: GET
-name: 'Detalhe da sessão'
-sortPriority: 1000
-url: ${[ base_url ]}/internal/loot-sessions/:id
+name: 'Listar sessões abertas'
+sortPriority: 500
+url: ${[ base_url ]}/internal/loot-sessions
 urlParameters: []
 settingSendCookies:
   enabled: false

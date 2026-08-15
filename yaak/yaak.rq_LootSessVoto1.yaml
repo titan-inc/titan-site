@@ -1,24 +1,29 @@
 type: http_request
 model: http_request
-id: rq_LootSessDet1
+id: rq_LootSessVoto1
 createdAt: 2026-08-15T18:00:00.000000
 updatedAt: 2026-08-15T18:00:00.000000
 workspaceId: wk_8LmjjnEbam
 folderId: fl_LootSessions1
 authentication: {}
 authenticationType: null
-body: {}
-bodyType: null
-description: 'MemberGuard. Traz a própria resposta e o próprio roll, os participantes, e a contagem de respostas por peça — nunca a resposta alheia enquanto a sessão corre.'
+body:
+  text: '{"characterName": "", "characterRealm": ""}'
+bodyType: application/json
+description: 'OfficerGuard, só em deliberando. Um voto por conselheiro por peça; votar de novo troca. Só se vota em quem DECLAROU interesse — participante calado ou com noop é recusado.'
 headers:
 - enabled: true
   name: Cookie
   value: titan_session=${[ session_cookie ]}
   id: null
-method: GET
-name: 'Detalhe da sessão'
-sortPriority: 1000
-url: ${[ base_url ]}/internal/loot-sessions/:id
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Votar num candidato'
+sortPriority: 9000
+url: ${[ base_url ]}/internal/loot-sessions/:id/itens/:itemId/voto
 urlParameters: []
 settingSendCookies:
   enabled: false

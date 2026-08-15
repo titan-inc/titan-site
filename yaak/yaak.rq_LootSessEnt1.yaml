@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: '{"characterName": "", "characterRealm": ""}'
 bodyType: application/json
-description: MemberGuard. Ato explícito, com um personagem da conta no roster (TIT-126). É daqui que a resposta herda o personagem — sem entrar, não se responde. Entrar de novo com outro char troca o personagem.
+description: 'MemberGuard. Ato explícito, com um personagem da conta que esteja no roster (TIT-126). É daqui que a resposta herda o personagem — sem entrar, não se responde. Entrar de novo com outro char troca o personagem, mas só antes de ter respondido.'
 headers:
 - enabled: true
   name: Cookie
@@ -21,7 +21,7 @@ headers:
   value: application/json
   id: null
 method: POST
-name: Entrar na sessão
+name: 'Entrar na sessão'
 sortPriority: 2000
 url: ${[ base_url ]}/internal/loot-sessions/:id/entrar
 urlParameters: []

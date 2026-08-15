@@ -1,6 +1,6 @@
 type: http_request
 model: http_request
-id: rq_LootSessResp1
+id: rq_LootSessMaioria1
 createdAt: 2026-08-15T18:00:00.000000
 updatedAt: 2026-08-15T18:00:00.000000
 workspaceId: wk_8LmjjnEbam
@@ -8,9 +8,9 @@ folderId: fl_LootSessions1
 authentication: {}
 authenticationType: null
 body:
-  text: '{"responseOptionSlug": "bis"}'
+  text: '{}'
 bodyType: application/json
-description: 'MemberGuard. O personagem NÃO vai no corpo — vem da participação (TIT-126). O roll também não: é do servidor, nasce na primeira resposta e não muda mais.'
+description: 'OfficerGuard, só em deliberando. Com itemId, uma peça; sem ele (corpo vazio), todas as pendentes. NÃO existe decisão automática — sem voto não sai peça (nem com um candidato só), empate de votos volta para a mão, e o roll não desempata: ele é auxílio visual. Devolve resultado e painel, com os pulos e o motivo de cada um.'
 headers:
 - enabled: true
   name: Cookie
@@ -21,9 +21,9 @@ headers:
   value: application/json
   id: null
 method: POST
-name: 'Responder a uma peça'
-sortPriority: 3000
-url: ${[ base_url ]}/internal/loot-sessions/:id/itens/:itemId/resposta
+name: 'Entregar por maioria de votos'
+sortPriority: 13000
+url: ${[ base_url ]}/internal/loot-sessions/:id/award-por-maioria
 urlParameters: []
 settingSendCookies:
   enabled: false

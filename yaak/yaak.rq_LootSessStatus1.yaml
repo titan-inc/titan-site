@@ -1,6 +1,6 @@
 type: http_request
 model: http_request
-id: rq_LootSessResp1
+id: rq_LootSessStatus1
 createdAt: 2026-08-15T18:00:00.000000
 updatedAt: 2026-08-15T18:00:00.000000
 workspaceId: wk_8LmjjnEbam
@@ -8,9 +8,9 @@ folderId: fl_LootSessions1
 authentication: {}
 authenticationType: null
 body:
-  text: '{"responseOptionSlug": "bis"}'
+  text: '{"status": "aberta"}'
 bodyType: application/json
-description: 'MemberGuard. O personagem NÃO vai no corpo — vem da participação (TIT-126). O roll também não: é do servidor, nasce na primeira resposta e não muda mais.'
+description: 'OfficerGuard. Uma rota para todas as transições (rascunho → aberta → deliberando → encerrada), porque quem decide o que é permitido é podeTransicionar() no shared. Fechar a fase de roll (aberta → deliberando) grava o silêncio de quem estava na sessão como noop. Encerrar exige toda peça entregue.'
 headers:
 - enabled: true
   name: Cookie
@@ -21,9 +21,9 @@ headers:
   value: application/json
   id: null
 method: POST
-name: 'Responder a uma peça'
-sortPriority: 3000
-url: ${[ base_url ]}/internal/loot-sessions/:id/itens/:itemId/resposta
+name: 'Mudar o status da sessão'
+sortPriority: 7000
+url: ${[ base_url ]}/internal/loot-sessions/:id/status
 urlParameters: []
 settingSendCookies:
   enabled: false

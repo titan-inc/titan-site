@@ -1,6 +1,6 @@
 type: http_request
 model: http_request
-id: rq_LootSessDet1
+id: rq_LootSessPainel1
 createdAt: 2026-08-15T18:00:00.000000
 updatedAt: 2026-08-15T18:00:00.000000
 workspaceId: wk_8LmjjnEbam
@@ -9,16 +9,16 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'MemberGuard. Traz a própria resposta e o próprio roll, os participantes, e a contagem de respostas por peça — nunca a resposta alheia enquanto a sessão corre.'
+description: 'OfficerGuard — a metade de cima da tela. Rota própria, e não um campo do detalhe: como campo, o payload do membro carregaria as respostas de todo mundo e a tela só esconderia. Traz todos os participantes de cada peça (quem não respondeu vem com resposta e roll nulos), os votos, o histórico recente de cada um, e o award quando existe.'
 headers:
 - enabled: true
   name: Cookie
   value: titan_session=${[ session_cookie ]}
   id: null
 method: GET
-name: 'Detalhe da sessão'
-sortPriority: 1000
-url: ${[ base_url ]}/internal/loot-sessions/:id
+name: 'Painel do conselho'
+sortPriority: 8000
+url: ${[ base_url ]}/internal/loot-sessions/:id/painel
 urlParameters: []
 settingSendCookies:
   enabled: false
