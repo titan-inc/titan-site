@@ -4,6 +4,7 @@ import {
   attendanceReportSchema,
   lootHistoryFacetsSchema,
   lootHistoryPageSchema,
+  lootCouncilPanelSchema,
   lootSessionDetailSchema,
   lootSessionSummarySchema,
   myAttendanceSchema,
@@ -15,6 +16,7 @@ import {
   type AttendanceReport,
   type LootHistoryFacets,
   type LootHistoryPage,
+  type LootCouncilPanel,
   type LootSessionDetail,
   type LootSessionSummary,
   type MyAttendance,
@@ -334,6 +336,30 @@ export async function getLootSession(id: string): Promise<LootSessionDetail | nu
     if (!res.ok) return null;
 
     const parsed = lootSessionDetailSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O painel do conselho de uma sessão. **Só oficial.**
+ *
+ * Nulo quando a API recusa, e é o que se quer: a página chama sem perguntar
+ * quem está olhando, e quem responde 403 é o `OfficerGuard`. Decidir aqui
+ * duplicaria a regra num lugar que não manda nela — Regra 5.
+ */
+export async function getLootCouncilPanel(id: string): Promise<LootCouncilPanel | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-sessions/${encodeURIComponent(id)}/painel`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootCouncilPanelSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

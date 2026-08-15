@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { getLootSession, getSessionUser } from '../../../../../lib/api';
+import { isActingOfficer } from '@titan/shared';
+import { getLootCouncilPanel, getLootSession, getSessionUser } from '../../../../../lib/api';
+import { PainelDoConselho } from '../../_components/painel-do-conselho';
 import { RotuloDeStatus } from '../../_components/rotulo-de-status';
 import { SessaoAoVivo } from '../../_components/sessao-ao-vivo';
 
@@ -19,6 +21,12 @@ export const metadata = { title: 'Sessão de loot — Titan Inc' };
 export default async function SessaoDeLootPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [sessao, usuario] = await Promise.all([getLootSession(id), getSessionUser()]);
+
+  // O painel só é buscado para quem é oficial, e a API recusaria de qualquer
+  // jeito. Nulo aqui significa "esta metade da tela não existe para você" — não
+  // um painel bloqueado nem um espaço em branco.
+  const painel =
+    usuario !== null && isActingOfficer(usuario) ? await getLootCouncilPanel(id) : null;
 
   if (sessao === null) {
     return (
@@ -47,6 +55,8 @@ export default async function SessaoDeLootPage({ params }: { params: Promise<{ i
 
         <RotuloDeStatus status={sessao.status} />
       </header>
+
+      {painel !== null && <PainelDoConselho sessao={sessao} painel={painel} />}
 
       <SessaoAoVivo sessao={sessao} personagens={usuario?.characters ?? []} />
     </div>
