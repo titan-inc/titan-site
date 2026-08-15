@@ -251,6 +251,20 @@ export const lootSessionDetailSchema = z.object({
 
   /** A própria participação. Nula para quem ainda não entrou. */
   minhaParticipacao: participanteSchema.nullable(),
+
+  /**
+   * Os botões que o jogador tem para responder, na ordem da tela.
+   *
+   * Vêm junto da sessão, e não de um endpoint próprio, por dois motivos: a tela
+   * precisa dos dois na mesma hora, e assim o botão que ela mostra é
+   * necessariamente o que a API aceita — a lista é configurável (TIT-64), e
+   * duas fontes divergiriam no dia em que a liderança desativar uma opção.
+   *
+   * Só as de `kind = player`. Razão de loot master (`banking`, `disenchant`,
+   * `no_interest`) é decisão de destino, e `noop` é derivada pelo sistema —
+   * nenhuma das duas é coisa que alguém declare.
+   */
+  opcoesDeResposta: z.array(z.object({ slug: z.string(), label: z.string() })),
 });
 export type LootSessionDetail = z.infer<typeof lootSessionDetailSchema>;
 

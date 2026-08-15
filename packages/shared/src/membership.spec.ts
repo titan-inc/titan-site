@@ -17,6 +17,7 @@ const base: SessionUser = {
   hasInternalAccess: true,
   matchedCharacter: { name: 'Zenithus', realm: 'Azralon', region: 'us' },
   characterCount: 1,
+  characters: [{ name: 'Zenithus', realm: 'Azralon', region: 'us' }],
   verifiedAt: '2026-07-30T00:00:00.000Z',
 };
 

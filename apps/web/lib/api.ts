@@ -4,6 +4,8 @@ import {
   attendanceReportSchema,
   lootHistoryFacetsSchema,
   lootHistoryPageSchema,
+  lootSessionDetailSchema,
+  lootSessionSummarySchema,
   myAttendanceSchema,
   officerListSchema,
   progressReportSchema,
@@ -13,6 +15,8 @@ import {
   type AttendanceReport,
   type LootHistoryFacets,
   type LootHistoryPage,
+  type LootSessionDetail,
+  type LootSessionSummary,
   type MyAttendance,
   type OfficerList,
   type ProgressReport,
@@ -20,6 +24,7 @@ import {
   type Roster,
   type SessionUser,
 } from '@titan/shared';
+import { z } from 'zod';
 import { cookies } from 'next/headers';
 import { API_URL, SESSION_COOKIE } from './config';
 
@@ -281,6 +286,54 @@ export async function getMyAttendance(): Promise<MyAttendance | null> {
     if (!res.ok) return null;
 
     const parsed = myAttendanceSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * As sessões de loot que ainda não encerraram.
+ *
+ * Normalmente é uma só. A lista existe porque duas raids na mesma noite
+ * acontecem, e porque uma sessão em rascunho convive com a que está aberta.
+ */
+export async function getLootSessions(): Promise<LootSessionSummary[] | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-sessions`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = z.array(lootSessionSummarySchema).safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Uma sessão, do ponto de vista de quem pediu.
+ *
+ * O que vem aqui **depende da fase**: na de roll, só a própria resposta; depois
+ * que ela fecha, a de todo mundo. Quem decide é a API (TIT-131), e a tela
+ * renderiza o que chegou — se ela filtrasse, o conteúdo estaria a um F12 de
+ * distância.
+ */
+export async function getLootSession(id: string): Promise<LootSessionDetail | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-sessions/${encodeURIComponent(id)}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootSessionDetailSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

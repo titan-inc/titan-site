@@ -14,9 +14,7 @@ const arquivos = (await readdir(diretorio, { withFileTypes: true }))
 // vírgula final. O arquivo é versionado — `JSON.stringify` em uma linha só
 // passava no `format:check` do CI (que roda antes do build) mas sujava a
 // árvore de quem rodasse `pnpm build` localmente.
-const corpo = arquivos.length
-  ? `[\n${arquivos.map((nome) => `  '${nome}',`).join('\n')}\n]`
-  : '[]';
+const corpo = arquivos.length ? `[\n${arquivos.map((nome) => `  '${nome}',`).join('\n')}\n]` : '[]';
 
 await writeFile(
   destino,

@@ -84,10 +84,23 @@ export const sessionUserSchema = z.object({
   /**
    * Quantos personagens da conta estão no roster.
    *
-   * Só a contagem: a lista inteira não é necessária para nada que o front faz
-   * hoje, e mandar menos dado pessoal por padrão é a escolha certa.
+   * Continua aqui, ao lado da lista, porque é o que a maior parte da UI usa —
+   * "você tem 14 personagens na guilda" não precisa iterar nada.
    */
   characterCount: z.number().int().nonnegative(),
+
+  /**
+   * Os personagens da conta que estão no roster, do melhor rank para o pior.
+   *
+   * Até 15/08/2026 só a contagem saía daqui, com a justificativa de mandar
+   * menos dado pessoal por padrão. A sessão de loot mudou isso: para **entrar**
+   * numa sessão a pessoa escolhe com qual personagem está naquela noite
+   * (TIT-126), e o select precisa da lista.
+   *
+   * Não afrouxa nada: são os personagens da própria pessoa, indo para ela
+   * mesma. Roster alheio continua no endpoint de roster, com o gate dele.
+   */
+  characters: z.array(characterRefSchema),
 
   /**
    * Quando a membership foi confirmada contra o roster pela última vez.

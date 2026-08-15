@@ -121,16 +121,17 @@ export class LootSessionsService {
     const itens = await this.repo.findItems(sessao.items.map((i) => i.itemId));
     const catalogo = new Map(itens.map((i) => [i.itemId, i]));
 
-    const [totais, participantes] = await Promise.all([
+    const [totais, participantes, opcoes] = await Promise.all([
       this.repo.contarRespostas(id),
       this.repo.findParticipantes(id),
+      this.repo.findOpcoesDoJogador(),
     ]);
 
     const minha = participantes.find((p) => p.userId === ator.userId) ?? null;
     const minhas = await this.buscarMinhasRespostas(id, minha);
     const todas = await this.buscarRespostasVisiveis(sessao.status, id);
 
-    return montarDetalhe(sessao, catalogo, minhas, totais, participantes, minha, todas);
+    return montarDetalhe(sessao, catalogo, minhas, totais, participantes, minha, todas, opcoes);
   }
 
   /**
@@ -588,10 +589,12 @@ function montarDetalhe(
   participantes: ParticipanteDoBanco[],
   minha: ParticipanteDoBanco | null,
   todas: Map<string, RespostaNaSessao[]>,
+  opcoesDeResposta: Array<{ slug: string; label: string }>,
 ): LootSessionDetail {
   return {
     participantes: participantes.map(paraView),
     minhaParticipacao: minha ? paraView(minha) : null,
+    opcoesDeResposta,
     id: sessao.id,
     status: sessao.status,
     encounter: {
