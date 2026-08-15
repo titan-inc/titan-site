@@ -9,6 +9,7 @@ export * from './loot-catalog-file.js';
 export * from './loot-history.js';
 export * from './loot-line.js';
 export * from './loot-response.js';
+export * from './loot-council-dto.js';
 export * from './loot-session.js';
 export * from './loot-session-dto.js';
 export * from './membership.js';
