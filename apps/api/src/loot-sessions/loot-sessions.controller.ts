@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nes
 import {
   addLootSessionItemSchema,
   changeLootSessionStatusSchema,
+  entrarNaSessaoSchema,
   alterarRespostaSchema,
   awardarSchema,
   awardPorMaioriaSchema,
@@ -13,6 +14,7 @@ import {
   type RespondToLootItem,
   type ChangeLootSessionStatus,
   type CreateLootSession,
+  type EntrarNaSessao,
   type AlterarResposta,
   type Awardar,
   type AwardEmMassaResultado,
@@ -94,7 +96,23 @@ export class LootSessionsController {
   @Get(':id')
   @UseGuards(MemberGuard)
   detalhe(@Param('id') id: string, @Req() req: Request): Promise<LootSessionDetail> {
-    return this.sessions.detalhe(id, personagens(req));
+    return this.sessions.detalhe(id, ator(req));
+  }
+
+  /**
+   * Entrar na sessão, com o personagem daquela noite.
+   *
+   * Ato explícito: abrir a tela não põe ninguém na raid. É daqui que a resposta
+   * herda o personagem, então sem entrar não se responde.
+   */
+  @Post(':id/entrar')
+  @UseGuards(MemberGuard)
+  entrar(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(entrarNaSessaoSchema)) body: EntrarNaSessao,
+    @Req() req: Request,
+  ): Promise<LootSessionDetail> {
+    return this.sessions.entrar(id, body, ator(req), personagens(req));
   }
 
   /**
@@ -113,7 +131,7 @@ export class LootSessionsController {
     @Body(new ZodValidationPipe(respondToLootItemSchema)) body: RespondToLootItem,
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
-    return this.sessions.responder(id, itemId, body, ator(req), personagens(req));
+    return this.sessions.responder(id, itemId, body, ator(req));
   }
 
   /**
@@ -212,7 +230,7 @@ export class LootSessionsController {
     @Body(new ZodValidationPipe(createLootSessionSchema)) body: CreateLootSession,
     @Req() req: Request,
   ): Promise<CreateLootSessionResult> {
-    return this.sessions.criarDaColagem(body.paste, ator(req), personagens(req));
+    return this.sessions.criarDaColagem(body.paste, ator(req));
   }
 
   /** Acrescenta a peça que o addon perdeu. Só em rascunho. */
@@ -223,7 +241,7 @@ export class LootSessionsController {
     @Body(new ZodValidationPipe(addLootSessionItemSchema)) body: AddLootSessionItem,
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
-    return this.sessions.adicionarItem(id, body, ator(req), personagens(req));
+    return this.sessions.adicionarItem(id, body, ator(req));
   }
 
   @Delete(':id/itens/:itemId')
@@ -233,7 +251,7 @@ export class LootSessionsController {
     @Param('itemId') itemId: string,
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
-    return this.sessions.removerItem(id, itemId, ator(req), personagens(req));
+    return this.sessions.removerItem(id, itemId, ator(req));
   }
 
   /**
@@ -251,6 +269,6 @@ export class LootSessionsController {
     body: ChangeLootSessionStatus,
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
-    return this.sessions.trocarStatus(id, body.status, ator(req), personagens(req));
+    return this.sessions.trocarStatus(id, body.status, ator(req));
   }
 }

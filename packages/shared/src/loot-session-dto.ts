@@ -40,19 +40,45 @@ export const changeLootSessionStatusSchema = z.object({
 export type ChangeLootSessionStatus = z.infer<typeof changeLootSessionStatusSchema>;
 
 /**
+ * Entrar na sessão, com o personagem daquela noite.
+ *
+ * **Ato explícito**, e não consequência de abrir a tela: quem abre a sessão pelo
+ * celular durante o jantar não está na raid, e entrar por engano colocaria a
+ * pessoa na lista de candidatos à peça de alguém.
+ *
+ * O personagem tem que ser um dos da conta no roster. Entrar de novo com outro
+ * troca o personagem — ninguém raida em dois ao mesmo tempo.
+ */
+export const entrarNaSessaoSchema = z.object({
+  characterName: z.string().min(1),
+  characterRealm: z.string().min(1),
+});
+export type EntrarNaSessao = z.infer<typeof entrarNaSessaoSchema>;
+
+/** Quem está na sessão, e com qual personagem. */
+export const participanteSchema = z.object({
+  name: z.string(),
+  realm: z.string(),
+  nameKey: z.string(),
+  realmKey: z.string(),
+  battletag: z.string(),
+  joinedAt: z.string().datetime(),
+});
+export type Participante = z.infer<typeof participanteSchema>;
+
+/**
  * O que o jogador declara para uma peça.
  *
- * O personagem é opcional: quem não manda responde pelo representante da conta
- * — o de melhor rank, o mesmo que o resto do site usa. Mandar é para quem raida
- * em mais de um e está no alt naquela noite.
+ * **O personagem não entra aqui.** Ele vem da participação, que é onde a pessoa
+ * já disse com qual char está naquela noite. Antes era opcional e caía no
+ * representante da conta, que erra justamente para quem raida no alt — e o erro
+ * é silencioso: a resposta entra no char errado e ninguém recebe aviso.
  *
- * **O roll não entra aqui.** Ele é do servidor, e aceitar do cliente deixaria
- * mandar 100.
+ * **O roll também não.** Ele é do servidor, e aceitar do cliente deixaria mandar
+ * 100.
  */
 export const respondToLootItemSchema = z.object({
   responseOptionSlug: z.string().min(1),
-  characterName: z.string().min(1).optional(),
-  characterRealm: z.string().min(1).optional(),
 });
 export type RespondToLootItem = z.infer<typeof respondToLootItemSchema>;
 
@@ -74,8 +100,12 @@ export const minhaRespostaSchema = z.object({
    * quando o conselho pede para responder de novo. Sem isso, trocar a resposta
    * viraria rerrolar até gostar do número, e "responda de novo" viraria uma
    * forma de o conselho garimpar roll para o favorito.
+   *
+   * Nulo é quem não rolou, e só acontece no `noop` — a linha que registra
+   * silêncio de quem estava na sessão. Nunca zero: zero apareceria ao lado de
+   * quem rolou 1 parecendo roll ruim, e não ausência de roll.
    */
-  roll: z.number().int(),
+  roll: z.number().int().nullable(),
 
   /** O conselho pediu para esta pessoa responder de novo. */
   aguardandoNovaResposta: z.boolean(),
@@ -158,6 +188,18 @@ export const lootSessionDetailSchema = z.object({
   openedAt: z.string().datetime().nullable(),
 
   items: z.array(lootSessionItemViewSchema),
+
+  /**
+   * Quem está na sessão. Aberto a todo mundo que participa.
+   *
+   * Diferente da RESPOSTA alheia, que fica escondida enquanto a sessão corre:
+   * quem está na raid não é segredo — as pessoas se veem no jogo. O que muda
+   * comportamento é ver o que os outros declararam, não quem entrou.
+   */
+  participantes: z.array(participanteSchema),
+
+  /** A própria participação. Nula para quem ainda não entrou. */
+  minhaParticipacao: participanteSchema.nullable(),
 });
 export type LootSessionDetail = z.infer<typeof lootSessionDetailSchema>;
 

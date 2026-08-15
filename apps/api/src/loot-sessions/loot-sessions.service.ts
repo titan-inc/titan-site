@@ -12,6 +12,8 @@ import {
   toCharacterKey,
   toRealmMatchKey,
   type AddLootSessionItem,
+  type EntrarNaSessao,
+  type Participante,
   type RespondToLootItem,
   type CreateLootSessionResult,
   type LootSessionDetail,
@@ -39,9 +41,20 @@ export interface PersonagemDaConta {
 interface RespostaDoBanco {
   itemId: string;
   responseOptionSlug: string;
-  roll: number;
+  roll: number | null;
   aguardandoNovaResposta: boolean;
   name: string;
+}
+
+/** A participação como o repositório devolve. */
+interface ParticipanteDoBanco {
+  userId: string;
+  battletag: string;
+  nameKey: string;
+  realmKey: string;
+  name: string;
+  realm: string;
+  joinedAt: Date;
 }
 
 @Injectable()
@@ -56,11 +69,7 @@ export class LootSessionsService {
    * Lê como pseudo-código: parseia, acha o boss no catálogo, garante que os
    * itens existem no dicionário, grava. Cada passo tem o seu método.
    */
-  async criarDaColagem(
-    paste: string,
-    ator: Ator,
-    personagens: PersonagemDaConta[] = [],
-  ): Promise<CreateLootSessionResult> {
+  async criarDaColagem(paste: string, ator: Ator): Promise<CreateLootSessionResult> {
     const colagem = this.parsear(paste);
 
     if (colagem.items.length === 0) {
@@ -88,7 +97,7 @@ export class LootSessionsService {
         `${encounterId ? 'no catálogo' : 'FORA do catálogo'}, ${colagem.problemas.length} problemas`,
     );
 
-    return { session: await this.detalhe(id, personagens), problemas: colagem.problemas };
+    return { session: await this.detalhe(id, ator), problemas: colagem.problemas };
   }
 
   /**
@@ -99,46 +108,47 @@ export class LootSessionsService {
    * alheia durante a deliberação muda o que as pessoas declaram — é exceção
    * consciente à Regra 7, que abre o histórico depois de tudo decidido.
    *
-   * `personagens` são os da conta de quem pediu. Sem eles — chamada de serviço
-   * interna — não vem resposta nenhuma, que é o padrão seguro.
+   * Quem não entrou na sessão não tem resposta para ver, e a tela dela é a de
+   * entrar — ver `entrar()`.
    */
-  async detalhe(id: string, personagens: PersonagemDaConta[] = []): Promise<LootSessionDetail> {
+  async detalhe(id: string, ator: Ator): Promise<LootSessionDetail> {
     const sessao = await this.repo.findById(id);
     if (!sessao) throw new NotFoundException(`Sessão "${id}" não existe`);
 
     const itens = await this.repo.findItems(sessao.items.map((i) => i.itemId));
     const catalogo = new Map(itens.map((i) => [i.itemId, i]));
 
-    const totais = await this.repo.contarRespostas(id);
-    const minhas = await this.buscarMinhasRespostas(id, personagens);
+    const [totais, participantes] = await Promise.all([
+      this.repo.contarRespostas(id),
+      this.repo.findParticipantes(id),
+    ]);
 
-    return montarDetalhe(sessao, catalogo, minhas, totais);
+    const minha = participantes.find((p) => p.userId === ator.userId) ?? null;
+    const minhas = await this.buscarMinhasRespostas(id, minha);
+
+    return montarDetalhe(sessao, catalogo, minhas, totais, participantes, minha);
   }
 
   /**
-   * As respostas dos personagens desta conta, indexadas por item.
+   * As respostas do personagem com que a pessoa entrou, indexadas por item.
    *
-   * Busca por TODOS os personagens da conta, e não só o representante: quem
-   * raida em dois chars respondeu com um deles, e mostrar "você não respondeu"
-   * porque a resposta está no alt faria a pessoa responder duas vezes.
+   * Uma consulta, e não uma por personagem da conta: a participação já disse com
+   * qual char a pessoa está nesta noite. Quem não entrou não tem resposta para
+   * ver — e a tela dela é a de entrar.
    */
   private async buscarMinhasRespostas(
     sessionId: string,
-    personagens: PersonagemDaConta[],
+    participacao: { nameKey: string; realmKey: string } | null,
   ): Promise<Map<string, RespostaDoBanco>> {
-    const porItem = new Map<string, RespostaDoBanco>();
+    if (!participacao) return new Map();
 
-    for (const personagem of personagens) {
-      const respostas = await this.repo.findRespostasDoPersonagem(
-        sessionId,
-        personagem.nameKey,
-        toRealmMatchKey(personagem.realmSlug),
-      );
+    const respostas = await this.repo.findRespostasDoPersonagem(
+      sessionId,
+      participacao.nameKey,
+      participacao.realmKey,
+    );
 
-      for (const resposta of respostas) porItem.set(resposta.itemId, resposta);
-    }
-
-    return porItem;
+    return new Map(respostas.map((r) => [r.itemId, r]));
   }
 
   async listarAbertas(): Promise<LootSessionSummary[]> {
@@ -165,7 +175,6 @@ export class LootSessionsService {
     id: string,
     dados: AddLootSessionItem,
     ator: Ator,
-    personagens: PersonagemDaConta[] = [],
   ): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(id);
     this.exigirRascunho(sessao.status, 'acrescentar item');
@@ -188,22 +197,17 @@ export class LootSessionsService {
       ator,
     );
 
-    return this.detalhe(id, personagens);
+    return this.detalhe(id, ator);
   }
 
-  async removerItem(
-    id: string,
-    itemId: string,
-    ator: Ator,
-    personagens: PersonagemDaConta[] = [],
-  ): Promise<LootSessionDetail> {
+  async removerItem(id: string, itemId: string, ator: Ator): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(id);
     this.exigirRascunho(sessao.status, 'remover item');
 
     const removeu = await this.repo.removerItem(id, itemId, ator);
     if (!removeu) throw new NotFoundException(`Item "${itemId}" não é desta sessão`);
 
-    return this.detalhe(id, personagens);
+    return this.detalhe(id, ator);
   }
 
   /**
@@ -213,12 +217,7 @@ export class LootSessionsService {
    * função que a tela usa para saber que botão mostrar. Duplicar a regra aqui
    * criaria dois lugares para divergirem.
    */
-  async trocarStatus(
-    id: string,
-    para: LootSessionStatus,
-    ator: Ator,
-    personagens: PersonagemDaConta[] = [],
-  ): Promise<LootSessionDetail> {
+  async trocarStatus(id: string, para: LootSessionStatus, ator: Ator): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(id);
 
     if (!podeTransicionar(sessao.status, para)) {
@@ -230,7 +229,17 @@ export class LootSessionsService {
     if (para === 'encerrada') await this.exigirTudoResolvido(sessao);
 
     await this.repo.trocarStatus(id, sessao.status, para, ator, sessao.openedAt === null);
-    return this.detalhe(id, personagens);
+
+    // Fechar a fase de roll congela o silêncio de quem estava na sessão. Depois
+    // da transição, e não antes: até o último instante alguém ainda podia
+    // responder, e a linha de `noop` criada cedo demais seria substituída — mas
+    // o log já teria dito que a pessoa não respondeu.
+    if (sessao.status === 'aberta' && para === 'deliberando') {
+      const silencios = await this.repo.registrarSilencio(id, ator);
+      this.logger.log(`sessão ${id}: ${silencios} linhas de silêncio ao fechar as respostas`);
+    }
+
+    return this.detalhe(id, ator);
   }
 
   /**
@@ -247,7 +256,6 @@ export class LootSessionsService {
     itemId: string,
     dados: RespondToLootItem,
     ator: Ator,
-    personagens: PersonagemDaConta[],
   ): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(sessionId);
 
@@ -267,7 +275,7 @@ export class LootSessionsService {
       );
     }
 
-    const personagem = this.escolherPersonagem(dados, personagens);
+    const personagem = await this.exigirParticipacao(sessionId, ator);
     await this.exigirQuePossaResponderAgora(sessao.status, sessionId, itemId, personagem);
 
     await this.repo.responder({
@@ -279,7 +287,7 @@ export class LootSessionsService {
       ator,
     });
 
-    return this.detalhe(sessionId, personagens);
+    return this.detalhe(sessionId, ator);
   }
 
   /**
@@ -317,34 +325,92 @@ export class LootSessionsService {
   }
 
   /**
-   * Com qual personagem a pessoa está respondendo.
+   * Entra na sessão com um personagem da conta.
    *
-   * Sem escolha explícita, o representante da conta — o de melhor rank, o mesmo
-   * que o resto do site usa. Com escolha, ela **precisa ser da conta**: aceitar
-   * qualquer nome deixaria responder no lugar de outra pessoa.
+   * Ato explícito, e é ele que decide com qual char a pessoa está naquela noite
+   * — a resposta herda daqui. Antes cada resposta carregava o personagem e caía
+   * no representante da conta quando não vinha; o erro era silencioso, e caía
+   * justo em quem raida no alt.
+   *
+   * Entrar de novo com outro char troca o personagem, e o log guarda a troca.
    */
-  private escolherPersonagem(
-    dados: RespondToLootItem,
+  async entrar(
+    sessionId: string,
+    dados: EntrarNaSessao,
+    ator: Ator,
+    personagens: PersonagemDaConta[],
+  ): Promise<LootSessionDetail> {
+    const sessao = await this.exigirSessao(sessionId);
+
+    if (sessao.status === 'encerrada') {
+      throw new BadRequestException('A sessão já encerrou');
+    }
+
+    const personagem = this.exigirPersonagemDaConta(dados, personagens);
+    await this.exigirQuePossaTrocarDePersonagem(sessionId, ator, personagem);
+
+    await this.repo.entrar({ sessionId, personagem, ator });
+
+    return this.detalhe(sessionId, ator);
+  }
+
+  /**
+   * Trocar de personagem só antes de responder.
+   *
+   * A resposta guarda o personagem com que foi dada, e a participação é uma por
+   * pessoa. Trocar depois de responder deixaria a mesma pessoa em duas linhas do
+   * painel — a resposta no char velho e a participação no novo —, e a tela dela
+   * diria que não respondeu. Ninguém receberia erro.
+   *
+   * Entrar pela primeira vez nunca é barrado, e entrar de novo no MESMO
+   * personagem também não: repetir o clique não é troca.
+   */
+  private async exigirQuePossaTrocarDePersonagem(
+    sessionId: string,
+    ator: Ator,
+    novo: { nameKey: string; realmKey: string },
+  ): Promise<void> {
+    const atual = (await this.repo.findParticipantes(sessionId)).find(
+      (p) => p.userId === ator.userId,
+    );
+    if (!atual) return;
+    if (atual.nameKey === novo.nameKey && atual.realmKey === novo.realmKey) return;
+
+    const respostas = await this.repo.findRespostasDoPersonagem(
+      sessionId,
+      atual.nameKey,
+      atual.realmKey,
+    );
+    if (respostas.length > 0) {
+      throw new BadRequestException(
+        `Você já respondeu com ${atual.name} nesta sessão. ` +
+          'Peça ao conselho para reabrir a resposta antes de trocar de personagem.',
+      );
+    }
+  }
+
+  /**
+   * O personagem escolhido **precisa ser da conta**.
+   *
+   * Aceitar qualquer nome deixaria entrar no lugar de outra pessoa — e daí
+   * responder e receber peça no lugar dela.
+   */
+  private exigirPersonagemDaConta(
+    dados: EntrarNaSessao,
     personagens: PersonagemDaConta[],
   ): { nameKey: string; realmKey: string; name: string; realm: string } {
     if (personagens.length === 0) {
       throw new BadRequestException('Sua conta não tem personagem no roster da guilda');
     }
 
-    const escolhido =
-      dados.characterName === undefined
-        ? representante(personagens)
-        : personagens.find(
-            (p) =>
-              p.nameKey === toCharacterKey(dados.characterName ?? '') &&
-              (dados.characterRealm === undefined ||
-                toRealmMatchKey(p.realmSlug) === toRealmMatchKey(dados.characterRealm)),
-          );
+    const escolhido = personagens.find(
+      (p) =>
+        p.nameKey === toCharacterKey(dados.characterName) &&
+        toRealmMatchKey(p.realmSlug) === toRealmMatchKey(dados.characterRealm),
+    );
 
     if (!escolhido) {
-      throw new BadRequestException(
-        `"${dados.characterName ?? ''}" não é um personagem da sua conta`,
-      );
+      throw new BadRequestException(`"${dados.characterName}" não é um personagem da sua conta`);
     }
 
     return {
@@ -355,6 +421,32 @@ export class LootSessionsService {
       // Reconstruir "Area 52" a partir de "area-52" é adivinhação, e a Regra 6
       // avisa que o caminho de volta é lossy.
       realm: escolhido.realmSlug,
+    };
+  }
+
+  /**
+   * Quem não entrou não responde.
+   *
+   * É o que faz o "Entrar" valer alguma coisa: sem isso a participação seria
+   * decorativa, e a lista de quem estava na raid não bateria com quem respondeu.
+   */
+  private async exigirParticipacao(
+    sessionId: string,
+    ator: Ator,
+  ): Promise<{ nameKey: string; realmKey: string; name: string; realm: string }> {
+    const minha = (await this.repo.findParticipantes(sessionId)).find(
+      (p) => p.userId === ator.userId,
+    );
+
+    if (!minha) {
+      throw new BadRequestException('Entre na sessão antes de responder');
+    }
+
+    return {
+      nameKey: minha.nameKey,
+      realmKey: minha.realmKey,
+      name: minha.name,
+      realm: minha.realm,
     };
   }
 
@@ -441,20 +533,6 @@ export class LootSessionsService {
 }
 
 /**
- * O representante da conta: o de MELHOR rank, que é o MENOR número.
- *
- * Rank 0 é o guild master e o número cresce descendo — em português "rank mais
- * alto" significa o oposto do que significa em código, e é a armadilha que a
- * Regra 4 documenta.
- */
-function representante(personagens: PersonagemDaConta[]): PersonagemDaConta | undefined {
-  return personagens.reduce<PersonagemDaConta | undefined>(
-    (melhor, atual) => (melhor === undefined || atual.rank < melhor.rank ? atual : melhor),
-    undefined,
-  );
-}
-
-/**
  * O roll, de 1 a 100.
  *
  * `randomInt` do `node:crypto`, e não `Math.random()`: o roll decide quem leva
@@ -471,8 +549,12 @@ function montarDetalhe(
   catalogo: Map<number, { name: string | null; icon: string | null; equipLoc: string | null }>,
   minhas: Map<string, RespostaDoBanco>,
   totais: Map<string, number>,
+  participantes: ParticipanteDoBanco[],
+  minha: ParticipanteDoBanco | null,
 ): LootSessionDetail {
   return {
+    participantes: participantes.map(paraView),
+    minhaParticipacao: minha ? paraView(minha) : null,
     id: sessao.id,
     status: sessao.status,
     encounter: {
@@ -487,6 +569,18 @@ function montarDetalhe(
     items: sessao.items.map((item) =>
       montarItem(item, catalogo, minhas.get(item.id) ?? null, totais.get(item.id) ?? 0),
     ),
+  };
+}
+
+/** O `userId` não sai daqui: identifica a conta, e a tela fala de personagem. */
+function paraView(p: ParticipanteDoBanco): Participante {
+  return {
+    name: p.name,
+    realm: p.realm,
+    nameKey: p.nameKey,
+    realmKey: p.realmKey,
+    battletag: p.battletag,
+    joinedAt: p.joinedAt.toISOString(),
   };
 }
 

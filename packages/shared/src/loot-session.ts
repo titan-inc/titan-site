@@ -127,6 +127,18 @@ export const LOOT_SESSION_EVENTS = {
 
   VOTO_DADO: 'voto_dado',
   ITEM_AWARDADO: 'item_awardado',
+
+  /** Alguém entrou na sessão, ou trocou o personagem com que entrou. */
+  PARTICIPANTE_ENTROU: 'participante_entrou',
+
+  /**
+   * A fase de roll fechou e o silêncio virou linha.
+   *
+   * Um evento para a transição inteira, com a contagem — e não um por linha:
+   * 25 pessoas por 5 peças seriam 125 eventos dizendo a mesma coisa, e o que a
+   * auditoria precisa saber é quando o silêncio foi congelado, não item a item.
+   */
+  SILENCIO_REGISTRADO: 'silencio_registrado',
 } as const;
 
 export const lootSessionEventTypeSchema = z.nativeEnum(LOOT_SESSION_EVENTS);

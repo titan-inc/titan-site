@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  LOOT_RESPONSES,
   podeVotar,
   toCharacterKey,
   toRealmMatchKey,
@@ -59,7 +60,7 @@ export class LootCouncilService {
   async painel(sessionId: string, ator: Ator): Promise<LootCouncilPanel> {
     const sessao = await this.exigirSessao(sessionId);
 
-    const porItem = await this.painelBase(sessionId, ator.userId);
+    const porItem = await this.painelBase(sessao, ator.userId);
     const awards = new Map((await this.repo.findAwards(sessionId)).map((a) => [a.itemId, a]));
 
     return {
@@ -89,7 +90,7 @@ export class LootCouncilService {
   }
 
   /**
-   * Os candidatos de cada peça, já ordenados.
+   * As pessoas de cada peça, já ordenadas.
    *
    * Extraído porque o award por maioria precisa exatamente da mesma visão que a
    * tela mostra. Se ele recalculasse por conta própria, o conselho poderia ver
@@ -98,15 +99,25 @@ export class LootCouncilService {
    * `atorUserId` só existe para marcar `meuVoto`; o award não precisa dele.
    */
   private async painelBase(
-    sessionId: string,
+    sessao: SessionRow,
     atorUserId?: string,
   ): Promise<Map<string, Candidato[]>> {
-    const [respostas, votos] = await Promise.all([
-      this.repo.findTodasAsRespostas(sessionId),
-      this.repo.findVotos(sessionId),
+    const [respostas, votos, participantes] = await Promise.all([
+      this.repo.findTodasAsRespostas(sessao.id),
+      this.repo.findVotos(sessao.id),
+      this.repo.findParticipantes(sessao.id),
     ]);
 
-    const historico = await this.montarHistorico(respostas);
+    // Todo participante entra em toda peça, tenha respondido ou não. Mostrar só
+    // quem respondeu faria a lista parecer menor que a raid, e quem decide
+    // precisa saber que perguntou a 25 e 6 não disseram nada.
+    const linhas = comSilenciosos(
+      sessao.items.map((i) => i.id),
+      respostas,
+      participantes,
+    );
+
+    const historico = await this.montarHistorico(linhas);
 
     const contagem = new Map<string, number>();
     const meus = new Set<string>();
@@ -119,7 +130,7 @@ export class LootCouncilService {
 
     const porItem = new Map<string, Candidato[]>();
 
-    for (const r of respostas) {
+    for (const r of linhas) {
       const chave = `${r.itemId}|${r.nameKey}|${r.realmKey}`;
       const lista = porItem.get(r.itemId) ?? [];
 
@@ -303,7 +314,7 @@ export class LootCouncilService {
     this.exigirDeliberando(sessao.status);
 
     const alvo = await this.exigirCandidato(sessionId, itemId, dados);
-    const candidatos = await this.candidatosDoItem(sessionId, itemId);
+    const candidatos = await this.candidatosDoItem(sessao, itemId);
     const escolhido = candidatos.find(
       (c) => c.nameKey === alvo.nameKey && c.realmKey === alvo.realmKey,
     );
@@ -335,7 +346,7 @@ export class LootCouncilService {
     // Uma leitura só para a sessão inteira: entregar uma peça não muda resposta
     // nem voto de outra, então recalcular por item seriam quatro consultas
     // vezes o número de peças, para chegar sempre no mesmo lugar.
-    const porItem = await this.painelBase(sessionId);
+    const porItem = await this.painelBase(sessao);
 
     const pulados: AwardEmMassaResultado['pulados'] = [];
     let entregues = 0;
@@ -366,6 +377,14 @@ export class LootCouncilService {
     vencedor: Candidato,
     ator: Ator,
   ): Promise<void> {
+    // Quem não declarou nada não tem o que congelar, e `exigirCandidato()` já
+    // barrou antes de chegar aqui. Entregar a quem não pediu é a TIT-127, e lá
+    // o que congela é a razão do loot master — não uma declaração que não houve.
+    const { responseOptionSlug } = vencedor;
+    if (responseOptionSlug === null) {
+      throw new BadRequestException(`${vencedor.name} não declarou nada para esta peça`);
+    }
+
     const gravou = await this.repo.awardar({
       sessionId,
       itemId,
@@ -377,7 +396,7 @@ export class LootCouncilService {
       },
       // Congelados: depois do award a resposta ainda pode ser corrigida, e o
       // histórico guarda o que valia quando a decisão foi tomada.
-      responseOptionSlug: vencedor.responseOptionSlug,
+      responseOptionSlug,
       votes: vencedor.votos,
       ator,
     });
@@ -388,8 +407,8 @@ export class LootCouncilService {
   }
 
   /** Os candidatos de uma peça, com voto e roll — a mesma visão do painel. */
-  private async candidatosDoItem(sessionId: string, itemId: string): Promise<Candidato[]> {
-    return (await this.painelBase(sessionId)).get(itemId) ?? [];
+  private async candidatosDoItem(sessao: SessionRow, itemId: string): Promise<Candidato[]> {
+    return (await this.painelBase(sessao)).get(itemId) ?? [];
   }
 
   private exigirDeliberando(status: SessionRow['status']): void {
@@ -413,10 +432,15 @@ export class LootCouncilService {
   }
 
   /**
-   * Só se vota em quem se candidatou.
+   * Só se vota em quem **declarou interesse**.
    *
    * Sem isto, um erro de digitação criaria voto para um personagem que não está
    * na disputa — e a contagem apareceria ao lado de ninguém, sem erro nenhum.
+   *
+   * Estar na sessão não basta: desde a TIT-126 todo participante aparece na
+   * lista de toda peça, e a maioria deles não pediu nada. Quem não se manifestou
+   * é alcançável pelo award à mão e pelo `pass item to`, nunca pelo voto — voto
+   * é sobre o que a pessoa declarou querer.
    */
   private async exigirCandidato(sessionId: string, itemId: string, dados: Votar): Promise<Alvo> {
     await this.exigirItem(sessionId, itemId);
@@ -424,15 +448,64 @@ export class LootCouncilService {
     const alvo = normalizar(dados.characterName, dados.characterRealm);
     const respostas = await this.repo.findTodasAsRespostas(sessionId);
 
-    const candidatou = respostas.some(
-      (r) => r.itemId === itemId && r.nameKey === alvo.nameKey && r.realmKey === alvo.realmKey,
+    const declarou = respostas.some(
+      (r) =>
+        r.itemId === itemId &&
+        r.nameKey === alvo.nameKey &&
+        r.realmKey === alvo.realmKey &&
+        r.responseOptionSlug !== LOOT_RESPONSES.NOOP,
     );
-    if (!candidatou) {
+    if (!declarou) {
       throw new BadRequestException(`${dados.characterName} não está disputando esta peça`);
     }
 
     return alvo;
   }
+}
+
+/** Uma linha do painel antes de virar `Candidato`: resposta de verdade ou silêncio. */
+interface LinhaDoPainel {
+  itemId: string;
+  nameKey: string;
+  realmKey: string;
+  name: string;
+  realm: string;
+  responseOptionSlug: string | null;
+  roll: number | null;
+  aguardandoNovaResposta: boolean;
+}
+
+/**
+ * Toda peça ganha uma linha por participante, respondendo ou não.
+ *
+ * Quem não respondeu entra com `responseOptionSlug` nulo — silêncio ainda
+ * provisório, com a sessão aberta e a pessoa podendo responder. Quando a fase de
+ * roll fecha, o silêncio vira linha de `noop` no banco e passa por aqui como
+ * resposta normal; a partir daí o nulo não aparece mais.
+ */
+function comSilenciosos(
+  itens: string[],
+  respostas: LinhaDoPainel[],
+  participantes: Array<{ nameKey: string; realmKey: string; name: string; realm: string }>,
+): LinhaDoPainel[] {
+  const jaTem = new Set(respostas.map((r) => `${r.itemId}|${r.nameKey}|${r.realmKey}`));
+
+  const silenciosos = itens.flatMap((itemId) =>
+    participantes
+      .filter((p) => !jaTem.has(`${itemId}|${p.nameKey}|${p.realmKey}`))
+      .map((p) => ({
+        itemId,
+        nameKey: p.nameKey,
+        realmKey: p.realmKey,
+        name: p.name,
+        realm: p.realm,
+        responseOptionSlug: null,
+        roll: null,
+        aguardandoNovaResposta: false,
+      })),
+  );
+
+  return [...respostas, ...silenciosos];
 }
 
 /** A grafia digitada vira identidade — `toCharacterKey` mantém acento (Regra 6). */
@@ -484,12 +557,16 @@ function escolherPorMaioria(candidatos: Candidato[]): Candidato | string {
 }
 
 /**
- * Mais votos primeiro, depois maior roll.
+ * Mais votos primeiro, depois maior roll, e quem não respondeu por último.
  *
  * É **ordem de leitura, nunca decisão** — e o roll entra aqui exatamente por
  * isso: ele existe para o conselho olhar, não para desempatar. Ver
  * `escolherPorMaioria()`, que não o consulta.
+ *
+ * Sem roll vai para o fim porque é quem não se manifestou: a lista é para
+ * decidir, e quem não pediu não disputa. Continua visível — sumir com a linha
+ * faria a lista parecer menor que a raid.
  */
 function ordenar(candidatos: Candidato[]): Candidato[] {
-  return [...candidatos].sort((a, b) => b.votos - a.votos || b.roll - a.roll);
+  return [...candidatos].sort((a, b) => b.votos - a.votos || (b.roll ?? -1) - (a.roll ?? -1));
 }
