@@ -67,14 +67,25 @@ export function podeEditarItens(status: LootSessionStatus): boolean {
 }
 
 /**
- * Jogador pode responder?
+ * A sessão ainda aceita resposta de alguém?
  *
- * Também em `deliberando`, e não só em `aberta`: é lá que o conselho reabre para
- * uma pessoa específica. Quem controla quem pode responder naquele momento é o
- * serviço; aqui a pergunta é só se a sessão ainda aceita resposta.
+ * **Não confundir com "esta pessoa pode responder agora".** Em `aberta`,
+ * qualquer um responde e troca quantas vezes quiser. Em `deliberando`, só quem
+ * o conselho reabriu — e essa parte depende do estado da resposta no banco
+ * (`aguardandoNovaResposta`), então vive no serviço, não aqui.
+ *
+ * A primeira versão desta função dizia isso no comentário e o serviço não
+ * checava nada: qualquer pessoa seguia trocando a resposta durante a
+ * deliberação. Ninguém recebia erro. Se você está mexendo aqui, confira se o
+ * gate por pessoa continua existindo do outro lado.
  */
-export function podeResponder(status: LootSessionStatus): boolean {
+export function sessaoAceitaResposta(status: LootSessionStatus): boolean {
   return status === LOOT_SESSION_STATUS.ABERTA || status === LOOT_SESSION_STATUS.DELIBERANDO;
+}
+
+/** Em `aberta` a resposta é livre; fora dela, depende de quem é. */
+export function respostaLivre(status: LootSessionStatus): boolean {
+  return status === LOOT_SESSION_STATUS.ABERTA;
 }
 
 /** Conselho só vota depois que as respostas fecharam. */

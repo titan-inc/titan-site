@@ -1,10 +1,18 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import {
   parseItemString,
   parseSessionPaste,
   podeEditarItens,
+  respostaLivre,
+  sessaoAceitaResposta,
   podeTransicionar,
+  ROLL_MAXIMO,
+  ROLL_MINIMO,
+  toCharacterKey,
+  toRealmMatchKey,
   type AddLootSessionItem,
+  type RespondToLootItem,
   type CreateLootSessionResult,
   type LootSessionDetail,
   type LootSessionItemView,
@@ -19,6 +27,23 @@ import {
   type SessionRow,
 } from './loot-sessions.repository';
 
+/** Um personagem da conta de quem está agindo, como o roster o guarda. */
+export interface PersonagemDaConta {
+  nameKey: string;
+  realmSlug: string;
+  name: string;
+  rank: number;
+}
+
+/** A resposta como o repositório devolve. */
+interface RespostaDoBanco {
+  itemId: string;
+  responseOptionSlug: string;
+  roll: number;
+  aguardandoNovaResposta: boolean;
+  name: string;
+}
+
 @Injectable()
 export class LootSessionsService {
   private readonly logger = new Logger(LootSessionsService.name);
@@ -31,7 +56,11 @@ export class LootSessionsService {
    * Lê como pseudo-código: parseia, acha o boss no catálogo, garante que os
    * itens existem no dicionário, grava. Cada passo tem o seu método.
    */
-  async criarDaColagem(paste: string, ator: Ator): Promise<CreateLootSessionResult> {
+  async criarDaColagem(
+    paste: string,
+    ator: Ator,
+    personagens: PersonagemDaConta[] = [],
+  ): Promise<CreateLootSessionResult> {
     const colagem = this.parsear(paste);
 
     if (colagem.items.length === 0) {
@@ -59,17 +88,57 @@ export class LootSessionsService {
         `${encounterId ? 'no catálogo' : 'FORA do catálogo'}, ${colagem.problemas.length} problemas`,
     );
 
-    return { session: await this.detalhe(id), problemas: colagem.problemas };
+    return { session: await this.detalhe(id, personagens), problemas: colagem.problemas };
   }
 
-  async detalhe(id: string): Promise<LootSessionDetail> {
+  /**
+   * A sessão do ponto de vista de quem está olhando.
+   *
+   * **Sessão é privada por padrão**: cada pessoa vê a própria resposta e o
+   * próprio roll, mais a contagem de quantos já responderam. Ver a resposta
+   * alheia durante a deliberação muda o que as pessoas declaram — é exceção
+   * consciente à Regra 7, que abre o histórico depois de tudo decidido.
+   *
+   * `personagens` são os da conta de quem pediu. Sem eles — chamada de serviço
+   * interna — não vem resposta nenhuma, que é o padrão seguro.
+   */
+  async detalhe(id: string, personagens: PersonagemDaConta[] = []): Promise<LootSessionDetail> {
     const sessao = await this.repo.findById(id);
     if (!sessao) throw new NotFoundException(`Sessão "${id}" não existe`);
 
     const itens = await this.repo.findItems(sessao.items.map((i) => i.itemId));
     const catalogo = new Map(itens.map((i) => [i.itemId, i]));
 
-    return montarDetalhe(sessao, catalogo);
+    const totais = await this.repo.contarRespostas(id);
+    const minhas = await this.buscarMinhasRespostas(id, personagens);
+
+    return montarDetalhe(sessao, catalogo, minhas, totais);
+  }
+
+  /**
+   * As respostas dos personagens desta conta, indexadas por item.
+   *
+   * Busca por TODOS os personagens da conta, e não só o representante: quem
+   * raida em dois chars respondeu com um deles, e mostrar "você não respondeu"
+   * porque a resposta está no alt faria a pessoa responder duas vezes.
+   */
+  private async buscarMinhasRespostas(
+    sessionId: string,
+    personagens: PersonagemDaConta[],
+  ): Promise<Map<string, RespostaDoBanco>> {
+    const porItem = new Map<string, RespostaDoBanco>();
+
+    for (const personagem of personagens) {
+      const respostas = await this.repo.findRespostasDoPersonagem(
+        sessionId,
+        personagem.nameKey,
+        toRealmMatchKey(personagem.realmSlug),
+      );
+
+      for (const resposta of respostas) porItem.set(resposta.itemId, resposta);
+    }
+
+    return porItem;
   }
 
   async listarAbertas(): Promise<LootSessionSummary[]> {
@@ -96,6 +165,7 @@ export class LootSessionsService {
     id: string,
     dados: AddLootSessionItem,
     ator: Ator,
+    personagens: PersonagemDaConta[] = [],
   ): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(id);
     this.exigirRascunho(sessao.status, 'acrescentar item');
@@ -118,17 +188,22 @@ export class LootSessionsService {
       ator,
     );
 
-    return this.detalhe(id);
+    return this.detalhe(id, personagens);
   }
 
-  async removerItem(id: string, itemId: string, ator: Ator): Promise<LootSessionDetail> {
+  async removerItem(
+    id: string,
+    itemId: string,
+    ator: Ator,
+    personagens: PersonagemDaConta[] = [],
+  ): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(id);
     this.exigirRascunho(sessao.status, 'remover item');
 
     const removeu = await this.repo.removerItem(id, itemId, ator);
     if (!removeu) throw new NotFoundException(`Item "${itemId}" não é desta sessão`);
 
-    return this.detalhe(id);
+    return this.detalhe(id, personagens);
   }
 
   /**
@@ -138,7 +213,12 @@ export class LootSessionsService {
    * função que a tela usa para saber que botão mostrar. Duplicar a regra aqui
    * criaria dois lugares para divergirem.
    */
-  async trocarStatus(id: string, para: LootSessionStatus, ator: Ator): Promise<LootSessionDetail> {
+  async trocarStatus(
+    id: string,
+    para: LootSessionStatus,
+    ator: Ator,
+    personagens: PersonagemDaConta[] = [],
+  ): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(id);
 
     if (!podeTransicionar(sessao.status, para)) {
@@ -149,7 +229,132 @@ export class LootSessionsService {
     }
 
     await this.repo.trocarStatus(id, sessao.status, para, ator, sessao.openedAt === null);
-    return this.detalhe(id);
+    return this.detalhe(id, personagens);
+  }
+
+  /**
+   * O jogador declara o que quer para uma peça.
+   *
+   * O roll é gerado aqui, no servidor, **só quando a resposta é a primeira** —
+   * quem garante isso é o `upsert` do repositório, que não menciona `roll` no
+   * update. Gerar na resposta, e não no início da sessão, resolve de graça três
+   * coisas: jogador que entra atrasado, item acrescentado depois, e o incentivo
+   * de espiar o número antes de escolher — ele ainda não existe.
+   */
+  async responder(
+    sessionId: string,
+    itemId: string,
+    dados: RespondToLootItem,
+    ator: Ator,
+    personagens: PersonagemDaConta[],
+  ): Promise<LootSessionDetail> {
+    const sessao = await this.exigirSessao(sessionId);
+
+    if (!sessaoAceitaResposta(sessao.status)) {
+      throw new BadRequestException(
+        `A sessão está em "${sessao.status}" e não aceita resposta agora`,
+      );
+    }
+    if (!(await this.repo.itemPertence(sessionId, itemId))) {
+      throw new NotFoundException(`Item "${itemId}" não é desta sessão`);
+    }
+
+    const ativos = await this.repo.findSlugsAtivos();
+    if (!ativos.includes(dados.responseOptionSlug)) {
+      throw new BadRequestException(
+        `"${dados.responseOptionSlug}" não é uma opção de resposta ativa`,
+      );
+    }
+
+    const personagem = this.escolherPersonagem(dados, personagens);
+    await this.exigirQuePossaResponderAgora(sessao.status, sessionId, itemId, personagem);
+
+    await this.repo.responder({
+      sessionId,
+      itemId,
+      personagem,
+      responseOptionSlug: dados.responseOptionSlug,
+      roll: sortearRoll(),
+      ator,
+    });
+
+    return this.detalhe(sessionId, personagens);
+  }
+
+  /**
+   * Em `deliberando`, só responde quem o conselho reabriu.
+   *
+   * Em `aberta` a resposta é livre — é a fase do roll, e trocar quantas vezes
+   * quiser não muda o número. Quando a deliberação começa, a resposta é o que
+   * foi declarado: o conselho já está votando em cima dela, e deixar mudar
+   * embaixo faria o voto ser sobre uma coisa e a decisão sobre outra.
+   *
+   * Quem nunca respondeu também é barrado aqui. Trazer essa pessoa de volta é
+   * ação do conselho, não dela — e o mecanismo é a TIT-66, que precisa saber
+   * criar a reabertura para quem não tem resposta nenhuma ainda.
+   */
+  private async exigirQuePossaResponderAgora(
+    status: LootSessionStatus,
+    sessionId: string,
+    itemId: string,
+    personagem: { nameKey: string; realmKey: string },
+  ): Promise<void> {
+    if (respostaLivre(status)) return;
+
+    const minhas = await this.repo.findRespostasDoPersonagem(
+      sessionId,
+      personagem.nameKey,
+      personagem.realmKey,
+    );
+    const desteItem = minhas.find((r) => r.itemId === itemId);
+
+    if (!desteItem?.aguardandoNovaResposta) {
+      throw new BadRequestException(
+        'As respostas fecharam. Só dá para responder de novo se o conselho pedir.',
+      );
+    }
+  }
+
+  /**
+   * Com qual personagem a pessoa está respondendo.
+   *
+   * Sem escolha explícita, o representante da conta — o de melhor rank, o mesmo
+   * que o resto do site usa. Com escolha, ela **precisa ser da conta**: aceitar
+   * qualquer nome deixaria responder no lugar de outra pessoa.
+   */
+  private escolherPersonagem(
+    dados: RespondToLootItem,
+    personagens: PersonagemDaConta[],
+  ): { nameKey: string; realmKey: string; name: string; realm: string } {
+    if (personagens.length === 0) {
+      throw new BadRequestException('Sua conta não tem personagem no roster da guilda');
+    }
+
+    const escolhido =
+      dados.characterName === undefined
+        ? representante(personagens)
+        : personagens.find(
+            (p) =>
+              p.nameKey === toCharacterKey(dados.characterName ?? '') &&
+              (dados.characterRealm === undefined ||
+                toRealmMatchKey(p.realmSlug) === toRealmMatchKey(dados.characterRealm)),
+          );
+
+    if (!escolhido) {
+      throw new BadRequestException(
+        `"${dados.characterName ?? ''}" não é um personagem da sua conta`,
+      );
+    }
+
+    return {
+      nameKey: escolhido.nameKey,
+      realmKey: toRealmMatchKey(escolhido.realmSlug),
+      name: escolhido.name,
+      // O roster guarda só o slug do realm, então é ele que sobra para exibir.
+      // Reconstruir "Area 52" a partir de "area-52" é adivinhação, e a Regra 6
+      // avisa que o caminho de volta é lossy.
+      realm: escolhido.realmSlug,
+    };
   }
 
   private parsear(paste: string) {
@@ -206,10 +411,37 @@ export class LootSessionsService {
   }
 }
 
+/**
+ * O representante da conta: o de MELHOR rank, que é o MENOR número.
+ *
+ * Rank 0 é o guild master e o número cresce descendo — em português "rank mais
+ * alto" significa o oposto do que significa em código, e é a armadilha que a
+ * Regra 4 documenta.
+ */
+function representante(personagens: PersonagemDaConta[]): PersonagemDaConta | undefined {
+  return personagens.reduce<PersonagemDaConta | undefined>(
+    (melhor, atual) => (melhor === undefined || atual.rank < melhor.rank ? atual : melhor),
+    undefined,
+  );
+}
+
+/**
+ * O roll, de 1 a 100.
+ *
+ * `randomInt` do `node:crypto`, e não `Math.random()`: o roll decide quem leva
+ * item, e mais cedo ou mais tarde alguém vai dizer que o site viciou o sorteio.
+ * `Math.random()` não é feito para isso e não teria como ser defendido.
+ */
+function sortearRoll(): number {
+  return randomInt(ROLL_MINIMO, ROLL_MAXIMO + 1);
+}
+
 /** A linha do banco vira a visão da tela, com o catálogo por cima. */
 function montarDetalhe(
   sessao: SessionRow,
   catalogo: Map<number, { name: string | null; icon: string | null; equipLoc: string | null }>,
+  minhas: Map<string, RespostaDoBanco>,
+  totais: Map<string, number>,
 ): LootSessionDetail {
   return {
     id: sessao.id,
@@ -223,13 +455,17 @@ function montarDetalhe(
     createdByBattletag: sessao.createdByBattletag,
     createdAt: sessao.createdAt.toISOString(),
     openedAt: sessao.openedAt?.toISOString() ?? null,
-    items: sessao.items.map((item) => montarItem(item, catalogo)),
+    items: sessao.items.map((item) =>
+      montarItem(item, catalogo, minhas.get(item.id) ?? null, totais.get(item.id) ?? 0),
+    ),
   };
 }
 
 function montarItem(
   item: SessionRow['items'][number],
   catalogo: Map<number, { name: string | null; icon: string | null; equipLoc: string | null }>,
+  minha: RespostaDoBanco | null,
+  totalDeRespostas: number,
 ): LootSessionItemView {
   const doCatalogo = catalogo.get(item.itemId);
 
@@ -249,5 +485,17 @@ function montarItem(
     equipLoc: doCatalogo?.equipLoc ?? null,
     looterName: item.looterName === '' ? null : item.looterName,
     looterRealm: item.looterRealm === '' ? null : item.looterRealm,
+
+    // Só a própria. A resposta alheia não sai daqui enquanto a sessão corre.
+    minhaResposta:
+      minha === null
+        ? null
+        : {
+            responseOptionSlug: minha.responseOptionSlug,
+            roll: minha.roll,
+            aguardandoNovaResposta: minha.aguardandoNovaResposta,
+            characterName: minha.name,
+          },
+    totalDeRespostas,
   };
 }

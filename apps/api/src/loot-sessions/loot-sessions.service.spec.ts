@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { LootSessionsService } from './loot-sessions.service';
+import type { PersonagemDaConta } from './loot-sessions.service';
 import type {
   Ator,
   ItemDaSessao,
@@ -31,6 +32,22 @@ const linhaDeItem = (itemString: string, looter = 'Fulano-Azralon') =>
   [itemString, looter, 'auto'].join('\t');
 
 const ATOR: Ator = { userId: 'user-1', battletag: 'Loot#0001' };
+
+/** Os personagens da conta, como o roster os guarda. Rank 0 é o melhor. */
+const PERSONAGENS: PersonagemDaConta[] = [
+  { nameKey: 'fulano', realmSlug: 'azralon', name: 'Fulano', rank: 4 },
+  { nameKey: 'ciclano', realmSlug: 'area-52', name: 'Ciclano', rank: 2 },
+];
+
+/** O que o repositório recebe para gravar uma resposta. */
+interface RespostaGravada {
+  sessionId: string;
+  itemId: string;
+  personagem: { nameKey: string; realmKey: string; name: string; realm: string };
+  responseOptionSlug: string;
+  roll: number;
+  ator: Ator;
+}
 
 const sessaoDoBanco = (over: Partial<SessionRow> = {}): SessionRow => ({
   id: 'sess-1',
@@ -84,6 +101,27 @@ describe('LootSessionsService', () => {
     trocarStatus: jest.fn<Promise<void>, [string, string, string, Ator, boolean]>(() =>
       Promise.resolve(),
     ),
+
+    responder: jest.fn<Promise<void>, [RespostaGravada]>(() => Promise.resolve()),
+    findRespostasDoPersonagem: jest.fn<
+      Promise<
+        Array<{
+          itemId: string;
+          responseOptionSlug: string;
+          roll: number;
+          aguardandoNovaResposta: boolean;
+          name: string;
+        }>
+      >,
+      [string, string, string]
+    >(() => Promise.resolve([])),
+    contarRespostas: jest.fn<Promise<Map<string, number>>, [string]>(() =>
+      Promise.resolve(new Map()),
+    ),
+    itemPertence: jest.fn<Promise<boolean>, [string, string]>(() => Promise.resolve(true)),
+    findSlugsAtivos: jest.fn<Promise<string[]>, []>(() =>
+      Promise.resolve(['bis', 'upgrade', 'pass']),
+    ),
   };
 
   let service: LootSessionsService;
@@ -96,7 +134,16 @@ describe('LootSessionsService', () => {
   };
 
   beforeEach(() => {
+    // `clearAllMocks` zera as CHAMADAS, não as implementações: um
+    // `mockResolvedValue` de um teste vaza para os seguintes. Repor o padrão
+    // aqui é o que impede um teste de passar (ou falhar) por causa do vizinho.
     jest.clearAllMocks();
+    repo.findById.mockResolvedValue(sessaoDoBanco());
+    repo.findRespostasDoPersonagem.mockResolvedValue([]);
+    repo.contarRespostas.mockResolvedValue(new Map());
+    repo.findEncounterByDungeonId.mockResolvedValue({ id: 'enc-kazzara' });
+    repo.itemPertence.mockResolvedValue(true);
+
     service = new LootSessionsService(repo as unknown as LootSessionsRepository);
   });
 
@@ -234,6 +281,278 @@ describe('LootSessionsService', () => {
       await expect(
         service.adicionarItem('sess-1', { itemString: 'item:abc' }, ATOR),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('o jogador responde', () => {
+    const aberta = () => repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+
+    /** O que o serviço mandou gravar. */
+    const gravado = (): RespostaGravada => {
+      const chamada = repo.responder.mock.calls[0];
+      if (chamada === undefined) throw new Error('responder não foi chamado');
+      return chamada[0];
+    };
+
+    it('grava a resposta com um roll do servidor, entre 1 e 100', async () => {
+      aberta();
+
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
+
+      expect(gravado().responseOptionSlug).toBe('bis');
+      expect(gravado().roll).toBeGreaterThanOrEqual(1);
+      expect(gravado().roll).toBeLessThanOrEqual(100);
+    });
+
+    it('o roll NÃO vem do cliente', async () => {
+      // Aceitar o roll do corpo deixaria mandar 100. O schema não tem o campo, e
+      // mandar assim mesmo não muda nada.
+      aberta();
+
+      await service.responder(
+        'sess-1',
+        'item-1',
+        { responseOptionSlug: 'bis', roll: 100 } as never,
+        ATOR,
+        PERSONAGENS,
+      );
+
+      // Um roll do servidor cair exatamente em 100 é 1%, então isto não é flaky
+      // por acaso — o que se testa é que o campo do cliente foi ignorado.
+      expect(Object.keys(gravado())).toContain('roll');
+      expect(gravado().roll).toBeGreaterThanOrEqual(1);
+    });
+
+    it('responde pelo representante da conta quando não escolhe personagem', async () => {
+      // O de MELHOR rank, que é o de MENOR número — rank 0 é o guild master.
+      aberta();
+
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
+
+      expect(gravado().personagem).toMatchObject({ nameKey: 'ciclano', name: 'Ciclano' });
+    });
+
+    it('o realm da identidade é a chave frouxa', async () => {
+      // `area-52` do roster vira `area52`, que é como a linha de loot e a
+      // presença guardam — Regra 6.
+      aberta();
+
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
+
+      expect(gravado().personagem.realmKey).toBe('area52');
+    });
+
+    it('dá para escolher outro personagem DA CONTA', async () => {
+      aberta();
+
+      await service.responder(
+        'sess-1',
+        'item-1',
+        { responseOptionSlug: 'bis', characterName: 'Fulano' },
+        ATOR,
+        PERSONAGENS,
+      );
+
+      expect(gravado().personagem.nameKey).toBe('fulano');
+    });
+
+    it('personagem que não é da conta é recusado', async () => {
+      // Aceitar qualquer nome deixaria responder no lugar de outra pessoa.
+      aberta();
+
+      await expect(
+        service.responder(
+          'sess-1',
+          'item-1',
+          { responseOptionSlug: 'bis', characterName: 'DeOutraPessoa' },
+          ATOR,
+          PERSONAGENS,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.responder).not.toHaveBeenCalled();
+    });
+
+    it('conta sem personagem no roster não responde', async () => {
+      aberta();
+
+      await expect(
+        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, []),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('opção de resposta inativa é recusada', async () => {
+      // A tabela é configurável e a liderança desativa opção. Aceitar a
+      // desativada deixaria entrar resposta que a tela nem oferece mais.
+      aberta();
+
+      await expect(
+        service.responder(
+          'sess-1',
+          'item-1',
+          { responseOptionSlug: 'transmog' },
+          ATOR,
+          PERSONAGENS,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('item de outra sessão é 404', async () => {
+      aberta();
+      repo.itemPertence.mockResolvedValueOnce(false);
+
+      await expect(
+        service.responder('sess-1', 'de-outra', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('em rascunho ainda não dá para responder', async () => {
+      // A lista de itens nem foi anunciada.
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'rascunho' }));
+
+      await expect(
+        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    describe('em deliberando, só responde quem o conselho reabriu', () => {
+      const respostaDoItem = (aguardando: boolean) => [
+        {
+          itemId: 'item-1',
+          responseOptionSlug: 'bis',
+          roll: 73,
+          aguardandoNovaResposta: aguardando,
+          name: 'Ciclano',
+        },
+      ];
+
+      it('com reabertura, responde', async () => {
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(true));
+
+        await service.responder(
+          'sess-1',
+          'item-1',
+          { responseOptionSlug: 'upgrade' },
+          ATOR,
+          PERSONAGENS,
+        );
+
+        expect(repo.responder).toHaveBeenCalled();
+      });
+
+      it('sem reabertura, é recusado', async () => {
+        // O conselho já está votando em cima da resposta declarada. Deixar mudar
+        // embaixo faria o voto ser sobre uma coisa e a decisão sobre outra.
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(false));
+
+        await expect(
+          service.responder(
+            'sess-1',
+            'item-1',
+            { responseOptionSlug: 'upgrade' },
+            ATOR,
+            PERSONAGENS,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(repo.responder).not.toHaveBeenCalled();
+      });
+
+      it('quem nunca respondeu também é barrado', async () => {
+        // Trazer essa pessoa de volta é ação do conselho, não dela. O mecanismo
+        // é a TIT-66, que precisa saber reabrir para quem não tem resposta.
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue([]);
+
+        await expect(
+          service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('a reabertura vale para o item reaberto, não para os outros', async () => {
+        // Reabrir uma peça não pode virar passe livre na sessão inteira.
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(true));
+        repo.itemPertence.mockResolvedValue(true);
+
+        await expect(
+          service.responder(
+            'sess-1',
+            'outro-item',
+            { responseOptionSlug: 'bis' },
+            ATOR,
+            PERSONAGENS,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+    });
+
+    it('em aberta a resposta é livre, sem precisar de reabertura', async () => {
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+      repo.findRespostasDoPersonagem.mockResolvedValue([]);
+
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
+
+      expect(repo.responder).toHaveBeenCalled();
+    });
+
+    it('sessão encerrada não aceita mais resposta', async () => {
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'encerrada' }));
+
+      await expect(
+        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('privacidade da sessão', () => {
+    it('mostra a própria resposta e o próprio roll', async () => {
+      repo.findRespostasDoPersonagem.mockResolvedValue([
+        {
+          itemId: 'item-1',
+          responseOptionSlug: 'bis',
+          roll: 73,
+          aguardandoNovaResposta: false,
+          name: 'Ciclano',
+        },
+      ]);
+
+      const d = await service.detalhe('sess-1', PERSONAGENS);
+
+      expect(d.items[0]?.minhaResposta).toMatchObject({ responseOptionSlug: 'bis', roll: 73 });
+    });
+
+    it('sem personagem nenhum, não vem resposta — o padrão é fechado', async () => {
+      const d = await service.detalhe('sess-1');
+
+      expect(d.items[0]?.minhaResposta).toBeNull();
+    });
+
+    it('mostra a CONTAGEM de respostas, e só ela, do que é dos outros', async () => {
+      // Dá a noção de que a sala está andando sem entregar o que os outros
+      // declararam — ver a resposta alheia durante a deliberação muda o que as
+      // pessoas respondem.
+      //
+      // 12 respostas na peça, e quem olha não respondeu: o único roll que
+      // poderia aparecer seria de outra pessoa, e não aparece nenhum.
+      repo.contarRespostas.mockResolvedValueOnce(new Map([['item-1', 12]]));
+
+      const d = await service.detalhe('sess-1', PERSONAGENS);
+
+      expect(d.items[0]?.totalDeRespostas).toBe(12);
+      expect(d.items[0]?.minhaResposta).toBeNull();
+      expect(JSON.stringify(d)).not.toContain('roll');
+    });
+
+    it('procura a resposta em TODOS os personagens da conta', async () => {
+      // Quem raida em dois chars respondeu com um deles; olhar só o
+      // representante mostraria "você não respondeu" e a pessoa responderia de
+      // novo, agora no char errado.
+      await service.detalhe('sess-1', PERSONAGENS);
+
+      expect(repo.findRespostasDoPersonagem).toHaveBeenCalledTimes(2);
+      expect(repo.findRespostasDoPersonagem).toHaveBeenCalledWith('sess-1', 'ciclano', 'area52');
+      expect(repo.findRespostasDoPersonagem).toHaveBeenCalledWith('sess-1', 'fulano', 'azralon');
     });
   });
 

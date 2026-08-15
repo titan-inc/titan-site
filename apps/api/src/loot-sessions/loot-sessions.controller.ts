@@ -3,7 +3,9 @@ import {
   addLootSessionItemSchema,
   changeLootSessionStatusSchema,
   createLootSessionSchema,
+  respondToLootItemSchema,
   type AddLootSessionItem,
+  type RespondToLootItem,
   type ChangeLootSessionStatus,
   type CreateLootSession,
   type CreateLootSessionResult,
@@ -14,7 +16,7 @@ import {
 import type { Request } from 'express';
 import { MemberGuard, OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { LootSessionsService } from './loot-sessions.service';
+import { LootSessionsService, type PersonagemDaConta } from './loot-sessions.service';
 import type { Ator } from './loot-sessions.repository';
 
 /**
@@ -24,9 +26,25 @@ import type { Ator } from './loot-sessions.repository';
  * `SessionUser` e só carrega battletag. Os dois são gravados juntos: o id liga,
  * o battletag deixa a auditoria legível sem join.
  */
+type ComSessao = Request & {
+  user: SessionUser;
+  account: { id: string; characters: PersonagemDaConta[] };
+};
+
 function ator(req: Request): Ator {
-  const { user, account } = req as Request & { user: SessionUser; account: { id: string } };
+  const { user, account } = req as ComSessao;
   return { userId: account.id, battletag: user.battletag };
+}
+
+/**
+ * TODOS os personagens da conta no roster, não só o representante.
+ *
+ * Quem raida em dois chars respondeu com um deles, e olhar só o representante
+ * mostraria "você não respondeu" para quem já respondeu no alt — e a pessoa
+ * responderia duas vezes. Ver Regra 4: o agregado é por pessoa.
+ */
+function personagens(req: Request): PersonagemDaConta[] {
+  return (req as ComSessao).account.characters;
 }
 
 /**
@@ -50,10 +68,36 @@ export class LootSessionsController {
     return this.sessions.listarAbertas();
   }
 
+  /**
+   * A sessão do ponto de vista de quem pediu.
+   *
+   * Traz a **própria** resposta e o **próprio** roll, mais quantas pessoas já
+   * responderam a cada peça. Resposta alheia não sai daqui enquanto a sessão
+   * corre — ver `detalhe()` no serviço.
+   */
   @Get(':id')
   @UseGuards(MemberGuard)
-  detalhe(@Param('id') id: string): Promise<LootSessionDetail> {
-    return this.sessions.detalhe(id);
+  detalhe(@Param('id') id: string, @Req() req: Request): Promise<LootSessionDetail> {
+    return this.sessions.detalhe(id, personagens(req));
+  }
+
+  /**
+   * O jogador declara o que quer para uma peça.
+   *
+   * `MemberGuard`, sem gate novo: quem responde é quem entra na área interna,
+   * que é exatamente o time de raid. Se alguém que não estava na raid responder,
+   * o desenho se protege sozinho — o jogador dá resposta, quem dá voto é o
+   * conselho, e ninguém leva item sem voto.
+   */
+  @Post(':id/itens/:itemId/resposta')
+  @UseGuards(MemberGuard)
+  responder(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(respondToLootItemSchema)) body: RespondToLootItem,
+    @Req() req: Request,
+  ): Promise<LootSessionDetail> {
+    return this.sessions.responder(id, itemId, body, ator(req), personagens(req));
   }
 
   /**
@@ -69,7 +113,7 @@ export class LootSessionsController {
     @Body(new ZodValidationPipe(createLootSessionSchema)) body: CreateLootSession,
     @Req() req: Request,
   ): Promise<CreateLootSessionResult> {
-    return this.sessions.criarDaColagem(body.paste, ator(req));
+    return this.sessions.criarDaColagem(body.paste, ator(req), personagens(req));
   }
 
   /** Acrescenta a peça que o addon perdeu. Só em rascunho. */
@@ -80,7 +124,7 @@ export class LootSessionsController {
     @Body(new ZodValidationPipe(addLootSessionItemSchema)) body: AddLootSessionItem,
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
-    return this.sessions.adicionarItem(id, body, ator(req));
+    return this.sessions.adicionarItem(id, body, ator(req), personagens(req));
   }
 
   @Delete(':id/itens/:itemId')
@@ -90,7 +134,7 @@ export class LootSessionsController {
     @Param('itemId') itemId: string,
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
-    return this.sessions.removerItem(id, itemId, ator(req));
+    return this.sessions.removerItem(id, itemId, ator(req), personagens(req));
   }
 
   /**
@@ -108,6 +152,6 @@ export class LootSessionsController {
     body: ChangeLootSessionStatus,
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
-    return this.sessions.trocarStatus(id, body.status, ator(req));
+    return this.sessions.trocarStatus(id, body.status, ator(req), personagens(req));
   }
 }

@@ -39,6 +39,51 @@ export const changeLootSessionStatusSchema = z.object({
 });
 export type ChangeLootSessionStatus = z.infer<typeof changeLootSessionStatusSchema>;
 
+/**
+ * O que o jogador declara para uma peça.
+ *
+ * O personagem é opcional: quem não manda responde pelo representante da conta
+ * — o de melhor rank, o mesmo que o resto do site usa. Mandar é para quem raida
+ * em mais de um e está no alt naquela noite.
+ *
+ * **O roll não entra aqui.** Ele é do servidor, e aceitar do cliente deixaria
+ * mandar 100.
+ */
+export const respondToLootItemSchema = z.object({
+  responseOptionSlug: z.string().min(1),
+  characterName: z.string().min(1).optional(),
+  characterRealm: z.string().min(1).optional(),
+});
+export type RespondToLootItem = z.infer<typeof respondToLootItemSchema>;
+
+/**
+ * A resposta de quem está olhando, para uma peça.
+ *
+ * **Só a própria.** Sessão é privada por padrão: cada pessoa vê a própria
+ * resposta e o próprio roll. É exceção consciente à Regra 7 — ali o histórico de
+ * loot é aberto, mas durante a deliberação ver a resposta alheia muda o que as
+ * pessoas declaram.
+ */
+export const minhaRespostaSchema = z.object({
+  responseOptionSlug: z.string(),
+
+  /**
+   * 1 a 100, do servidor, imutável.
+   *
+   * Nasce na PRIMEIRA resposta e não muda mais — nem ao trocar a resposta, nem
+   * quando o conselho pede para responder de novo. Sem isso, trocar a resposta
+   * viraria rerrolar até gostar do número, e "responda de novo" viraria uma
+   * forma de o conselho garimpar roll para o favorito.
+   */
+  roll: z.number().int(),
+
+  /** O conselho pediu para esta pessoa responder de novo. */
+  aguardandoNovaResposta: z.boolean(),
+
+  characterName: z.string(),
+});
+export type MinhaResposta = z.infer<typeof minhaRespostaSchema>;
+
 /** Uma peça da sessão, pronta para a tela. */
 export const lootSessionItemViewSchema = z.object({
   id: z.string(),
@@ -72,6 +117,17 @@ export const lootSessionItemViewSchema = z.object({
   /** Quem lootou NO JOGO. Entrada para a decisão, nunca o resultado dela. */
   looterName: z.string().nullable(),
   looterRealm: z.string().nullable(),
+
+  /** A resposta de quem está olhando. Nula enquanto a pessoa não respondeu. */
+  minhaResposta: minhaRespostaSchema.nullable(),
+
+  /**
+   * Quantas pessoas já responderam a esta peça.
+   *
+   * Só a contagem, nunca quem nem o quê: dá ao jogador a noção de que a sala
+   * está andando sem entregar o conteúdo das respostas alheias.
+   */
+  totalDeRespostas: z.number().int().nonnegative(),
 });
 export type LootSessionItemView = z.infer<typeof lootSessionItemViewSchema>;
 
