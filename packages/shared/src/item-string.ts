@@ -53,3 +53,80 @@ export function raidDifficultyFromItemString(itemString: string): RaidDifficulty
   const campos = itemString.split(':');
   return CONTEXTO_DE_RAID[campos[INDICE_ITEM_CONTEXT] ?? ''] ?? null;
 }
+
+/** Onde o `itemID` e o contador de bônus ficam, já contando o literal `item:`. */
+const INDICE_ITEM_ID = 1;
+const INDICE_NUM_BONUS = 13;
+const INDICE_PRIMEIRO_BONUS = 14;
+
+/** O que dá para ler de um `itemString` sem dicionário nenhum. */
+export interface ItemStringLido {
+  itemId: number;
+
+  /**
+   * De onde a peça veio. **Nulo é "não sei", nunca zero** — zero é valor válido
+   * de outra coisa, e colapsar os dois afirmaria um contexto que ninguém viu.
+   */
+  itemContext: number | null;
+
+  /**
+   * Os bônus, delimitados pelo contador — nunca por comprimento fixo.
+   *
+   * Depois deles ainda vêm modifiers, relic, `crafterGUID` e `extraEnchantID`.
+   * Fatiar até o fim traria tudo isso como se fosse bônus.
+   */
+  bonusIds: number[];
+}
+
+/**
+ * Lê o que dá do `itemString`, sem interpretar significado.
+ *
+ * Devolve `null` quando nem o `itemID` sai — aí não é item, é lixo.
+ *
+ * ## As armadilhas que este parse trata, todas vistas em dado real
+ *
+ * 1. **Campo vazio é a regra** (`::::::`). O split não pode filtrar vazios: as
+ *    posições andariam e tudo desalinharia.
+ * 2. **`numBonusIDs` pode vir VAZIO**, e significa **zero bônus**. `Number('')`
+ *    é `0`, o que por sorte acerta — mas `parseInt('')` é `NaN`, e é por isso que
+ *    a leitura é explícita em vez de confiar na coerção.
+ * 3. **`itemContext` pode vir VAZIO**, e significa **desconhecido**, não zero.
+ *    Os dois vazios da mesma linha querem dizer coisas diferentes.
+ * 4. Depois dos bônus vêm campos de outros tipos — modifier com **valor
+ *    negativo**, `crafterGUID` com hífen. Por isso o corte é pelo contador.
+ *
+ * Os casos 2 e 3 apareceram juntos em loot de boss real: um reagente épico e uma
+ * receita, os dois drop legítimo. Nenhum item "normal" de raid os expõe, que é
+ * justamente por que ninguém pensa em usá-los como fixture.
+ */
+export function parseItemString(itemString: string): ItemStringLido | null {
+  const campos = itemString.split(':');
+
+  const itemId = Number(campos[INDICE_ITEM_ID]);
+  if (!Number.isInteger(itemId) || itemId <= 0) return null;
+
+  return {
+    itemId,
+    itemContext: inteiroOuNulo(campos[INDICE_ITEM_CONTEXT]),
+    bonusIds: lerBonus(campos),
+  };
+}
+
+/** Vazio e não-numérico viram nulo. Nunca zero — zero é um valor de verdade. */
+function inteiroOuNulo(bruto: string | undefined): number | null {
+  if (bruto === undefined || bruto === '') return null;
+
+  const valor = Number(bruto);
+  return Number.isInteger(valor) ? valor : null;
+}
+
+function lerBonus(campos: string[]): number[] {
+  // Vazio aqui é ZERO bônus — diferente do contexto vazio, que é "não sei".
+  const quantos = inteiroOuNulo(campos[INDICE_NUM_BONUS]) ?? 0;
+  if (quantos <= 0) return [];
+
+  return campos
+    .slice(INDICE_PRIMEIRO_BONUS, INDICE_PRIMEIRO_BONUS + quantos)
+    .map((b) => Number(b))
+    .filter((b) => Number.isInteger(b) && b > 0);
+}
