@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_HQiBYv2eob
+createdAt: 2026-08-15T00:16:28.559691
+updatedAt: 2026-08-15T00:16:28.559694400
+workspaceId: wk_8LmjjnEbam
+folderId: fl_FknhcmhGXn
+authentication: {}
+authenticationType: null
+body:
+  text: '{}'
+bodyType: application/json
+description: Corpo é o export do RCLootCouncil (rcExportSchema, ~304KB) — ver TIT-53. Colar o JSON exportado do addon antes de enviar.
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Loot import RC
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/ops/loot-import-rc
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

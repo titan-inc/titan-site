@@ -1,0 +1,18 @@
+type: workspace
+model: workspace
+id: wk_8LmjjnEbam
+createdAt: 2026-08-14T23:50:18.318303600
+updatedAt: 2026-08-14T23:50:18.318304400
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: Titan Site API
+encryptionKeyChallenge: null
+settingValidateCertificates: true
+settingFollowRedirects: true
+settingRequestTimeout: 0
+settingRequestMessageSize: 67108864
+settingDnsOverrides: []
+settingSendCookies: true
+settingStoreCookies: true

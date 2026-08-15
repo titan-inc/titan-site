@@ -1,0 +1,33 @@
+type: http_request
+model: http_request
+id: rq_W7yYHjuFfe
+createdAt: 2026-08-15T00:16:25.786418100
+updatedAt: 2026-08-15T00:16:25.786422300
+workspaceId: wk_8LmjjnEbam
+folderId: fl_JAvq3yGMN4
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Fluxo de redirect de browser (consent da Blizzard) — não é enviável de forma útil via CLI/yaak send, só documentado aqui. Abrir no navegador.
+headers: []
+method: GET
+name: Iniciar login (Battle.net)
+sortPriority: 0.0
+url: ${[ base_url ]}/auth/battlenet
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

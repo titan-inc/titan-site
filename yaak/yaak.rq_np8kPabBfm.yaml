@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_np8kPabBfm
+createdAt: 2026-08-15T00:16:28.280548400
+updatedAt: 2026-08-15T00:16:28.280552700
+workspaceId: wk_8LmjjnEbam
+folderId: fl_FknhcmhGXn
+authentication: {}
+authenticationType: null
+body:
+  text: '{}'
+bodyType: application/json
+description: Corpo grande (catalogFileSchema em packages/shared/src) — usar a saída de 'Catalog generate' como body real antes de enviar.
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Catalog load
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/ops/catalog-load
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
