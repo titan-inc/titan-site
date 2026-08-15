@@ -14,7 +14,7 @@
         {
           "itemId": 268289,
           "name": "Girdle of Devouring Rot",
-          "icon": "inv_belt_plate_raidpaladinmidnight_d_01",
+          "icon": "7319577",
           "equipLoc": "WAIST",
           "itemSubclass": "Plate",
           "primaryStats": ["intellect", "strength"],
@@ -34,7 +34,7 @@
         {
           "itemId": 268285,
           "name": "Putrid Tender's Battleplate",
-          "icon": "inv_plate_raiddeathknightmidnight_d_01_chest",
+          "icon": "7382327",
           "equipLoc": "ROBE",
           "itemSubclass": "Plate",
           "primaryStats": ["intellect", "strength"],
@@ -54,7 +54,7 @@
         {
           "itemId": 268288,
           "name": "Fungarian Folly Faulds",
-          "icon": "inv_pant_mail_raidevokermidnight_d_01",
+          "icon": "7307679",
           "equipLoc": "LEGS",
           "itemSubclass": "Mail",
           "primaryStats": ["intellect", "agility"],
@@ -74,7 +74,7 @@
         {
           "itemId": 268287,
           "name": "Grudgefiend Stompers",
-          "icon": "inv_boot_mail_raidshamanmidnight_d_01",
+          "icon": "7384531",
           "equipLoc": "FEET",
           "itemSubclass": "Mail",
           "primaryStats": ["intellect", "agility"],
@@ -94,7 +94,7 @@
         {
           "itemId": 268286,
           "name": "Sash of the Putrid Giant",
-          "icon": "inv_belt_leather_raidroguemidnight_d_01",
+          "icon": "7446698",
           "equipLoc": "WAIST",
           "itemSubclass": "Leather",
           "primaryStats": ["intellect", "agility"],
@@ -118,7 +118,7 @@
         {
           "itemId": 268283,
           "name": "Festerbloom Crown",
-          "icon": "inv_helm_leather_raiddruidmidnight_d_01",
+          "icon": "7445749",
           "equipLoc": "HEAD",
           "itemSubclass": "Leather",
           "primaryStats": ["intellect", "agility"],
@@ -142,7 +142,7 @@
         {
           "itemId": 268282,
           "name": "Luxurious Loamstriders",
-          "icon": "inv_boot_cloth_raidpriestmidnight_d_01",
+          "icon": "7448848",
           "equipLoc": "FEET",
           "itemSubclass": "Cloth",
           "primaryStats": ["intellect"],
@@ -162,7 +162,7 @@
         {
           "itemId": 268284,
           "name": "Mycomancer's Rot Robes",
-          "icon": "inv_chest_cloth_raidmagemidnight_d_01",
+          "icon": "7444041",
           "equipLoc": "ROBE",
           "itemSubclass": "Cloth",
           "primaryStats": ["intellect"],
@@ -182,7 +182,7 @@
         {
           "itemId": 268292,
           "name": "Sporelord's Mycelial Insignia",
-          "icon": "inv_1207_fungarianraid_trinket",
+          "icon": "7702761",
           "equipLoc": "TRINKET",
           "itemSubclass": "Miscellaneous",
           "primaryStats": ["intellect", "agility", "strength"],
@@ -233,7 +233,7 @@
         {
           "itemId": 268291,
           "name": "Rotmire's Sporeheart",
-          "icon": "inv_12_jewelry_rutaani_necklace_blue",
+          "icon": "7636601",
           "equipLoc": "NECK",
           "itemSubclass": "Miscellaneous",
           "usableBySpecs": [
@@ -283,7 +283,7 @@
         {
           "itemId": 268290,
           "name": "Sporecaller's Blooming Loop",
-          "icon": "inv_12_jewelry_rutaani_ring_blue",
+          "icon": "7636604",
           "equipLoc": "FINGER",
           "itemSubclass": "Miscellaneous",
           "usableBySpecs": [
@@ -333,7 +333,7 @@
         {
           "itemId": 247235,
           "name": "Luminous Rotshroom",
-          "icon": "inv_12fn_fungarian_lighting_brazier01",
+          "icon": "7423148",
           "equipLoc": "NON_EQUIP",
           "itemSubclass": "Decor",
           "usableBySpecs": [
@@ -383,7 +383,7 @@
         {
           "itemId": 264367,
           "name": "Mycomancer's Hearthspore",
-          "icon": "inv_1207_fungarianraid_fungalhearthstone",
+          "icon": "7702758",
           "equipLoc": "NON_EQUIP",
           "itemSubclass": "Junk",
           "usableBySpecs": [
@@ -433,7 +433,7 @@
         {
           "itemId": 264313,
           "name": "Madcap Redcap",
-          "icon": "inv_1207_fungarianraid_fungarianfeast",
+          "icon": "7702759",
           "equipLoc": "NON_EQUIP",
           "itemSubclass": "Junk",
           "usableBySpecs": [
@@ -483,7 +483,7 @@
         {
           "itemId": 268280,
           "name": "Sporelord's Shroom Cap",
-          "icon": "inv_helm_armor_fungarian_d_01_green",
+          "icon": "7873826",
           "equipLoc": "HEAD",
           "itemSubclass": "Cosmetic",
           "usableBySpecs": [
