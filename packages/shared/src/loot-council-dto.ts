@@ -13,6 +13,31 @@ import { z } from 'zod';
  * sem precisar de outra conta.
  */
 
+/**
+ * Uma peça que o candidato já recebeu.
+ *
+ * **Não é o explorador.** É recorte mínimo justificado pelo ato de decidir: o
+ * conselho precisa saber o que a pessoa já levou para não dar a quinta peça da
+ * noite a quem já levou quatro. Quem quer o histórico inteiro abre a aba de
+ * Histórico, que é aberta a todo mundo da área interna.
+ */
+export const recebidoAntesSchema = z.object({
+  awardedAt: z.string().datetime(),
+
+  /** Do catálogo. Nulo quando o item ainda não foi enriquecido. */
+  itemName: z.string().nullable(),
+  icon: z.string().nullable(),
+
+  /** `HEAD`, `TRINKET`. É o que responde "ela já levou anel esta semana?". */
+  equipLoc: z.string().nullable(),
+
+  difficulty: z.string().nullable(),
+
+  /** O que ela declarou na época. `bis` pesa diferente de `transmog`. */
+  responseOptionSlug: z.string(),
+});
+export type RecebidoAntes = z.infer<typeof recebidoAntesSchema>;
+
 /** Um candidato a uma peça: o que declarou, o que tirou, e o que o conselho fez. */
 export const candidatoSchema = z.object({
   /** O par nome + realm, na grafia que a pessoa usa. */
@@ -36,6 +61,15 @@ export const candidatoSchema = z.object({
 
   /** Este conselheiro votou nela? Um voto por conselheiro por peça. */
   meuVoto: z.boolean(),
+
+  /**
+   * O que esta pessoa já recebeu, mais recente primeiro.
+   *
+   * É o que resolve o conselho votar cego. Vazio significa **nada no histórico**
+   * — e isso é informação forte, não ausência de dado: alguém que nunca levou
+   * nada tem argumento.
+   */
+  recebidoAntes: z.array(recebidoAntesSchema),
 });
 export type Candidato = z.infer<typeof candidatoSchema>;
 

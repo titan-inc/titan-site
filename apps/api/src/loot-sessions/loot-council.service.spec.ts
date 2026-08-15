@@ -52,6 +52,26 @@ describe('LootCouncilService', () => {
     alterarResposta: jest.fn<Promise<boolean>, [unknown]>(() => Promise.resolve(true)),
     itemPertence: jest.fn<Promise<boolean>, [string, string]>(() => Promise.resolve(true)),
     findSlugsAtivos: jest.fn<Promise<string[]>, []>(() => Promise.resolve(['bis', 'upgrade'])),
+
+    findHistoricoDosCandidatos: jest.fn<
+      Promise<
+        Array<{
+          winnerNameKey: string;
+          winnerRealmKey: string;
+          awardedAt: Date;
+          itemId: number;
+          difficulty: string | null;
+          responseOptionSlug: string;
+        }>
+      >,
+      [Array<{ nameKey: string; realmKey: string }>]
+    >(() => Promise.resolve([])),
+    findItems: jest.fn<
+      Promise<
+        Array<{ itemId: number; name: string | null; icon: string | null; equipLoc: string | null }>
+      >,
+      [number[]]
+    >(() => Promise.resolve([])),
   };
 
   let service: LootCouncilService;
@@ -62,6 +82,8 @@ describe('LootCouncilService', () => {
     repo.findTodasAsRespostas.mockResolvedValue([resposta()]);
     repo.findVotos.mockResolvedValue([]);
     repo.itemPertence.mockResolvedValue(true);
+    repo.findHistoricoDosCandidatos.mockResolvedValue([]);
+    repo.findItems.mockResolvedValue([]);
 
     service = new LootCouncilService(repo as unknown as LootSessionsRepository);
   });
@@ -144,6 +166,115 @@ describe('LootCouncilService', () => {
       repo.findById.mockResolvedValueOnce(null);
 
       await expect(service.painel('nao-existe', ATOR)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('o contexto embutido', () => {
+    /** Uma entrega antiga, como o histórico devolve. */
+    const entrega = (over: Record<string, unknown> = {}) => ({
+      winnerNameKey: 'fulano',
+      winnerRealmKey: 'azralon',
+      awardedAt: new Date('2026-08-10T01:00:00.000Z'),
+      itemId: 202612,
+      difficulty: 'mythic',
+      responseOptionSlug: 'bis',
+      ...over,
+    });
+
+    it('mostra o que o candidato já recebeu, com nome do catálogo', async () => {
+      repo.findHistoricoDosCandidatos.mockResolvedValue([entrega()]);
+      repo.findItems.mockResolvedValue([
+        { itemId: 202612, name: 'Ashen Sigil', icon: 'inv_ring', equipLoc: 'FINGER' },
+      ]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos[0]?.recebidoAntes[0]).toMatchObject({
+        itemName: 'Ashen Sigil',
+        equipLoc: 'FINGER',
+        difficulty: 'mythic',
+        responseOptionSlug: 'bis',
+      });
+    });
+
+    it('sem histórico, a lista é vazia — e isso é informação', async () => {
+      // Quem nunca levou nada tem argumento. Vazio aqui não é falta de dado.
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos[0]?.recebidoAntes).toEqual([]);
+    });
+
+    it('corta em 5 por pessoa, do mais recente', async () => {
+      // O conselho decide com o recente. Quem quer tudo abre a aba de Histórico.
+      repo.findHistoricoDosCandidatos.mockResolvedValue(
+        // Dias 10 a 02, do mais recente. Zero à esquerda importa: `2026-08-2`
+        // é data inválida e estoura no `toISOString()`.
+        Array.from({ length: 9 }, (_, i) =>
+          entrega({
+            awardedAt: new Date(`2026-08-${String(10 - i).padStart(2, '0')}T01:00:00.000Z`),
+          }),
+        ),
+      );
+
+      const p = await service.painel('sess-1', ATOR);
+      const recebidos = p.itens[0]?.candidatos[0]?.recebidoAntes ?? [];
+
+      expect(recebidos).toHaveLength(5);
+      expect(recebidos[0]?.awardedAt).toBe('2026-08-10T01:00:00.000Z');
+    });
+
+    it('o corte é POR PESSOA, não no total', async () => {
+      // O erro que isto tranca: cortar a lista inteira em 5 deixaria o segundo
+      // candidato sem histórico nenhum quando o primeiro tivesse muitos.
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ nameKey: 'a', name: 'A' }),
+        resposta({ nameKey: 'b', name: 'B' }),
+      ]);
+      repo.findHistoricoDosCandidatos.mockResolvedValue([
+        ...Array.from({ length: 6 }, () => entrega({ winnerNameKey: 'a' })),
+        entrega({ winnerNameKey: 'b' }),
+      ]);
+
+      const p = await service.painel('sess-1', ATOR);
+      const porNome = new Map(p.itens[0]?.candidatos.map((c) => [c.name, c.recebidoAntes]));
+
+      expect(porNome.get('A')).toHaveLength(5);
+      expect(porNome.get('B')).toHaveLength(1);
+    });
+
+    it('pede o histórico UMA vez para todos os candidatos', async () => {
+      // A tela reabre o painel a cada voto; N+1 aqui seriam 26 idas ao banco
+      // por clique.
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ nameKey: 'a' }),
+        resposta({ nameKey: 'b' }),
+        resposta({ nameKey: 'c' }),
+      ]);
+
+      await service.painel('sess-1', ATOR);
+
+      expect(repo.findHistoricoDosCandidatos).toHaveBeenCalledTimes(1);
+      expect(repo.findHistoricoDosCandidatos.mock.calls[0]?.[0]).toHaveLength(3);
+    });
+
+    it('não repete a mesma pessoa quando ela disputa duas peças', async () => {
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ itemId: 'item-1' }),
+        resposta({ itemId: 'item-2' }),
+      ]);
+
+      await service.painel('sess-1', ATOR);
+
+      expect(repo.findHistoricoDosCandidatos.mock.calls[0]?.[0]).toHaveLength(1);
+    });
+
+    it('item fora do catálogo entra sem nome, e a linha não some', async () => {
+      repo.findHistoricoDosCandidatos.mockResolvedValue([entrega()]);
+      repo.findItems.mockResolvedValue([]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos[0]?.recebidoAntes[0]).toMatchObject({ itemName: null });
     });
   });
 

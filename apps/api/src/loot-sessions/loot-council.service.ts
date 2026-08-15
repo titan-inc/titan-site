@@ -7,9 +7,19 @@ import {
   type Candidato,
   type LootCouncilPanel,
   type ReabrirResposta,
+  type RecebidoAntes,
   type Votar,
 } from '@titan/shared';
 import { LootSessionsRepository, type Ator, type SessionRow } from './loot-sessions.repository';
+
+/**
+ * Quantas peças anteriores o painel mostra por candidato.
+ *
+ * Cinco porque é o que cabe ao lado de um nome sem virar tabela — e porque o
+ * conselho decide com o recente, não com a season inteira. Quem quer tudo abre
+ * a aba de Histórico.
+ */
+const RECEBIDOS_NO_PAINEL = 5;
 
 /** O alvo de uma ação do conselho, já normalizado — Regra 6. */
 interface Alvo {
@@ -46,6 +56,8 @@ export class LootCouncilService {
       this.repo.findVotos(sessionId),
     ]);
 
+    const historico = await this.montarHistorico(respostas);
+
     const contagem = new Map<string, number>();
     const meus = new Set<string>();
 
@@ -71,6 +83,7 @@ export class LootCouncilService {
         aguardandoNovaResposta: r.aguardandoNovaResposta,
         votos: contagem.get(chave) ?? 0,
         meuVoto: meus.has(chave),
+        recebidoAntes: historico.get(`${r.nameKey}|${r.realmKey}`) ?? [],
       });
 
       porItem.set(r.itemId, lista);
@@ -86,6 +99,57 @@ export class LootCouncilService {
         candidatos: ordenar(porItem.get(item.id) ?? []),
       })),
     };
+  }
+
+  /**
+   * O que cada candidato já recebeu — o contexto que resolve votar cego.
+   *
+   * Duas consultas para a sessão inteira: o histórico de todos os candidatos, e
+   * os itens do catálogo que ele referencia. Nada por pessoa; a tela reabre o
+   * painel a cada voto, e N+1 aqui seriam 26 idas ao banco por clique.
+   *
+   * **Não é o explorador.** São as últimas peças de cada um, e mais nada — o
+   * recorte que o ato de decidir justifica. Quem quer o histórico inteiro abre a
+   * aba de Histórico, que é aberta a todo mundo da área interna.
+   */
+  private async montarHistorico(
+    respostas: Array<{ nameKey: string; realmKey: string }>,
+  ): Promise<Map<string, RecebidoAntes[]>> {
+    const chaves = [
+      ...new Map(respostas.map((r) => [`${r.nameKey}|${r.realmKey}`, r])).values(),
+    ].map((r) => ({ nameKey: r.nameKey, realmKey: r.realmKey }));
+
+    const linhas = await this.repo.findHistoricoDosCandidatos(chaves);
+    if (linhas.length === 0) return new Map();
+
+    const itens = await this.repo.findItems([...new Set(linhas.map((l) => l.itemId))]);
+    const catalogo = new Map(itens.map((i) => [i.itemId, i]));
+
+    const porPessoa = new Map<string, RecebidoAntes[]>();
+
+    // As linhas já vêm mais recentes primeiro, então o corte por pessoa é só
+    // parar de acrescentar depois do limite.
+    for (const linha of linhas) {
+      const chave = `${linha.winnerNameKey}|${linha.winnerRealmKey}`;
+      const lista = porPessoa.get(chave) ?? [];
+      if (lista.length >= RECEBIDOS_NO_PAINEL) continue;
+
+      const item = catalogo.get(linha.itemId);
+      lista.push({
+        awardedAt: linha.awardedAt.toISOString(),
+        // Do catálogo, nunca do que a fonte gravou: o `itemName` importado vem
+        // no idioma do cliente de quem era loot master (TIT-49).
+        itemName: item?.name ?? null,
+        icon: item?.icon ?? null,
+        equipLoc: item?.equipLoc ?? null,
+        difficulty: linha.difficulty,
+        responseOptionSlug: linha.responseOptionSlug,
+      });
+
+      porPessoa.set(chave, lista);
+    }
+
+    return porPessoa;
   }
 
   /**
