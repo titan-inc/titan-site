@@ -7,6 +7,7 @@ import {
 import {
   LOOT_RESPONSES,
   podeVotar,
+  respostasVisiveis,
   toCharacterKey,
   toRealmMatchKey,
   type AlterarResposta,
@@ -130,6 +131,11 @@ export class LootCouncilService {
       if (voto.voterUserId === atorUserId) meus.add(chave);
     }
 
+    // Na fase de roll o conselho vê QUEM respondeu, e mais nada — conselheiro
+    // também é candidato, e escolha alheia na hora de declarar muda o que ele
+    // declara, igual a qualquer um. Ver TIT-131.
+    const aberto = respostasVisiveis(sessao.status);
+
     const porItem = new Map<string, Candidato[]>();
 
     for (const r of linhas) {
@@ -141,8 +147,9 @@ export class LootCouncilService {
         realm: r.realm,
         nameKey: r.nameKey,
         realmKey: r.realmKey,
-        responseOptionSlug: r.responseOptionSlug,
-        roll: r.roll,
+        respondeu: r.responseOptionSlug !== null,
+        responseOptionSlug: aberto ? r.responseOptionSlug : null,
+        roll: aberto ? r.roll : null,
         aguardandoNovaResposta: r.aguardandoNovaResposta,
         votos: contagem.get(chave) ?? 0,
         meuVoto: meus.has(chave),
@@ -365,6 +372,7 @@ export class LootCouncilService {
         // responde "o que foi esta entrega". Sem voto: não houve votação, e
         // zero aqui é resultado, não lacuna.
         responseOptionSlug: dados.responseOptionSlug,
+        respondeu: false,
         roll: null,
         aguardandoNovaResposta: false,
         votos: 0,

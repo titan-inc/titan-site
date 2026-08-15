@@ -114,6 +114,29 @@ export const minhaRespostaSchema = z.object({
 });
 export type MinhaResposta = z.infer<typeof minhaRespostaSchema>;
 
+/**
+ * A resposta de OUTRA pessoa, como o membro passa a ver quando as respostas
+ * fecham.
+ *
+ * Só existe em `deliberando`. Na fase de roll a lista vem vazia, e cada um vê
+ * apenas o próprio `minhaResposta` — ver TIT-131.
+ *
+ * **Sem voto.** Contagem de voto e histórico de peças recebidas continuam só no
+ * painel, atrás do `OfficerGuard`: o membro passa a acompanhar o que a sala
+ * declarou, não como o conselho está decidindo.
+ */
+export const respostaNaSessaoSchema = z.object({
+  name: z.string(),
+  realm: z.string(),
+
+  /** `noop` é quem estava na sessão e não se manifestou. */
+  responseOptionSlug: z.string(),
+
+  /** Nulo em `noop`: quem não respondeu nunca rolou. */
+  roll: z.number().int().nullable(),
+});
+export type RespostaNaSessao = z.infer<typeof respostaNaSessaoSchema>;
+
 /** Uma peça da sessão, pronta para a tela. */
 export const lootSessionItemViewSchema = z.object({
   id: z.string(),
@@ -154,10 +177,23 @@ export const lootSessionItemViewSchema = z.object({
   /**
    * Quantas pessoas já responderam a esta peça.
    *
-   * Só a contagem, nunca quem nem o quê: dá ao jogador a noção de que a sala
-   * está andando sem entregar o conteúdo das respostas alheias.
+   * Na fase de roll é tudo que se sabe das outras pessoas: dá a noção de que a
+   * sala está andando sem entregar o conteúdo do que elas declararam.
    */
   totalDeRespostas: z.number().int().nonnegative(),
+
+  /**
+   * O que TODO MUNDO declarou. **Vazio até as respostas fecharem.**
+   *
+   * Em `deliberando` a informação já está tomada — ninguém responde mais, só
+   * quem for reaberto —, então mostrar não muda mais declaração nenhuma, e a
+   * raid inteira acompanha em vez de esperar o resultado (Regra 7).
+   *
+   * Na fase de roll vem vazio, e quem garante isso é a API: uma tela que
+   * escondesse o que o payload carrega seria enfeite, com o conteúdo a um F12
+   * de distância de qualquer pessoa da raid. Ver TIT-131.
+   */
+  respostas: z.array(respostaNaSessaoSchema),
 });
 export type LootSessionItemView = z.infer<typeof lootSessionItemViewSchema>;
 

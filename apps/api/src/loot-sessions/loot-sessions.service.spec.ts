@@ -144,6 +144,18 @@ describe('LootSessionsService', () => {
       [string]
     >(() => Promise.resolve([])),
     registrarSilencio: jest.fn<Promise<number>, [string, Ator]>(() => Promise.resolve(0)),
+    findTodasAsRespostas: jest.fn<
+      Promise<
+        Array<{
+          itemId: string;
+          name: string;
+          realm: string;
+          responseOptionSlug: string;
+          roll: number | null;
+        }>
+      >,
+      [string]
+    >(() => Promise.resolve([])),
     contarRespostas: jest.fn<Promise<Map<string, number>>, [string]>(() =>
       Promise.resolve(new Map()),
     ),
@@ -175,6 +187,7 @@ describe('LootSessionsService', () => {
     repo.findAwards.mockResolvedValue([]);
     repo.findParticipantes.mockResolvedValue([]);
     repo.registrarSilencio.mockResolvedValue(0);
+    repo.findTodasAsRespostas.mockResolvedValue([]);
 
     service = new LootSessionsService(repo as unknown as LootSessionsRepository);
   });
@@ -672,6 +685,56 @@ describe('LootSessionsService', () => {
       expect(d.items[0]?.totalDeRespostas).toBe(12);
       expect(d.items[0]?.minhaResposta).toBeNull();
       expect(JSON.stringify(d)).not.toContain('roll');
+    });
+
+    it('na fase de roll, a resposta alheia NÃO sai da API', async () => {
+      // Não é a tela que esconde: o payload não carrega. Uma tela que filtrasse
+      // deixaria o conteúdo a um F12 de distância de qualquer pessoa da raid.
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.items[0]?.respostas).toEqual([]);
+      expect(repo.findTodasAsRespostas).not.toHaveBeenCalled();
+    });
+
+    it('quando as respostas fecham, todo mundo vê tudo', async () => {
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+      repo.findTodasAsRespostas.mockResolvedValue([
+        { itemId: 'item-1', name: 'Fulano', realm: 'azralon', responseOptionSlug: 'bis', roll: 63 },
+        {
+          itemId: 'item-1',
+          name: 'Ciclano',
+          realm: 'area-52',
+          responseOptionSlug: 'noop',
+          roll: null,
+        },
+      ]);
+
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.items[0]?.respostas).toEqual([
+        { name: 'Fulano', realm: 'azralon', responseOptionSlug: 'bis', roll: 63 },
+        { name: 'Ciclano', realm: 'area-52', responseOptionSlug: 'noop', roll: null },
+      ]);
+    });
+
+    it('a sessão encerrada continua aberta para leitura', async () => {
+      // Ela vira histórico, e histórico de loot é aberto — Regra 7.
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'encerrada' }));
+      repo.findTodasAsRespostas.mockResolvedValue([
+        { itemId: 'item-1', name: 'Fulano', realm: 'azralon', responseOptionSlug: 'bis', roll: 63 },
+      ]);
+
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.items[0]?.respostas).toHaveLength(1);
+    });
+
+    it('em rascunho também não sai nada', async () => {
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.items[0]?.respostas).toEqual([]);
     });
 
     it('procura a resposta pelo personagem da PARTICIPAÇÃO, uma vez só', async () => {

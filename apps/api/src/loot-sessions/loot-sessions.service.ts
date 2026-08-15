@@ -5,6 +5,7 @@ import {
   parseSessionPaste,
   podeEditarItens,
   respostaLivre,
+  respostasVisiveis,
   sessaoAceitaResposta,
   podeTransicionar,
   ROLL_MAXIMO,
@@ -14,6 +15,7 @@ import {
   type AddLootSessionItem,
   type EntrarNaSessao,
   type Participante,
+  type RespostaNaSessao,
   type RespondToLootItem,
   type CreateLootSessionResult,
   type LootSessionDetail,
@@ -125,8 +127,39 @@ export class LootSessionsService {
 
     const minha = participantes.find((p) => p.userId === ator.userId) ?? null;
     const minhas = await this.buscarMinhasRespostas(id, minha);
+    const todas = await this.buscarRespostasVisiveis(sessao.status, id);
 
-    return montarDetalhe(sessao, catalogo, minhas, totais, participantes, minha);
+    return montarDetalhe(sessao, catalogo, minhas, totais, participantes, minha, todas);
+  }
+
+  /**
+   * As respostas de todo mundo — **e só depois que a fase de roll fecha**.
+   *
+   * A consulta é feita ou não conforme a fase; o serviço não devolve a lista
+   * para a tela filtrar. Regra 5: o teste não é "a tela esconde?", é "a API
+   * devolve?", e um payload com as respostas alheias estaria a um F12 de
+   * distância de qualquer pessoa da raid.
+   */
+  private async buscarRespostasVisiveis(
+    status: LootSessionStatus,
+    sessionId: string,
+  ): Promise<Map<string, RespostaNaSessao[]>> {
+    if (!respostasVisiveis(status)) return new Map();
+
+    const porItem = new Map<string, RespostaNaSessao[]>();
+
+    for (const r of await this.repo.findTodasAsRespostas(sessionId)) {
+      const lista = porItem.get(r.itemId) ?? [];
+      lista.push({
+        name: r.name,
+        realm: r.realm,
+        responseOptionSlug: r.responseOptionSlug,
+        roll: r.roll,
+      });
+      porItem.set(r.itemId, lista);
+    }
+
+    return porItem;
   }
 
   /**
@@ -551,6 +584,7 @@ function montarDetalhe(
   totais: Map<string, number>,
   participantes: ParticipanteDoBanco[],
   minha: ParticipanteDoBanco | null,
+  todas: Map<string, RespostaNaSessao[]>,
 ): LootSessionDetail {
   return {
     participantes: participantes.map(paraView),
@@ -567,7 +601,13 @@ function montarDetalhe(
     createdAt: sessao.createdAt.toISOString(),
     openedAt: sessao.openedAt?.toISOString() ?? null,
     items: sessao.items.map((item) =>
-      montarItem(item, catalogo, minhas.get(item.id) ?? null, totais.get(item.id) ?? 0),
+      montarItem(
+        item,
+        catalogo,
+        minhas.get(item.id) ?? null,
+        totais.get(item.id) ?? 0,
+        todas.get(item.id) ?? [],
+      ),
     ),
   };
 }
@@ -589,6 +629,7 @@ function montarItem(
   catalogo: Map<number, { name: string | null; icon: string | null; equipLoc: string | null }>,
   minha: RespostaDoBanco | null,
   totalDeRespostas: number,
+  respostas: RespostaNaSessao[],
 ): LootSessionItemView {
   const doCatalogo = catalogo.get(item.itemId);
 
@@ -609,7 +650,8 @@ function montarItem(
     looterName: item.looterName === '' ? null : item.looterName,
     looterRealm: item.looterRealm === '' ? null : item.looterRealm,
 
-    // Só a própria. A resposta alheia não sai daqui enquanto a sessão corre.
+    // A própria, sempre. A alheia só entra em `respostas`, e só depois que a
+    // fase de roll fecha.
     minhaResposta:
       minha === null
         ? null
@@ -620,5 +662,8 @@ function montarItem(
             characterName: minha.name,
           },
     totalDeRespostas,
+
+    // Vazio até as respostas fecharem — quem decide isso é a fase, no serviço.
+    respostas,
   };
 }

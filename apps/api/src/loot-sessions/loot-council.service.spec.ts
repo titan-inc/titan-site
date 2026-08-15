@@ -205,6 +205,51 @@ describe('LootCouncilService', () => {
     });
   });
 
+  describe('o conselho na fase de roll', () => {
+    /** O painel de uma sessão que ainda está recebendo resposta. */
+    const naFaseDeRoll = () => repo.findById.mockResolvedValue(sessao({ status: 'aberta' }));
+
+    it('vê QUEM respondeu, e não O QUE', async () => {
+      // Conselheiro também é candidato: ver escolha alheia na hora de declarar
+      // muda o que ele declara, igual a qualquer um.
+      naFaseDeRoll();
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos[0]).toMatchObject({
+        name: 'Fulano',
+        respondeu: true,
+        responseOptionSlug: null,
+        roll: null,
+      });
+    });
+
+    it('quem não respondeu se distingue de quem respondeu escondido', async () => {
+      // É para isto que `respondeu` existe: com os dois nulos, "escondido" e
+      // "não respondeu" seriam a mesma linha.
+      naFaseDeRoll();
+      repo.findParticipantes.mockResolvedValue([
+        { nameKey: 'calado', realmKey: 'azralon', name: 'Calado', realm: 'Azralon' },
+      ]);
+
+      const p = await service.painel('sess-1', ATOR);
+      const porNome = new Map(p.itens[0]?.candidatos.map((c) => [c.name, c.respondeu]));
+
+      expect(porNome.get('Fulano')).toBe(true);
+      expect(porNome.get('Calado')).toBe(false);
+    });
+
+    it('quando as respostas fecham, o painel volta a mostrar tudo', async () => {
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos[0]).toMatchObject({
+        respondeu: true,
+        responseOptionSlug: 'bis',
+        roll: 40,
+      });
+    });
+  });
+
   describe('quem está na sessão e não respondeu', () => {
     const participante = (over: Record<string, unknown> = {}) => ({
       nameKey: 'calado',
