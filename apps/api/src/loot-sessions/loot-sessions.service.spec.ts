@@ -414,8 +414,82 @@ describe('LootSessionsService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('em deliberando ainda dá — é lá que o conselho reabre para alguém', async () => {
-      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+    describe('em deliberando, só responde quem o conselho reabriu', () => {
+      const respostaDoItem = (aguardando: boolean) => [
+        {
+          itemId: 'item-1',
+          responseOptionSlug: 'bis',
+          roll: 73,
+          aguardandoNovaResposta: aguardando,
+          name: 'Ciclano',
+        },
+      ];
+
+      it('com reabertura, responde', async () => {
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(true));
+
+        await service.responder(
+          'sess-1',
+          'item-1',
+          { responseOptionSlug: 'upgrade' },
+          ATOR,
+          PERSONAGENS,
+        );
+
+        expect(repo.responder).toHaveBeenCalled();
+      });
+
+      it('sem reabertura, é recusado', async () => {
+        // O conselho já está votando em cima da resposta declarada. Deixar mudar
+        // embaixo faria o voto ser sobre uma coisa e a decisão sobre outra.
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(false));
+
+        await expect(
+          service.responder(
+            'sess-1',
+            'item-1',
+            { responseOptionSlug: 'upgrade' },
+            ATOR,
+            PERSONAGENS,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(repo.responder).not.toHaveBeenCalled();
+      });
+
+      it('quem nunca respondeu também é barrado', async () => {
+        // Trazer essa pessoa de volta é ação do conselho, não dela. O mecanismo
+        // é a TIT-66, que precisa saber reabrir para quem não tem resposta.
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue([]);
+
+        await expect(
+          service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('a reabertura vale para o item reaberto, não para os outros', async () => {
+        // Reabrir uma peça não pode virar passe livre na sessão inteira.
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(true));
+        repo.itemPertence.mockResolvedValue(true);
+
+        await expect(
+          service.responder(
+            'sess-1',
+            'outro-item',
+            { responseOptionSlug: 'bis' },
+            ATOR,
+            PERSONAGENS,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+    });
+
+    it('em aberta a resposta é livre, sem precisar de reabertura', async () => {
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+      repo.findRespostasDoPersonagem.mockResolvedValue([]);
 
       await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
 

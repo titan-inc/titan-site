@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   LOOT_SESSION_STATUS,
   podeEditarItens,
-  podeResponder,
+  respostaLivre,
+  sessaoAceitaResposta,
   podeTransicionar,
   podeVotar,
   proximosEstados,
@@ -67,7 +68,7 @@ describe('o que cada estado permite', () => {
 
   it.each(permissoes)('%s', (estado, itens, responder, votar) => {
     expect(podeEditarItens(estado)).toBe(itens);
-    expect(podeResponder(estado)).toBe(responder);
+    expect(sessaoAceitaResposta(estado)).toBe(responder);
     expect(podeVotar(estado)).toBe(votar);
   });
 
@@ -78,11 +79,35 @@ describe('o que cada estado permite', () => {
     expect(podeEditarItens('aberta')).toBe(false);
   });
 
-  it('responder continua valendo em deliberando, votar não vale em aberta', () => {
-    // Responder segue valendo porque é lá que o conselho reabre para alguém.
-    // Votar antes de fechar as respostas seria votar com informação incompleta.
-    expect(podeResponder('deliberando')).toBe(true);
+  it('votar não vale antes de as respostas fecharem', () => {
+    // Seria votar com informação incompleta.
     expect(podeVotar('aberta')).toBe(false);
+  });
+
+  describe('aceitar resposta e a resposta ser LIVRE são coisas diferentes', () => {
+    it('em deliberando a sessão ainda aceita, mas a resposta não é livre', () => {
+      // A sessão aceita porque é lá que o conselho reabre para alguém. QUEM pode
+      // responder naquele momento depende do estado da resposta no banco, e essa
+      // parte vive no serviço.
+      //
+      // A primeira versão tinha só a primeira função, o comentário prometia o
+      // gate por pessoa, e o serviço não checava nada: qualquer um seguia
+      // trocando a resposta durante a deliberação, sem erro nenhum.
+      expect(sessaoAceitaResposta('deliberando')).toBe(true);
+      expect(respostaLivre('deliberando')).toBe(false);
+    });
+
+    it('em aberta as duas valem — é a fase do roll', () => {
+      expect(sessaoAceitaResposta('aberta')).toBe(true);
+      expect(respostaLivre('aberta')).toBe(true);
+    });
+
+    it('fora dessas duas, nada', () => {
+      for (const estado of ['rascunho', 'encerrada'] as const) {
+        expect(sessaoAceitaResposta(estado)).toBe(false);
+        expect(respostaLivre(estado)).toBe(false);
+      }
+    });
   });
 });
 

@@ -4,7 +4,8 @@ import {
   parseItemString,
   parseSessionPaste,
   podeEditarItens,
-  podeResponder,
+  respostaLivre,
+  sessaoAceitaResposta,
   podeTransicionar,
   ROLL_MAXIMO,
   ROLL_MINIMO,
@@ -249,7 +250,7 @@ export class LootSessionsService {
   ): Promise<LootSessionDetail> {
     const sessao = await this.exigirSessao(sessionId);
 
-    if (!podeResponder(sessao.status)) {
+    if (!sessaoAceitaResposta(sessao.status)) {
       throw new BadRequestException(
         `A sessão está em "${sessao.status}" e não aceita resposta agora`,
       );
@@ -266,6 +267,7 @@ export class LootSessionsService {
     }
 
     const personagem = this.escolherPersonagem(dados, personagens);
+    await this.exigirQuePossaResponderAgora(sessao.status, sessionId, itemId, personagem);
 
     await this.repo.responder({
       sessionId,
@@ -277,6 +279,40 @@ export class LootSessionsService {
     });
 
     return this.detalhe(sessionId, personagens);
+  }
+
+  /**
+   * Em `deliberando`, só responde quem o conselho reabriu.
+   *
+   * Em `aberta` a resposta é livre — é a fase do roll, e trocar quantas vezes
+   * quiser não muda o número. Quando a deliberação começa, a resposta é o que
+   * foi declarado: o conselho já está votando em cima dela, e deixar mudar
+   * embaixo faria o voto ser sobre uma coisa e a decisão sobre outra.
+   *
+   * Quem nunca respondeu também é barrado aqui. Trazer essa pessoa de volta é
+   * ação do conselho, não dela — e o mecanismo é a TIT-66, que precisa saber
+   * criar a reabertura para quem não tem resposta nenhuma ainda.
+   */
+  private async exigirQuePossaResponderAgora(
+    status: LootSessionStatus,
+    sessionId: string,
+    itemId: string,
+    personagem: { nameKey: string; realmKey: string },
+  ): Promise<void> {
+    if (respostaLivre(status)) return;
+
+    const minhas = await this.repo.findRespostasDoPersonagem(
+      sessionId,
+      personagem.nameKey,
+      personagem.realmKey,
+    );
+    const desteItem = minhas.find((r) => r.itemId === itemId);
+
+    if (!desteItem?.aguardandoNovaResposta) {
+      throw new BadRequestException(
+        'As respostas fecharam. Só dá para responder de novo se o conselho pedir.',
+      );
+    }
   }
 
   /**
