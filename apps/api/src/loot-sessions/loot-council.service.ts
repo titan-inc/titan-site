@@ -1,9 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   podeVotar,
   toCharacterKey,
   toRealmMatchKey,
   type AlterarResposta,
+  type AwardEmMassaResultado,
+  type Awardar,
+  type AwardPorMaioria,
   type Candidato,
   type LootCouncilPanel,
   type ReabrirResposta,
@@ -51,6 +59,48 @@ export class LootCouncilService {
   async painel(sessionId: string, ator: Ator): Promise<LootCouncilPanel> {
     const sessao = await this.exigirSessao(sessionId);
 
+    const porItem = await this.painelBase(sessionId, ator.userId);
+    const awards = new Map((await this.repo.findAwards(sessionId)).map((a) => [a.itemId, a]));
+
+    return {
+      sessionId: sessao.id,
+      lootMasterBattletag: sessao.createdByBattletag,
+      // Todos os itens, inclusive os sem candidato: peça que ninguém quis é
+      // informação, e sumir com ela faria o conselho achar que a lista encolheu.
+      itens: sessao.items.map((item) => {
+        const award = awards.get(item.id);
+
+        return {
+          itemId: item.id,
+          candidatos: porItem.get(item.id) ?? [],
+          award: award
+            ? {
+                winnerName: award.winnerName,
+                winnerRealm: award.winnerRealm,
+                responseOptionSlug: award.responseOptionSlug,
+                votes: award.votes,
+                awardedByBattletag: award.awardedByBattletag,
+                awardedAt: award.awardedAt.toISOString(),
+              }
+            : null,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Os candidatos de cada peça, já ordenados.
+   *
+   * Extraído porque o award por maioria precisa exatamente da mesma visão que a
+   * tela mostra. Se ele recalculasse por conta própria, o conselho poderia ver
+   * uma ordem e o botão entregar para outra pessoa — e ninguém receberia erro.
+   *
+   * `atorUserId` só existe para marcar `meuVoto`; o award não precisa dele.
+   */
+  private async painelBase(
+    sessionId: string,
+    atorUserId?: string,
+  ): Promise<Map<string, Candidato[]>> {
     const [respostas, votos] = await Promise.all([
       this.repo.findTodasAsRespostas(sessionId),
       this.repo.findVotos(sessionId),
@@ -64,7 +114,7 @@ export class LootCouncilService {
     for (const voto of votos) {
       const chave = `${voto.itemId}|${voto.candidateNameKey}|${voto.candidateRealmKey}`;
       contagem.set(chave, (contagem.get(chave) ?? 0) + 1);
-      if (voto.voterUserId === ator.userId) meus.add(chave);
+      if (voto.voterUserId === atorUserId) meus.add(chave);
     }
 
     const porItem = new Map<string, Candidato[]>();
@@ -89,16 +139,8 @@ export class LootCouncilService {
       porItem.set(r.itemId, lista);
     }
 
-    return {
-      sessionId: sessao.id,
-      lootMasterBattletag: sessao.createdByBattletag,
-      // Todos os itens, inclusive os sem candidato: peça que ninguém quis é
-      // informação, e sumir com ela faria o conselho achar que a lista encolheu.
-      itens: sessao.items.map((item) => ({
-        itemId: item.id,
-        candidatos: ordenar(porItem.get(item.id) ?? []),
-      })),
-    };
+    for (const [itemId, lista] of porItem) porItem.set(itemId, ordenar(lista));
+    return porItem;
   }
 
   /**
@@ -249,6 +291,115 @@ export class LootCouncilService {
     }
   }
 
+  /**
+   * O conselho entrega a peça a uma pessoa específica.
+   *
+   * Só a quem se candidatou: entregar a quem não pediu inverteria o que a sessão
+   * registra. Se a pessoa deveria estar na disputa e não está, o caminho é
+   * reabrir a resposta dela.
+   */
+  async awardar(sessionId: string, itemId: string, dados: Awardar, ator: Ator): Promise<void> {
+    const sessao = await this.exigirSessao(sessionId);
+    this.exigirDeliberando(sessao.status);
+
+    const alvo = await this.exigirCandidato(sessionId, itemId, dados);
+    const candidatos = await this.candidatosDoItem(sessionId, itemId);
+    const escolhido = candidatos.find(
+      (c) => c.nameKey === alvo.nameKey && c.realmKey === alvo.realmKey,
+    );
+    if (!escolhido) throw new BadRequestException(`${dados.characterName} não está na disputa`);
+
+    await this.gravarAward(sessionId, itemId, escolhido, ator);
+  }
+
+  /**
+   * Entrega por maioria: a peça vai para quem tem mais votos.
+   *
+   * Com `itemId`, uma peça; sem, todas as que ainda não foram entregues. É a
+   * mesma regra aplicada a um ou a todos — duas implementações duplicariam o
+   * desempate, que é a parte delicada.
+   */
+  async awardarPorMaioria(
+    sessionId: string,
+    dados: AwardPorMaioria,
+    ator: Ator,
+  ): Promise<AwardEmMassaResultado> {
+    const sessao = await this.exigirSessao(sessionId);
+    this.exigirDeliberando(sessao.status);
+
+    const alvos = dados.itemId ? [dados.itemId] : sessao.items.map((i) => i.id);
+    if (dados.itemId) await this.exigirItem(sessionId, dados.itemId);
+
+    const jaEntregues = new Set((await this.repo.findAwards(sessionId)).map((a) => a.itemId));
+
+    // Uma leitura só para a sessão inteira: entregar uma peça não muda resposta
+    // nem voto de outra, então recalcular por item seriam quatro consultas
+    // vezes o número de peças, para chegar sempre no mesmo lugar.
+    const porItem = await this.painelBase(sessionId);
+
+    const pulados: AwardEmMassaResultado['pulados'] = [];
+    let entregues = 0;
+
+    for (const alvo of alvos) {
+      if (jaEntregues.has(alvo)) {
+        pulados.push({ itemId: alvo, motivo: 'já entregue' });
+        continue;
+      }
+
+      const vencedor = escolherPorMaioria(porItem.get(alvo) ?? []);
+
+      if (typeof vencedor === 'string') {
+        pulados.push({ itemId: alvo, motivo: vencedor });
+        continue;
+      }
+
+      await this.gravarAward(sessionId, alvo, vencedor, ator);
+      entregues += 1;
+    }
+
+    return { entregues, pulados };
+  }
+
+  private async gravarAward(
+    sessionId: string,
+    itemId: string,
+    vencedor: Candidato,
+    ator: Ator,
+  ): Promise<void> {
+    const gravou = await this.repo.awardar({
+      sessionId,
+      itemId,
+      vencedor: {
+        nameKey: vencedor.nameKey,
+        realmKey: vencedor.realmKey,
+        name: vencedor.name,
+        realm: vencedor.realm,
+      },
+      // Congelados: depois do award a resposta ainda pode ser corrigida, e o
+      // histórico guarda o que valia quando a decisão foi tomada.
+      responseOptionSlug: vencedor.responseOptionSlug,
+      votes: vencedor.votos,
+      ator,
+    });
+
+    if (!gravou) {
+      throw new ConflictException('Esta peça já foi entregue por outro conselheiro');
+    }
+  }
+
+  /** Os candidatos de uma peça, com voto e roll — a mesma visão do painel. */
+  private async candidatosDoItem(sessionId: string, itemId: string): Promise<Candidato[]> {
+    return (await this.painelBase(sessionId)).get(itemId) ?? [];
+  }
+
+  private exigirDeliberando(status: SessionRow['status']): void {
+    if (!podeVotar(status)) {
+      throw new BadRequestException(
+        `A sessão está em "${status}"; o conselho entrega em "deliberando"`,
+      );
+    }
+  }
+
   private async exigirSessao(sessionId: string): Promise<SessionRow> {
     const sessao = await this.repo.findById(sessionId);
     if (!sessao) throw new NotFoundException(`Sessão "${sessionId}" não existe`);
@@ -295,11 +446,49 @@ function normalizar(name: string, realm: string): Alvo {
 }
 
 /**
+ * Quem leva a peça pela contagem de votos, ou o motivo de não dar.
+ *
+ * **Não existe decisão automática.** Uma peça só ganha dono de dois jeitos: o
+ * loot master aponta a pessoa à mão, ou a contagem de votos aponta — e a
+ * contagem também é decisão do conselho, porque foram conselheiros que votaram.
+ * Tudo que não cair num desses dois casos volta como motivo, e a peça espera.
+ *
+ * **O roll não decide nada.** Ele é auxílio visual, do mesmo tipo que o
+ * histórico de peças recebidas: está na tela para o conselho olhar e escolher.
+ * Usá-lo para desempatar seria o sistema decidindo a reputação de alguém por
+ * critério que a tela apresenta como informação, não como regra — o que a Regra
+ * 7 diz que faz a liderança parar de confiar na ferramenta.
+ *
+ * Por isso **sem voto não sai peça**, nem quando há um candidato só: votar é o
+ * trabalho do conselho, e peça sem decisão segura o encerramento da sessão em
+ * vez de se resolver sozinha.
+ */
+function escolherPorMaioria(candidatos: Candidato[]): Candidato | string {
+  const [primeiro, segundo] = ordenar(candidatos);
+
+  if (!primeiro) return 'ninguém se candidatou';
+  if (primeiro.votos === 0) return 'o conselho ainda não votou nesta peça — escolha à mão';
+
+  if (segundo && segundo.votos === primeiro.votos) {
+    return `empate de votos entre ${primeiro.name} e ${segundo.name} — escolha à mão`;
+  }
+
+  // O conselho pediu outra resposta a quem está na frente, e ela ainda não veio.
+  // Entregar agora congelaria no histórico justamente a resposta de que o
+  // conselho duvidou. Item a item continua liberado: ali a escolha é explícita.
+  if (primeiro.aguardandoNovaResposta) {
+    return `${primeiro.name} está com a resposta reaberta — escolha à mão ou espere a resposta`;
+  }
+
+  return primeiro;
+}
+
+/**
  * Mais votos primeiro, depois maior roll.
  *
- * É **sugestão de leitura, nunca decisão**: quem escolhe é o conselho. Sistema
- * que decide sozinho a reputação de alguém erra em público, e a liderança para
- * de confiar nele — Regra 7.
+ * É **ordem de leitura, nunca decisão** — e o roll entra aqui exatamente por
+ * isso: ele existe para o conselho olhar, não para desempatar. Ver
+ * `escolherPorMaioria()`, que não o consulta.
  */
 function ordenar(candidatos: Candidato[]): Candidato[] {
   return [...candidatos].sort((a, b) => b.votos - a.votos || b.roll - a.roll);

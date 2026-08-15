@@ -115,6 +115,7 @@ describe('LootSessionsService', () => {
       >,
       [string, string, string]
     >(() => Promise.resolve([])),
+    findAwards: jest.fn<Promise<Array<{ itemId: string }>>, [string]>(() => Promise.resolve([])),
     contarRespostas: jest.fn<Promise<Map<string, number>>, [string]>(() =>
       Promise.resolve(new Map()),
     ),
@@ -143,6 +144,7 @@ describe('LootSessionsService', () => {
     repo.contarRespostas.mockResolvedValue(new Map());
     repo.findEncounterByDungeonId.mockResolvedValue({ id: 'enc-kazzara' });
     repo.itemPertence.mockResolvedValue(true);
+    repo.findAwards.mockResolvedValue([]);
 
     service = new LootSessionsService(repo as unknown as LootSessionsRepository);
   });
@@ -557,6 +559,12 @@ describe('LootSessionsService', () => {
   });
 
   describe('transições', () => {
+    /** Uma sessão em deliberação com duas peças, para o encerramento. */
+    const comDuasPecas = (): SessionRow => {
+      const base = sessaoDoBanco({ status: 'deliberando' });
+      return { ...base, items: [...base.items, { ...base.items[0]!, id: 'item-2', position: 2 }] };
+    };
+
     it('rascunho abre', async () => {
       await service.trocarStatus('sess-1', 'aberta', ATOR);
 
@@ -576,6 +584,33 @@ describe('LootSessionsService', () => {
 
       await expect(service.trocarStatus('sess-1', 'aberta', ATOR)).rejects.toBeInstanceOf(
         BadRequestException,
+      );
+    });
+
+    it('não encerra com peça sem dono, e diz quantas faltam', async () => {
+      // Encerrada não volta — dali sai histórico. Uma peça esquecida viraria
+      // buraco permanente, e ninguém receberia erro.
+      repo.findById.mockResolvedValue(comDuasPecas());
+      repo.findAwards.mockResolvedValue([{ itemId: 'item-1' }]);
+
+      await expect(service.trocarStatus('sess-1', 'encerrada', ATOR)).rejects.toThrow(
+        /1 de 2 peças/,
+      );
+      expect(repo.trocarStatus).not.toHaveBeenCalled();
+    });
+
+    it('com tudo entregue, encerra', async () => {
+      repo.findById.mockResolvedValue(comDuasPecas());
+      repo.findAwards.mockResolvedValue([{ itemId: 'item-1' }, { itemId: 'item-2' }]);
+
+      await service.trocarStatus('sess-1', 'encerrada', ATOR);
+
+      expect(repo.trocarStatus).toHaveBeenCalledWith(
+        'sess-1',
+        'deliberando',
+        'encerrada',
+        ATOR,
+        expect.any(Boolean),
       );
     });
 

@@ -3,6 +3,8 @@ import {
   addLootSessionItemSchema,
   changeLootSessionStatusSchema,
   alterarRespostaSchema,
+  awardarSchema,
+  awardPorMaioriaSchema,
   createLootSessionSchema,
   reabrirRespostaSchema,
   respondToLootItemSchema,
@@ -12,6 +14,9 @@ import {
   type ChangeLootSessionStatus,
   type CreateLootSession,
   type AlterarResposta,
+  type Awardar,
+  type AwardEmMassaResultado,
+  type AwardPorMaioria,
   type CreateLootSessionResult,
   type LootCouncilPanel,
   type ReabrirResposta,
@@ -161,6 +166,37 @@ export class LootSessionsController {
   ): Promise<LootCouncilPanel> {
     await this.council.alterarResposta(id, itemId, body, ator(req));
     return this.council.painel(id, ator(req));
+  }
+
+  /** O conselho entrega a peça a uma pessoa específica. */
+  @Post(':id/itens/:itemId/award')
+  @UseGuards(OfficerGuard)
+  async awardar(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(awardarSchema)) body: Awardar,
+    @Req() req: Request,
+  ): Promise<LootCouncilPanel> {
+    await this.council.awardar(id, itemId, body, ator(req));
+    return this.council.painel(id, ator(req));
+  }
+
+  /**
+   * Entrega por maioria: uma peça com `itemId`, ou todas as pendentes sem ele.
+   *
+   * Devolve o painel **e** o resultado: o que foi entregue e o que foi pulado,
+   * com o motivo. Entregar 3 de 7 sem dizer o que houve com as outras 4 faria o
+   * loot master descobrir na hora de encerrar.
+   */
+  @Post(':id/award-por-maioria')
+  @UseGuards(OfficerGuard)
+  async awardarPorMaioria(
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(awardPorMaioriaSchema)) body: AwardPorMaioria,
+    @Req() req: Request,
+  ): Promise<{ resultado: AwardEmMassaResultado; painel: LootCouncilPanel }> {
+    const resultado = await this.council.awardarPorMaioria(id, body, ator(req));
+    return { resultado, painel: await this.council.painel(id, ator(req)) };
   }
 
   /**

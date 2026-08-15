@@ -227,6 +227,7 @@ export class LootSessionsService {
     if (para === 'aberta' && sessao.items.length === 0) {
       throw new BadRequestException('Sessão sem item nenhum não tem o que anunciar');
     }
+    if (para === 'encerrada') await this.exigirTudoResolvido(sessao);
 
     await this.repo.trocarStatus(id, sessao.status, para, ator, sessao.openedAt === null);
     return this.detalhe(id, personagens);
@@ -394,6 +395,34 @@ export class LootSessionsService {
       looterName: item.looter?.name ?? '',
       looterRealm: item.looter?.realm ?? '',
     };
+  }
+
+  /**
+   * Encerrar exige TODO item resolvido.
+   *
+   * A TIT-62 define isso desde o modelo, e até aqui era só texto: o código
+   * deixava encerrar com peça sem dono. Encerrada não volta — dali sai
+   * histórico —, então uma peça esquecida viraria buraco permanente, e ninguém
+   * receberia erro.
+   *
+   * Peça que ninguém quis também precisa de dono: `pass` é resposta como
+   * qualquer outra, e o que vai para o banco tem `banking`. Não existe "item sem
+   * destino" no vocabulário.
+   *
+   * Segurar aqui é o outro lado de o sistema não decidir nada sozinho: como
+   * peça sem voto não sai por conta própria, é este erro que devolve a decisão
+   * ao conselho em vez de deixar a sessão fechar com buraco.
+   */
+  private async exigirTudoResolvido(sessao: SessionRow): Promise<void> {
+    const entregues = new Set((await this.repo.findAwards(sessao.id)).map((a) => a.itemId));
+    const pendentes = sessao.items.filter((item) => !entregues.has(item.id));
+
+    if (pendentes.length > 0) {
+      throw new BadRequestException(
+        `${pendentes.length} de ${sessao.items.length} peças ainda não foram entregues. ` +
+          'Encerrar é definitivo, e peça sem dono viraria buraco no histórico.',
+      );
+    }
   }
 
   private async exigirSessao(id: string): Promise<SessionRow> {

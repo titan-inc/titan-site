@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { LootSessionEventType, LootSessionStatus, RaidDifficultyLevel } from '@titan/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -439,6 +439,77 @@ export class LootSessionsRepository {
     ]);
 
     return true;
+  }
+
+  /** Os awards da sessão, para o painel mostrar o que já foi resolvido. */
+  findAwards(sessionId: string) {
+    return this.prisma.lootSessionAward.findMany({
+      where: { item: { sessionId } },
+      select: {
+        itemId: true,
+        winnerName: true,
+        winnerRealm: true,
+        responseOptionSlug: true,
+        votes: true,
+        awardedByBattletag: true,
+        awardedAt: true,
+      },
+    });
+  }
+
+  /**
+   * Entrega a peça.
+   *
+   * `create`, e não `upsert`: o `@@unique` em `itemId` é a trava de
+   * concorrência, e dois conselheiros entregando ao mesmo tempo têm que dar
+   * conflito, não sobrescrita silenciosa. Devolve `false` no conflito.
+   *
+   * A resposta e a contagem de votos entram CONGELADAS: depois do award a
+   * resposta ainda pode ser corrigida, e o histórico precisa guardar o que valia
+   * quando a decisão foi tomada.
+   */
+  async awardar(dados: {
+    sessionId: string;
+    itemId: string;
+    vencedor: { nameKey: string; realmKey: string; name: string; realm: string };
+    responseOptionSlug: string;
+    votes: number;
+    ator: Ator;
+  }): Promise<boolean> {
+    const { sessionId, itemId, vencedor, responseOptionSlug, votes, ator } = dados;
+
+    try {
+      await this.prisma.$transaction([
+        this.prisma.lootSessionAward.create({
+          data: {
+            itemId,
+            winnerNameKey: vencedor.nameKey,
+            winnerRealmKey: vencedor.realmKey,
+            winnerName: vencedor.name,
+            winnerRealm: vencedor.realm,
+            responseOptionSlug,
+            votes,
+            awardedByUserId: ator.userId,
+            awardedByBattletag: ator.battletag,
+          },
+        }),
+        this.registrarEvento(sessionId, 'item_awardado', ator, {
+          itemId,
+          vencedor: `${vencedor.name}-${vencedor.realm}`,
+          responseOptionSlug,
+          votes,
+        }),
+      ]);
+
+      return true;
+    } catch (erro: unknown) {
+      // P2002 é o unique do item: alguém entregou primeiro. Qualquer outro erro
+      // não é conflito e não pode virar "false" silencioso.
+      if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === 'P2002') {
+        return false;
+      }
+      throw erro;
+    }
   }
 
   /** A peça é mesmo desta sessão? Evita responder item de outra. */
