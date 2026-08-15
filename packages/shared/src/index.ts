@@ -10,6 +10,7 @@ export * from './loot-history.js';
 export * from './loot-line.js';
 export * from './loot-response.js';
 export * from './loot-session.js';
+export * from './loot-session-dto.js';
 export * from './membership.js';
 export * from './officers.js';
 export * from './progress.js';

@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
 import { LootCatalogModule } from './loot-catalog/loot-catalog.module';
 import { LootLinesModule } from './loot-lines/loot-lines.module';
+import { LootSessionsModule } from './loot-sessions/loot-sessions.module';
 import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
@@ -40,6 +41,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     // e depender de ele entrar no grafo de carona faria a rota sumir no dia em
     // que alguém removesse o import lá.
     LootLinesModule,
+    LootSessionsModule,
     HealthModule,
     ApplicationsModule,
     OpsModule,
