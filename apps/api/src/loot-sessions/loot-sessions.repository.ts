@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { LootSessionEventType, LootSessionStatus, RaidDifficultyLevel } from '@titan/shared';
+import {
+  LOOT_RESPONSES,
+  type LootSessionEventType,
+  type LootSessionStatus,
+  type RaidDifficultyLevel,
+} from '@titan/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Uma peça a gravar, já normalizada. */
@@ -215,6 +220,111 @@ export class LootSessionsRepository {
         },
       });
     });
+  }
+
+  /**
+   * Entra na sessão, ou troca o personagem de quem já entrou.
+   *
+   * `upsert` na chave `(sessionId, userId)`: a participação é por PESSOA, e
+   * entrar de novo com outro char é correção, não uma segunda presença. Ninguém
+   * raida em dois ao mesmo tempo, e duas linhas fariam a mesma pessoa aparecer
+   * duas vezes na lista de cada peça.
+   */
+  async entrar(dados: {
+    sessionId: string;
+    personagem: { nameKey: string; realmKey: string; name: string; realm: string };
+    ator: Ator;
+  }): Promise<void> {
+    const { sessionId, personagem, ator } = dados;
+
+    await this.prisma.$transaction([
+      this.prisma.lootSessionParticipant.upsert({
+        where: { sessionId_userId: { sessionId, userId: ator.userId } },
+        create: { sessionId, userId: ator.userId, battletag: ator.battletag, ...personagem },
+        update: personagem,
+      }),
+      this.registrarEvento(sessionId, 'participante_entrou', ator, {
+        personagem: `${personagem.name}-${personagem.realm}`,
+      }),
+    ]);
+  }
+
+  /** Quem está na sessão. Ordenado por chegada, que é como a raid encheu. */
+  findParticipantes(sessionId: string) {
+    return this.prisma.lootSessionParticipant.findMany({
+      where: { sessionId },
+      orderBy: { joinedAt: 'asc' },
+      select: {
+        userId: true,
+        battletag: true,
+        nameKey: true,
+        realmKey: true,
+        name: true,
+        realm: true,
+        joinedAt: true,
+      },
+    });
+  }
+
+  /**
+   * Registra o silêncio de quem estava na sessão e não respondeu.
+   *
+   * Roda quando a fase de roll fecha. **Sem roll**: quem não respondeu nunca
+   * rolou, e zero apareceria ao lado de quem tirou 1 parecendo roll ruim.
+   *
+   * `skipDuplicates` em vez de conferir antes: a checagem e a inserção não são
+   * atômicas, e alguém respondendo no exato instante da transição criaria a
+   * linha entre uma e outra. O `UNIQUE` decide, e a resposta de verdade ganha.
+   *
+   * Materializa em vez de derivar na leitura porque a participação continua
+   * mudando depois: quem entra durante a deliberação não estava em silêncio na
+   * fase de roll, e daqui a um mês não haveria como saber quem estava.
+   */
+  async registrarSilencio(sessionId: string, ator: Ator): Promise<number> {
+    const [itens, participantes, respostas] = await Promise.all([
+      this.prisma.lootSessionItem.findMany({ where: { sessionId }, select: { id: true } }),
+      this.findParticipantes(sessionId),
+      this.prisma.lootSessionResponse.findMany({
+        where: { item: { sessionId } },
+        select: { itemId: true, nameKey: true, realmKey: true },
+      }),
+    ]);
+
+    const respondeu = new Set(respostas.map((r) => `${r.itemId}|${r.nameKey}|${r.realmKey}`));
+
+    const silencios = itens.flatMap((item) =>
+      participantes
+        .filter((p) => !respondeu.has(`${item.id}|${p.nameKey}|${p.realmKey}`))
+        .map((p) => ({
+          itemId: item.id,
+          nameKey: p.nameKey,
+          realmKey: p.realmKey,
+          name: p.name,
+          realm: p.realm,
+          userId: p.userId,
+          responseOptionSlug: LOOT_RESPONSES.NOOP,
+          roll: null,
+        })),
+    );
+
+    if (silencios.length === 0) return 0;
+
+    const { count } = await this.prisma.lootSessionResponse.createMany({
+      data: silencios,
+      skipDuplicates: true,
+    });
+
+    await this.prisma.lootSessionEvent.create({
+      data: {
+        sessionId,
+        type: 'silencio_registrado',
+        actorUserId: ator.userId,
+        actorBattletag: ator.battletag,
+        payload: { linhas: count },
+      },
+    });
+
+    return count;
   }
 
   /** As respostas de UM personagem nesta sessão. É o que o jogador pode ver. */

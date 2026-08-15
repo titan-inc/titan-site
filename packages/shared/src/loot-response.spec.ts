@@ -108,16 +108,24 @@ describe('matchLegacyResponse', () => {
 });
 
 describe('LOOT_RESPONSES', () => {
-  it('semeia os sete slugs, seis de jogador e um de loot master', () => {
+  it('semeia oito slugs: seis de jogador, um de loot master e um de sistema', () => {
     expect(Object.values(LOOT_RESPONSES).sort()).toEqual([
       'banking',
       'bis',
       'minor',
+      'noop',
       'offspec',
       'pass',
       'transmog',
       'upgrade',
     ]);
+  });
+
+  it('`noop` e `pass` são slugs diferentes, e é o ponto', () => {
+    // `pass` é declaração — a pessoa olhou a peça e abriu mão. `noop` é
+    // silêncio de quem estava na sessão. Colapsar os dois faria o histórico
+    // afirmar uma escolha que ninguém fez.
+    expect(LOOT_RESPONSES.NOOP).not.toBe(LOOT_RESPONSES.PASS);
   });
 
   it('o slug de resposta NÃO é enum fechado', () => {

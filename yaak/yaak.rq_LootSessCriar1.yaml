@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_LootSessCriar1
+createdAt: 2026-08-15T18:00:00.000000
+updatedAt: 2026-08-15T18:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_LootSessions1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"paste": "TILC/1..."}'
+bodyType: application/json
+description: 'OfficerGuard. O corpo vai com a colagem CRUA do addon (formato TILC/1, campos separados por TAB) — quem interpreta é a API, pela Regra 1. Quem cria é o loot master daquela sessão. Cole o texto no campo paste antes de enviar.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Criar sessão (colagem do addon)'
+sortPriority: 4000
+url: ${[ base_url ]}/internal/loot-sessions
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

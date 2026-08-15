@@ -38,7 +38,15 @@ export const recebidoAntesSchema = z.object({
 });
 export type RecebidoAntes = z.infer<typeof recebidoAntesSchema>;
 
-/** Um candidato a uma peça: o que declarou, o que tirou, e o que o conselho fez. */
+/**
+ * Uma pessoa na disputa de uma peça: o que declarou, o que tirou, e o que o
+ * conselho fez.
+ *
+ * **É todo participante da sessão, não só quem respondeu.** Silêncio de quem
+ * estava na raid é informação para quem decide, e esconder a linha faria a
+ * lista parecer menor do que a raid — quem decide precisa saber que perguntou a
+ * 25 pessoas e 6 não disseram nada.
+ */
 export const candidatoSchema = z.object({
   /** O par nome + realm, na grafia que a pessoa usa. */
   name: z.string(),
@@ -48,7 +56,15 @@ export const candidatoSchema = z.object({
   nameKey: z.string(),
   realmKey: z.string(),
 
-  responseOptionSlug: z.string(),
+  /**
+   * O que a pessoa declarou. **Nulo é quem ainda não se manifestou.**
+   *
+   * Nulo e `noop` dizem coisas diferentes no tempo: nulo é silêncio provisório,
+   * com a sessão aberta e a pessoa ainda podendo responder; `noop` é o silêncio
+   * já registrado, materializado quando a fase de roll fechou. Nenhum dos dois é
+   * `pass`, que é declaração — a pessoa olhou a peça e abriu mão.
+   */
+  responseOptionSlug: z.string().nullable(),
 
   /**
    * Imutável desde a primeira resposta — ver TIT-65.
@@ -56,8 +72,11 @@ export const candidatoSchema = z.object({
    * **Auxílio visual, nunca critério de decisão.** Está na tela para o conselho
    * olhar, do mesmo jeito que `recebidoAntes`. Nada no sistema entrega peça por
    * causa dele: quem decide é a mão do loot master ou a contagem de votos.
+   *
+   * Nulo é quem não rolou — quem não respondeu nunca rolou. Nunca zero: zero
+   * apareceria ao lado de quem tirou 1 parecendo roll ruim.
    */
-  roll: z.number().int(),
+  roll: z.number().int().nullable(),
 
   /** O conselho pediu para esta pessoa responder de novo, e ela ainda não. */
   aguardandoNovaResposta: z.boolean(),

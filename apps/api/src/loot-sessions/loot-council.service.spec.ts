@@ -90,6 +90,10 @@ describe('LootCouncilService', () => {
       [string]
     >(() => Promise.resolve([])),
     awardar: jest.fn<Promise<boolean>, [unknown]>(() => Promise.resolve(true)),
+    findParticipantes: jest.fn<
+      Promise<Array<{ nameKey: string; realmKey: string; name: string; realm: string }>>,
+      [string]
+    >(() => Promise.resolve([])),
     findItems: jest.fn<
       Promise<
         Array<{ itemId: number; name: string | null; icon: string | null; equipLoc: string | null }>
@@ -110,6 +114,7 @@ describe('LootCouncilService', () => {
     repo.findItems.mockResolvedValue([]);
     repo.findAwards.mockResolvedValue([]);
     repo.awardar.mockResolvedValue(true);
+    repo.findParticipantes.mockResolvedValue([]);
 
     service = new LootCouncilService(repo as unknown as LootSessionsRepository);
   });
@@ -192,6 +197,87 @@ describe('LootCouncilService', () => {
       repo.findById.mockResolvedValueOnce(null);
 
       await expect(service.painel('nao-existe', ATOR)).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('quem está na sessão e não respondeu', () => {
+    const participante = (over: Record<string, unknown> = {}) => ({
+      nameKey: 'calado',
+      realmKey: 'azralon',
+      name: 'Calado',
+      realm: 'Azralon',
+      ...over,
+    });
+
+    it('aparece em TODAS as peças, com resposta e roll nulos', async () => {
+      // Silêncio de quem estava na raid é informação para quem decide. Esconder
+      // a linha faria a lista parecer menor do que a raid.
+      repo.findParticipantes.mockResolvedValue([participante()]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      for (const item of p.itens) {
+        const calado = item.candidatos.find((c) => c.name === 'Calado');
+        expect(calado).toMatchObject({ responseOptionSlug: null, roll: null, votos: 0 });
+      }
+    });
+
+    it('vem depois de quem respondeu', async () => {
+      // A lista é para decidir, e quem não pediu não disputa.
+      repo.findParticipantes.mockResolvedValue([
+        participante(),
+        participante({
+          nameKey: 'fulano',
+          name: 'Fulano',
+        }),
+      ]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos.map((c) => c.name)).toEqual(['Fulano', 'Calado']);
+    });
+
+    it('não vira linha duplicada de quem já respondeu', async () => {
+      repo.findParticipantes.mockResolvedValue([
+        participante({ nameKey: 'fulano', name: 'Fulano' }),
+      ]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.candidatos).toHaveLength(1);
+      expect(p.itens[0]?.candidatos[0]?.responseOptionSlug).toBe('bis');
+    });
+
+    it('não dá para votar em quem não declarou nada', async () => {
+      // Voto é sobre quem declarou interesse. Quem ficou calado é alcançável
+      // pelo award à mão e pelo `pass item to`, nunca pelo voto.
+      repo.findParticipantes.mockResolvedValue([participante()]);
+
+      await expect(
+        service.votar(
+          'sess-1',
+          'item-1',
+          { characterName: 'Calado', characterRealm: 'Azralon' },
+          ATOR,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('nem em quem tem o silêncio já registrado como noop', async () => {
+      // Depois que a fase de roll fecha, o silêncio vira linha de `noop` no
+      // banco. Continua não sendo declaração de interesse.
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ nameKey: 'calado', name: 'Calado', responseOptionSlug: 'noop', roll: null }),
+      ]);
+
+      await expect(
+        service.votar(
+          'sess-1',
+          'item-1',
+          { characterName: 'Calado', characterRealm: 'Azralon' },
+          ATOR,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 

@@ -31,15 +31,28 @@ export const LOOT_RESPONSES = {
   /**
    * Declarou não querer.
    *
-   * Acumula três situações que o RCLootCouncil separava — ausência de resposta,
-   * pass ativo no botão, e "not eligible". No nosso desenho o jogador **sempre**
-   * responde a todo loot, então `pass` é escolha, não lacuna.
+   * No import, acumula três situações que o RCLootCouncil separava — ausência de
+   * resposta, pass ativo no botão, e "not eligible". Na sessão ao vivo `pass` é
+   * **sempre escolha**: a pessoa olhou a peça e abriu mão. Silêncio tem linha
+   * própria, ver `NOOP`.
    *
    * E aparece como vencedor: num drop que ninguém quis, quem votou `pass` levou
    * por ter tirado o maior roll. Registro real de 28/04/2026 — não é dado sujo, e
    * não é sanitizado na importação.
    */
   PASS: 'pass',
+  /**
+   * Estava na sessão e não se manifestou sobre a peça.
+   *
+   * **Não é `pass`.** Uma é escolha, a outra é ausência de escolha, e colapsar as
+   * duas faria o histórico afirmar uma declaração que não houve — o erro que a
+   * Regra 7 evita quando manda gravar o fato observável e nunca a inferência.
+   *
+   * Derivada pelo sistema quando a fase de roll fecha, nunca clicada: é a única
+   * do vocabulário com `kind = sistema`, e por isso não entra na lista de botões
+   * do jogador.
+   */
+  NOOP: 'noop',
   /**
    * Foi para o banco da guilda, não para uma pessoa.
    *

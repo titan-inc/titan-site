@@ -32,6 +32,18 @@ const linhaDeItem = (itemString: string, looter = 'Fulano-Azralon') =>
   [itemString, looter, 'auto'].join('\t');
 
 const ATOR: Ator = { userId: 'user-1', battletag: 'Loot#0001' };
+const OUTRA_PESSOA: Ator = { userId: 'user-2', battletag: 'Outro#0002' };
+
+/** Uma participação, como o repositório devolve. */
+const participacao = (de: Ator = ATOR) => ({
+  userId: de.userId,
+  battletag: de.battletag,
+  nameKey: de === ATOR ? 'fulano' : 'ciclano',
+  realmKey: de === ATOR ? 'azralon' : 'area52',
+  name: de === ATOR ? 'Fulano' : 'Ciclano',
+  realm: de === ATOR ? 'azralon' : 'area-52',
+  joinedAt: new Date('2026-08-15T01:10:00.000Z'),
+});
 
 /** Os personagens da conta, como o roster os guarda. Rank 0 é o melhor. */
 const PERSONAGENS: PersonagemDaConta[] = [
@@ -116,6 +128,22 @@ describe('LootSessionsService', () => {
       [string, string, string]
     >(() => Promise.resolve([])),
     findAwards: jest.fn<Promise<Array<{ itemId: string }>>, [string]>(() => Promise.resolve([])),
+    entrar: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
+    findParticipantes: jest.fn<
+      Promise<
+        Array<{
+          userId: string;
+          battletag: string;
+          nameKey: string;
+          realmKey: string;
+          name: string;
+          realm: string;
+          joinedAt: Date;
+        }>
+      >,
+      [string]
+    >(() => Promise.resolve([])),
+    registrarSilencio: jest.fn<Promise<number>, [string, Ator]>(() => Promise.resolve(0)),
     contarRespostas: jest.fn<Promise<Map<string, number>>, [string]>(() =>
       Promise.resolve(new Map()),
     ),
@@ -145,6 +173,8 @@ describe('LootSessionsService', () => {
     repo.findEncounterByDungeonId.mockResolvedValue({ id: 'enc-kazzara' });
     repo.itemPertence.mockResolvedValue(true);
     repo.findAwards.mockResolvedValue([]);
+    repo.findParticipantes.mockResolvedValue([]);
+    repo.registrarSilencio.mockResolvedValue(0);
 
     service = new LootSessionsService(repo as unknown as LootSessionsRepository);
   });
@@ -218,7 +248,7 @@ describe('LootSessionsService', () => {
 
   describe('detalhe', () => {
     it('nome e ícone vêm do catálogo, e os modificadores do itemString', async () => {
-      const d = await service.detalhe('sess-1');
+      const d = await service.detalhe('sess-1', ATOR);
 
       expect(d.items[0]).toMatchObject({
         itemId: 202612,
@@ -232,7 +262,7 @@ describe('LootSessionsService', () => {
     it('item que o catálogo não tem entra sem nome', async () => {
       repo.findItems.mockResolvedValueOnce([]);
 
-      const d = await service.detalhe('sess-1');
+      const d = await service.detalhe('sess-1', ATOR);
 
       expect(d.items[0]?.name).toBeNull();
       expect(d.items[0]?.itemId).toBe(202612);
@@ -241,7 +271,7 @@ describe('LootSessionsService', () => {
     it('sessão inexistente é 404', async () => {
       repo.findById.mockResolvedValueOnce(null);
 
-      await expect(service.detalhe('nao-existe')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.detalhe('nao-existe', ATOR)).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -286,8 +316,158 @@ describe('LootSessionsService', () => {
     });
   });
 
+  describe('entrar na sessão', () => {
+    const entrou = (): { nameKey: string; realmKey: string; name: string; realm: string } => {
+      const chamada = repo.entrar.mock.calls[0]?.[0] as {
+        personagem: { nameKey: string; realmKey: string; name: string; realm: string };
+      };
+      if (chamada === undefined) throw new Error('entrar não foi chamado');
+      return chamada.personagem;
+    };
+
+    it('entra com o personagem escolhido', async () => {
+      await service.entrar(
+        'sess-1',
+        { characterName: 'Fulano', characterRealm: 'azralon' },
+        ATOR,
+        PERSONAGENS,
+      );
+
+      expect(entrou()).toMatchObject({ nameKey: 'fulano', name: 'Fulano' });
+    });
+
+    it('o realm da identidade é a chave frouxa', async () => {
+      // `area-52` do roster vira `area52`, que é como a linha de loot e a
+      // presença guardam — Regra 6.
+      await service.entrar(
+        'sess-1',
+        { characterName: 'Ciclano', characterRealm: 'Area 52' },
+        ATOR,
+        PERSONAGENS,
+      );
+
+      expect(entrou().realmKey).toBe('area52');
+    });
+
+    it('personagem que não é da conta é recusado', async () => {
+      // Aceitar qualquer nome deixaria entrar no lugar de outra pessoa — e daí
+      // responder e receber peça no lugar dela.
+      await expect(
+        service.entrar(
+          'sess-1',
+          { characterName: 'DeOutraPessoa', characterRealm: 'azralon' },
+          ATOR,
+          PERSONAGENS,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.entrar).not.toHaveBeenCalled();
+    });
+
+    it('conta sem personagem no roster não entra', async () => {
+      await expect(
+        service.entrar('sess-1', { characterName: 'Fulano', characterRealm: 'azralon' }, ATOR, []),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('trocar de personagem antes de responder funciona', async () => {
+      repo.findParticipantes.mockResolvedValue([participacao()]);
+
+      await service.entrar(
+        'sess-1',
+        { characterName: 'Ciclano', characterRealm: 'area-52' },
+        ATOR,
+        PERSONAGENS,
+      );
+
+      expect(entrou().nameKey).toBe('ciclano');
+    });
+
+    it('trocar DEPOIS de responder é recusado', async () => {
+      // A resposta guarda o char com que foi dada. Trocar deixaria a pessoa em
+      // duas linhas do painel, e a tela dela diria que não respondeu.
+      repo.findParticipantes.mockResolvedValue([participacao()]);
+      repo.findRespostasDoPersonagem.mockResolvedValue([
+        {
+          itemId: 'item-1',
+          responseOptionSlug: 'bis',
+          roll: 40,
+          aguardandoNovaResposta: false,
+          name: 'Fulano',
+        },
+      ]);
+
+      await expect(
+        service.entrar(
+          'sess-1',
+          { characterName: 'Ciclano', characterRealm: 'area-52' },
+          ATOR,
+          PERSONAGENS,
+        ),
+      ).rejects.toThrow(/já respondeu com Fulano/);
+      expect(repo.entrar).not.toHaveBeenCalled();
+    });
+
+    it('repetir o clique no MESMO personagem não é troca', async () => {
+      repo.findParticipantes.mockResolvedValue([participacao()]);
+      repo.findRespostasDoPersonagem.mockResolvedValue([
+        {
+          itemId: 'item-1',
+          responseOptionSlug: 'bis',
+          roll: 40,
+          aguardandoNovaResposta: false,
+          name: 'Fulano',
+        },
+      ]);
+
+      await service.entrar(
+        'sess-1',
+        { characterName: 'Fulano', characterRealm: 'azralon' },
+        ATOR,
+        PERSONAGENS,
+      );
+
+      expect(repo.entrar).toHaveBeenCalled();
+    });
+
+    it('sessão encerrada não recebe mais ninguém', async () => {
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'encerrada' }));
+
+      await expect(
+        service.entrar(
+          'sess-1',
+          { characterName: 'Fulano', characterRealm: 'azralon' },
+          ATOR,
+          PERSONAGENS,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('o detalhe traz quem está na sessão, e a própria participação', async () => {
+      repo.findParticipantes.mockResolvedValue([participacao(), participacao(OUTRA_PESSOA)]);
+
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.participantes).toHaveLength(2);
+      expect(d.minhaParticipacao).toMatchObject({ name: 'Fulano' });
+      // O `userId` identifica a conta e não sai para a tela, que fala de
+      // personagem.
+      expect(JSON.stringify(d.participantes)).not.toContain('user-1');
+    });
+
+    it('quem não entrou não tem participação', async () => {
+      repo.findParticipantes.mockResolvedValue([participacao(OUTRA_PESSOA)]);
+
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.minhaParticipacao).toBeNull();
+    });
+  });
+
   describe('o jogador responde', () => {
-    const aberta = () => repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+    const aberta = () => {
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+      repo.findParticipantes.mockResolvedValue([participacao()]);
+    };
 
     /** O que o serviço mandou gravar. */
     const gravado = (): RespostaGravada => {
@@ -299,7 +479,7 @@ describe('LootSessionsService', () => {
     it('grava a resposta com um roll do servidor, entre 1 e 100', async () => {
       aberta();
 
-      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR);
 
       expect(gravado().responseOptionSlug).toBe('bis');
       expect(gravado().roll).toBeGreaterThanOrEqual(1);
@@ -316,7 +496,6 @@ describe('LootSessionsService', () => {
         'item-1',
         { responseOptionSlug: 'bis', roll: 100 } as never,
         ATOR,
-        PERSONAGENS,
       );
 
       // Um roll do servidor cair exatamente em 100 é 1%, então isto não é flaky
@@ -325,61 +504,31 @@ describe('LootSessionsService', () => {
       expect(gravado().roll).toBeGreaterThanOrEqual(1);
     });
 
-    it('responde pelo representante da conta quando não escolhe personagem', async () => {
-      // O de MELHOR rank, que é o de MENOR número — rank 0 é o guild master.
+    it('a resposta herda o personagem da PARTICIPAÇÃO', async () => {
+      // Antes o personagem vinha no corpo e caía no representante da conta
+      // quando não vinha — e errava justamente para quem raida no alt, em
+      // silêncio. Aqui a pessoa entrou com Fulano, e é Fulano que responde.
       aberta();
 
-      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR);
 
-      expect(gravado().personagem).toMatchObject({ nameKey: 'ciclano', name: 'Ciclano' });
+      expect(gravado().personagem).toMatchObject({
+        nameKey: 'fulano',
+        realmKey: 'azralon',
+        name: 'Fulano',
+      });
     });
 
-    it('o realm da identidade é a chave frouxa', async () => {
-      // `area-52` do roster vira `area52`, que é como a linha de loot e a
-      // presença guardam — Regra 6.
+    it('quem NÃO entrou na sessão não responde', async () => {
+      // Sem isto o "Entrar" seria decorativo, e a lista de quem estava na raid
+      // não bateria com quem respondeu.
       aberta();
-
-      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
-
-      expect(gravado().personagem.realmKey).toBe('area52');
-    });
-
-    it('dá para escolher outro personagem DA CONTA', async () => {
-      aberta();
-
-      await service.responder(
-        'sess-1',
-        'item-1',
-        { responseOptionSlug: 'bis', characterName: 'Fulano' },
-        ATOR,
-        PERSONAGENS,
-      );
-
-      expect(gravado().personagem.nameKey).toBe('fulano');
-    });
-
-    it('personagem que não é da conta é recusado', async () => {
-      // Aceitar qualquer nome deixaria responder no lugar de outra pessoa.
-      aberta();
+      repo.findParticipantes.mockResolvedValue([participacao(OUTRA_PESSOA)]);
 
       await expect(
-        service.responder(
-          'sess-1',
-          'item-1',
-          { responseOptionSlug: 'bis', characterName: 'DeOutraPessoa' },
-          ATOR,
-          PERSONAGENS,
-        ),
+        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.responder).not.toHaveBeenCalled();
-    });
-
-    it('conta sem personagem no roster não responde', async () => {
-      aberta();
-
-      await expect(
-        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, []),
-      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('opção de resposta inativa é recusada', async () => {
@@ -388,13 +537,7 @@ describe('LootSessionsService', () => {
       aberta();
 
       await expect(
-        service.responder(
-          'sess-1',
-          'item-1',
-          { responseOptionSlug: 'transmog' },
-          ATOR,
-          PERSONAGENS,
-        ),
+        service.responder('sess-1', 'item-1', { responseOptionSlug: 'transmog' }, ATOR),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -403,7 +546,7 @@ describe('LootSessionsService', () => {
       repo.itemPertence.mockResolvedValueOnce(false);
 
       await expect(
-        service.responder('sess-1', 'de-outra', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+        service.responder('sess-1', 'de-outra', { responseOptionSlug: 'bis' }, ATOR),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -412,7 +555,7 @@ describe('LootSessionsService', () => {
       repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'rascunho' }));
 
       await expect(
-        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -429,15 +572,10 @@ describe('LootSessionsService', () => {
 
       it('com reabertura, responde', async () => {
         repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+        repo.findParticipantes.mockResolvedValue([participacao()]);
         repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(true));
 
-        await service.responder(
-          'sess-1',
-          'item-1',
-          { responseOptionSlug: 'upgrade' },
-          ATOR,
-          PERSONAGENS,
-        );
+        await service.responder('sess-1', 'item-1', { responseOptionSlug: 'upgrade' }, ATOR);
 
         expect(repo.responder).toHaveBeenCalled();
       });
@@ -449,13 +587,7 @@ describe('LootSessionsService', () => {
         repo.findRespostasDoPersonagem.mockResolvedValue(respostaDoItem(false));
 
         await expect(
-          service.responder(
-            'sess-1',
-            'item-1',
-            { responseOptionSlug: 'upgrade' },
-            ATOR,
-            PERSONAGENS,
-          ),
+          service.responder('sess-1', 'item-1', { responseOptionSlug: 'upgrade' }, ATOR),
         ).rejects.toBeInstanceOf(BadRequestException);
         expect(repo.responder).not.toHaveBeenCalled();
       });
@@ -467,7 +599,7 @@ describe('LootSessionsService', () => {
         repo.findRespostasDoPersonagem.mockResolvedValue([]);
 
         await expect(
-          service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+          service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR),
         ).rejects.toBeInstanceOf(BadRequestException);
       });
 
@@ -478,22 +610,17 @@ describe('LootSessionsService', () => {
         repo.itemPertence.mockResolvedValue(true);
 
         await expect(
-          service.responder(
-            'sess-1',
-            'outro-item',
-            { responseOptionSlug: 'bis' },
-            ATOR,
-            PERSONAGENS,
-          ),
+          service.responder('sess-1', 'outro-item', { responseOptionSlug: 'bis' }, ATOR),
         ).rejects.toBeInstanceOf(BadRequestException);
       });
     });
 
     it('em aberta a resposta é livre, sem precisar de reabertura', async () => {
       repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+      repo.findParticipantes.mockResolvedValue([participacao()]);
       repo.findRespostasDoPersonagem.mockResolvedValue([]);
 
-      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS);
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR);
 
       expect(repo.responder).toHaveBeenCalled();
     });
@@ -502,13 +629,14 @@ describe('LootSessionsService', () => {
       repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'encerrada' }));
 
       await expect(
-        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR, PERSONAGENS),
+        service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
   describe('privacidade da sessão', () => {
     it('mostra a própria resposta e o próprio roll', async () => {
+      repo.findParticipantes.mockResolvedValue([participacao()]);
       repo.findRespostasDoPersonagem.mockResolvedValue([
         {
           itemId: 'item-1',
@@ -519,13 +647,13 @@ describe('LootSessionsService', () => {
         },
       ]);
 
-      const d = await service.detalhe('sess-1', PERSONAGENS);
+      const d = await service.detalhe('sess-1', ATOR);
 
       expect(d.items[0]?.minhaResposta).toMatchObject({ responseOptionSlug: 'bis', roll: 73 });
     });
 
-    it('sem personagem nenhum, não vem resposta — o padrão é fechado', async () => {
-      const d = await service.detalhe('sess-1');
+    it('sem participação, não vem resposta — o padrão é fechado', async () => {
+      const d = await service.detalhe('sess-1', ATOR);
 
       expect(d.items[0]?.minhaResposta).toBeNull();
     });
@@ -539,22 +667,28 @@ describe('LootSessionsService', () => {
       // poderia aparecer seria de outra pessoa, e não aparece nenhum.
       repo.contarRespostas.mockResolvedValueOnce(new Map([['item-1', 12]]));
 
-      const d = await service.detalhe('sess-1', PERSONAGENS);
+      const d = await service.detalhe('sess-1', ATOR);
 
       expect(d.items[0]?.totalDeRespostas).toBe(12);
       expect(d.items[0]?.minhaResposta).toBeNull();
       expect(JSON.stringify(d)).not.toContain('roll');
     });
 
-    it('procura a resposta em TODOS os personagens da conta', async () => {
-      // Quem raida em dois chars respondeu com um deles; olhar só o
-      // representante mostraria "você não respondeu" e a pessoa responderia de
-      // novo, agora no char errado.
-      await service.detalhe('sess-1', PERSONAGENS);
+    it('procura a resposta pelo personagem da PARTICIPAÇÃO, uma vez só', async () => {
+      // Antes eram N consultas, uma por personagem da conta, porque a resposta
+      // podia estar em qualquer um deles. Agora a participação já disse qual é.
+      repo.findParticipantes.mockResolvedValue([participacao()]);
 
-      expect(repo.findRespostasDoPersonagem).toHaveBeenCalledTimes(2);
-      expect(repo.findRespostasDoPersonagem).toHaveBeenCalledWith('sess-1', 'ciclano', 'area52');
+      await service.detalhe('sess-1', ATOR);
+
+      expect(repo.findRespostasDoPersonagem).toHaveBeenCalledTimes(1);
       expect(repo.findRespostasDoPersonagem).toHaveBeenCalledWith('sess-1', 'fulano', 'azralon');
+    });
+
+    it('quem não entrou não consulta resposta nenhuma', async () => {
+      await service.detalhe('sess-1', ATOR);
+
+      expect(repo.findRespostasDoPersonagem).not.toHaveBeenCalled();
     });
   });
 
@@ -612,6 +746,43 @@ describe('LootSessionsService', () => {
         ATOR,
         expect.any(Boolean),
       );
+    });
+
+    it('fechar a fase de roll congela o silêncio de quem estava na sessão', async () => {
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+      repo.registrarSilencio.mockResolvedValue(3);
+
+      await service.trocarStatus('sess-1', 'deliberando', ATOR);
+
+      expect(repo.registrarSilencio).toHaveBeenCalledWith('sess-1', ATOR);
+    });
+
+    it('o silêncio é congelado DEPOIS da transição', async () => {
+      // Antes, alguém respondendo no último instante viraria linha de `noop`
+      // substituída logo em seguida — mas o log já teria dito que a pessoa não
+      // respondeu.
+      repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'aberta' }));
+      const ordem: string[] = [];
+      repo.trocarStatus.mockImplementation(() => {
+        ordem.push('status');
+        return Promise.resolve();
+      });
+      repo.registrarSilencio.mockImplementation(() => {
+        ordem.push('silencio');
+        return Promise.resolve(0);
+      });
+
+      await service.trocarStatus('sess-1', 'deliberando', ATOR);
+
+      expect(ordem).toEqual(['status', 'silencio']);
+    });
+
+    it('nas outras transições, ninguém vira silêncio', async () => {
+      // Abrir a sessão não fecha resposta nenhuma; encerrar acontece depois de a
+      // fase de roll já ter fechado.
+      await service.trocarStatus('sess-1', 'aberta', ATOR);
+
+      expect(repo.registrarSilencio).not.toHaveBeenCalled();
     });
 
     it('reabrir NÃO reescreve quando a sessão foi aberta', async () => {

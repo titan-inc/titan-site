@@ -736,6 +736,15 @@ enum LootResponseKind {
   /// Decisão do loot master sobre o destino do item, não interesse de ninguém.
   /// `banking` é o caso: o próprio RCLootCouncil o marca com `isAwardReason`.
   loot_master
+
+  /// Derivada pelo sistema, nunca clicada por ninguém. Hoje só `noop`, que
+  /// registra silêncio: a pessoa estava na sessão e não se manifestou sobre a
+  /// peça.
+  ///
+  /// Separada de `player` porque não é declaração. `pass` é escolha — a pessoa
+  /// olhou e abriu mão; `noop` é ausência de escolha, e colapsar as duas faria o
+  /// histórico afirmar uma declaração que não houve.
+  sistema
 }
 
 model LootResponseOption {
@@ -999,6 +1008,8 @@ enum LootSessionEventType {
   resposta_reaberta
   voto_dado
   item_awardado
+  participante_entrou
+  silencio_registrado
 }
 
 /// Uma sessão de loot council: um boss, os itens que caíram, e a decisão.
@@ -1049,11 +1060,54 @@ model LootSession {
   openedAt  DateTime?
   closedAt  DateTime?
 
-  items  LootSessionItem[]
-  events LootSessionEvent[]
+  items        LootSessionItem[]
+  events       LootSessionEvent[]
+  participants LootSessionParticipant[]
 
   @@index([status, createdAt])
   @@index([encounterId])
+}
+
+/// Quem está na sessão, e com qual personagem.
+///
+/// **Participar é ato explícito**, não consequência de abrir a tela: quem abre a
+/// sessão pelo celular durante o jantar não está na raid, e entrar por engano
+/// colocaria a pessoa na lista de candidatos à peça de alguém.
+///
+/// É o registro que faltava. Até aqui o único vestígio de uma pessoa numa sessão
+/// era a resposta, então o sistema sabia quem respondeu e não sabia quem estava
+/// na raid — e as duas coisas são diferentes: silêncio de quem estava lá é
+/// informação para quem decide.
+model LootSessionParticipant {
+  id String @id @default(cuid())
+
+  sessionId String
+  session   LootSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  /// A pessoa. Sem FK — ver o comentário do `LootSession`.
+  ///
+  /// A participação é POR PESSOA, como tudo que decide acesso na Regra 4: uma
+  /// conta entra uma vez, com um personagem. Trocar de personagem atualiza esta
+  /// linha, não cria outra — ninguém raida em dois chars ao mesmo tempo.
+  userId    String
+  battletag String
+
+  /// O personagem daquela noite — o par nome + realm da Regra 6.
+  ///
+  /// É daqui que a RESPOSTA herda a identidade, em vez de cada resposta carregar
+  /// o personagem. Antes o padrão era o representante da conta, que erra
+  /// justamente para quem raida no alt.
+  nameKey  String
+  realmKey String
+  name     String
+  realm    String
+
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Uma participação por pessoa por sessão.
+  @@unique([sessionId, userId])
+  @@index([sessionId])
 }
 
 /// Uma peça em disputa.
@@ -1121,7 +1175,12 @@ model LootSessionResponse {
   ///
   /// Regerar a cada resposta deixaria trocar de resposta até tirar um número
   /// bom; vir do cliente deixaria mandar 100.
-  roll Int
+  ///
+  /// **Nulo é quem não rolou**, e só acontece no `noop` — a linha que registra
+  /// silêncio de quem estava na raid. Zero seria mentira com cara de número:
+  /// apareceria na tela ao lado de quem rolou 1 e pareceria um roll ruim, e não
+  /// a ausência de roll. Lacuna nunca vira zero — Regra 7.
+  roll Int?
 
   /// O conselho reabriu esta resposta e ela ainda não foi refeita.
   aguardandoNovaResposta Boolean @default(false)
