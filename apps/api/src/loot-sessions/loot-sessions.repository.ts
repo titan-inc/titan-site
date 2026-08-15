@@ -146,6 +146,122 @@ export class LootSessionsRepository {
     });
   }
 
+  /**
+   * Grava a resposta do jogador, **sem nunca tocar no roll de novo**.
+   *
+   * O `create` gera o roll; o `update` não o menciona. É aqui que o invariante
+   * da TIT-65 vive: o roll nasce uma vez por par (jogador, item) e não muda —
+   * nem ao trocar a resposta, nem quando o conselho pede para responder de novo.
+   *
+   * Se este `update` um dia listar `roll`, trocar de resposta vira rerrolar até
+   * gostar do número, e ninguém recebe erro.
+   *
+   * O evento carrega o roll para a auditoria: o roll decide quem leva item, e
+   * mais cedo ou mais tarde alguém vai dizer que o site viciou o sorteio. A
+   * resposta precisa ser demonstrável, e o log é append-only.
+   */
+  async responder(dados: {
+    sessionId: string;
+    itemId: string;
+    personagem: { nameKey: string; realmKey: string; name: string; realm: string };
+    responseOptionSlug: string;
+    roll: number;
+    ator: Ator;
+  }): Promise<void> {
+    const { sessionId, itemId, personagem, responseOptionSlug, roll, ator } = dados;
+
+    // Transação interativa, e não a forma de array: o evento precisa do roll que
+    // FICOU, e só a resposta do upsert sabe qual é. Com o array, o evento
+    // gravaria o roll recém-sorteado mesmo quando o upsert o descartou — e o log
+    // mostraria um número diferente a cada troca de resposta, que é exatamente a
+    // aparência de sorteio viciado que ele existe para desmentir.
+    await this.prisma.$transaction(async (tx) => {
+      const gravada = await tx.lootSessionResponse.upsert({
+        where: {
+          itemId_nameKey_realmKey: {
+            itemId,
+            nameKey: personagem.nameKey,
+            realmKey: personagem.realmKey,
+          },
+        },
+        create: {
+          itemId,
+          ...personagem,
+          userId: ator.userId,
+          responseOptionSlug,
+          roll,
+        },
+        // Sem `roll` — de propósito. Ver o comentário acima.
+        update: { responseOptionSlug, aguardandoNovaResposta: false },
+        select: { roll: true, createdAt: true, updatedAt: true },
+      });
+
+      await tx.lootSessionEvent.create({
+        data: {
+          sessionId,
+          type: 'resposta_dada',
+          actorUserId: ator.userId,
+          actorBattletag: ator.battletag,
+          payload: {
+            itemId,
+            personagem: `${personagem.name}-${personagem.realm}`,
+            responseOptionSlug,
+            roll: gravada.roll,
+            // Deixa explícito no log que esta resposta não criou roll novo. Sem
+            // isto, quem lê quatro eventos com o mesmo roll não sabe se o roll
+            // foi mantido ou re-sorteado igual por coincidência.
+            rollNovo: gravada.createdAt.getTime() === gravada.updatedAt.getTime(),
+          },
+        },
+      });
+    });
+  }
+
+  /** As respostas de UM personagem nesta sessão. É o que o jogador pode ver. */
+  findRespostasDoPersonagem(sessionId: string, nameKey: string, realmKey: string) {
+    return this.prisma.lootSessionResponse.findMany({
+      where: { item: { sessionId }, nameKey, realmKey },
+      select: {
+        itemId: true,
+        responseOptionSlug: true,
+        roll: true,
+        aguardandoNovaResposta: true,
+        name: true,
+      },
+    });
+  }
+
+  /** Quantas respostas cada peça já tem. Só a contagem, nunca o conteúdo. */
+  async contarRespostas(sessionId: string): Promise<Map<string, number>> {
+    const porItem = await this.prisma.lootSessionResponse.groupBy({
+      by: ['itemId'],
+      where: { item: { sessionId } },
+      _count: true,
+    });
+
+    return new Map(porItem.map((r) => [r.itemId, r._count]));
+  }
+
+  /** A peça é mesmo desta sessão? Evita responder item de outra. */
+  async itemPertence(sessionId: string, itemId: string): Promise<boolean> {
+    const achado = await this.prisma.lootSessionItem.findFirst({
+      where: { id: itemId, sessionId },
+      select: { id: true },
+    });
+
+    return achado !== null;
+  }
+
+  /** Os slugs de resposta ativos. Opção desativada não serve para responder. */
+  async findSlugsAtivos(): Promise<string[]> {
+    const opcoes = await this.prisma.lootResponseOption.findMany({
+      where: { active: true },
+      select: { slug: true },
+    });
+
+    return opcoes.map((o) => o.slug);
+  }
+
   /** A próxima posição livre. Sessão vazia começa em 1. */
   async proximaPosicao(sessionId: string): Promise<number> {
     const ultimo = await this.prisma.lootSessionItem.findFirst({
