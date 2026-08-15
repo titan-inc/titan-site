@@ -8,9 +8,9 @@ folderId: fl_LootSessions1
 authentication: {}
 authenticationType: null
 body:
-  text: '{"responseOptionSlug": "bis"}'
+  text: '{"responseOptionSlug": "bis", "note": ""}'
 bodyType: application/json
-description: 'MemberGuard. O personagem NÃO vai no corpo — vem da participação (TIT-126). O roll também não: é do servidor, nasce na primeira resposta e não muda mais.'
+description: 'MemberGuard. O personagem NÃO vai no corpo — vem da participação (TIT-126). O roll também não: é do servidor, nasce na primeira resposta e é imutável. A nota é opcional; campo AUSENTE mantém a que já existe, campo vazio apaga.'
 headers:
 - enabled: true
   name: Cookie

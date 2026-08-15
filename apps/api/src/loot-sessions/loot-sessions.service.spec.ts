@@ -58,6 +58,7 @@ interface RespostaGravada {
   personagem: { nameKey: string; realmKey: string; name: string; realm: string };
   responseOptionSlug: string;
   roll: number;
+  note: string | null | undefined;
   ator: Ator;
 }
 
@@ -120,7 +121,8 @@ describe('LootSessionsService', () => {
         Array<{
           itemId: string;
           responseOptionSlug: string;
-          roll: number;
+          roll: number | null;
+          note: string | null;
           aguardandoNovaResposta: boolean;
           name: string;
         }>
@@ -152,6 +154,7 @@ describe('LootSessionsService', () => {
           realm: string;
           responseOptionSlug: string;
           roll: number | null;
+          note: string | null;
         }>
       >,
       [string]
@@ -404,6 +407,7 @@ describe('LootSessionsService', () => {
           itemId: 'item-1',
           responseOptionSlug: 'bis',
           roll: 40,
+          note: null,
           aguardandoNovaResposta: false,
           name: 'Fulano',
         },
@@ -427,6 +431,7 @@ describe('LootSessionsService', () => {
           itemId: 'item-1',
           responseOptionSlug: 'bis',
           roll: 40,
+          note: null,
           aguardandoNovaResposta: false,
           name: 'Fulano',
         },
@@ -532,6 +537,57 @@ describe('LootSessionsService', () => {
       });
     });
 
+    it('grava a nota junto da escolha', async () => {
+      aberta();
+
+      await service.responder(
+        'sess-1',
+        'item-1',
+        { responseOptionSlug: 'upgrade', note: 'tanko o segundo boss' },
+        ATOR,
+      );
+
+      expect(gravado().note).toBe('tanko o segundo boss');
+    });
+
+    it('sem o campo, a nota que já existe é preservada', async () => {
+      // Se omitir apagasse, trocar só a escolha limparia o que a pessoa
+      // escreveu, em silêncio. `undefined` não entra no UPDATE do Prisma.
+      aberta();
+
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis' }, ATOR);
+
+      expect(gravado().note).toBeUndefined();
+    });
+
+    it('com o campo vazio, apaga', async () => {
+      // Vazio é intenção declarada de não ter nota — o schema já transforma em
+      // nulo, e nulo chega ao UPDATE.
+      aberta();
+
+      await service.responder('sess-1', 'item-1', { responseOptionSlug: 'bis', note: null }, ATOR);
+
+      expect(gravado().note).toBeNull();
+    });
+
+    it('a própria nota volta no detalhe', async () => {
+      aberta();
+      repo.findRespostasDoPersonagem.mockResolvedValue([
+        {
+          itemId: 'item-1',
+          responseOptionSlug: 'upgrade',
+          roll: 73,
+          note: 'tanko o segundo boss',
+          aguardandoNovaResposta: false,
+          name: 'Fulano',
+        },
+      ]);
+
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.items[0]?.minhaResposta?.note).toBe('tanko o segundo boss');
+    });
+
     it('quem NÃO entrou na sessão não responde', async () => {
       // Sem isto o "Entrar" seria decorativo, e a lista de quem estava na raid
       // não bateria com quem respondeu.
@@ -578,6 +634,7 @@ describe('LootSessionsService', () => {
           itemId: 'item-1',
           responseOptionSlug: 'bis',
           roll: 73,
+          note: null,
           aguardandoNovaResposta: aguardando,
           name: 'Ciclano',
         },
@@ -655,6 +712,7 @@ describe('LootSessionsService', () => {
           itemId: 'item-1',
           responseOptionSlug: 'bis',
           roll: 73,
+          note: null,
           aguardandoNovaResposta: false,
           name: 'Ciclano',
         },
@@ -701,21 +759,29 @@ describe('LootSessionsService', () => {
     it('quando as respostas fecham, todo mundo vê tudo', async () => {
       repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
       repo.findTodasAsRespostas.mockResolvedValue([
-        { itemId: 'item-1', name: 'Fulano', realm: 'azralon', responseOptionSlug: 'bis', roll: 63 },
+        {
+          itemId: 'item-1',
+          name: 'Fulano',
+          realm: 'azralon',
+          responseOptionSlug: 'bis',
+          roll: 63,
+          note: null,
+        },
         {
           itemId: 'item-1',
           name: 'Ciclano',
           realm: 'area-52',
           responseOptionSlug: 'noop',
           roll: null,
+          note: null,
         },
       ]);
 
       const d = await service.detalhe('sess-1', ATOR);
 
       expect(d.items[0]?.respostas).toEqual([
-        { name: 'Fulano', realm: 'azralon', responseOptionSlug: 'bis', roll: 63 },
-        { name: 'Ciclano', realm: 'area-52', responseOptionSlug: 'noop', roll: null },
+        { name: 'Fulano', realm: 'azralon', responseOptionSlug: 'bis', roll: 63, note: null },
+        { name: 'Ciclano', realm: 'area-52', responseOptionSlug: 'noop', roll: null, note: null },
       ]);
     });
 
@@ -723,7 +789,14 @@ describe('LootSessionsService', () => {
       // Ela vira histórico, e histórico de loot é aberto — Regra 7.
       repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'encerrada' }));
       repo.findTodasAsRespostas.mockResolvedValue([
-        { itemId: 'item-1', name: 'Fulano', realm: 'azralon', responseOptionSlug: 'bis', roll: 63 },
+        {
+          itemId: 'item-1',
+          name: 'Fulano',
+          realm: 'azralon',
+          responseOptionSlug: 'bis',
+          roll: 63,
+          note: null,
+        },
       ]);
 
       const d = await service.detalhe('sess-1', ATOR);

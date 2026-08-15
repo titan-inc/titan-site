@@ -95,6 +95,16 @@ export const candidatoSchema = z.object({
    */
   roll: z.number().int().nullable(),
 
+  /**
+   * O que a pessoa escreveu ao pedir. Nula quando não escreveu — ou quando a
+   * fase esconde, junto de escolha e roll.
+   *
+   * **O conselho lê, não edita.** Corrigir a escolha de alguém é corrigir um
+   * clique; mudar a nota seria pôr palavra na boca. Se a nota estiver errada, o
+   * caminho é reabrir e a pessoa reescrever.
+   */
+  note: z.string().nullable(),
+
   /** O conselho pediu para esta pessoa responder de novo, e ela ainda não. */
   aguardandoNovaResposta: z.boolean(),
 

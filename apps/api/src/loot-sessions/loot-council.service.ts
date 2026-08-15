@@ -150,6 +150,7 @@ export class LootCouncilService {
         respondeu: r.responseOptionSlug !== null,
         responseOptionSlug: aberto ? r.responseOptionSlug : null,
         roll: aberto ? r.roll : null,
+        note: aberto ? r.note : null,
         aguardandoNovaResposta: r.aguardandoNovaResposta,
         votos: contagem.get(chave) ?? 0,
         meuVoto: meus.has(chave),
@@ -374,6 +375,9 @@ export class LootCouncilService {
         responseOptionSlug: dados.responseOptionSlug,
         respondeu: false,
         roll: null,
+        // A nota do loot master vai na entrega, não aqui: esta é a do jogador,
+        // e ele não declarou nada.
+        note: null,
         aguardandoNovaResposta: false,
         votos: 0,
         meuVoto: false,
@@ -566,6 +570,7 @@ interface LinhaDoPainel {
   realm: string;
   responseOptionSlug: string | null;
   roll: number | null;
+  note: string | null;
   aguardandoNovaResposta: boolean;
 }
 
@@ -595,6 +600,7 @@ function comSilenciosos(
         realm: p.realm,
         responseOptionSlug: null,
         roll: null,
+        note: null,
         aguardandoNovaResposta: false,
       })),
   );
