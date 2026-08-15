@@ -50,7 +50,13 @@ export const candidatoSchema = z.object({
 
   responseOptionSlug: z.string(),
 
-  /** Imutável desde a primeira resposta — ver TIT-65. */
+  /**
+   * Imutável desde a primeira resposta — ver TIT-65.
+   *
+   * **Auxílio visual, nunca critério de decisão.** Está na tela para o conselho
+   * olhar, do mesmo jeito que `recebidoAntes`. Nada no sistema entrega peça por
+   * causa dele: quem decide é a mão do loot master ou a contagem de votos.
+   */
   roll: z.number().int(),
 
   /** O conselho pediu para esta pessoa responder de novo, e ela ainda não. */
@@ -166,14 +172,16 @@ export const awardarSchema = alvoDaAcaoSchema;
 export type Awardar = z.infer<typeof awardarSchema>;
 
 /**
- * Entrega por maioria: a peça vai para quem tem mais votos.
+ * Entrega por maioria: a peça vai para quem tem mais votos do conselho.
  *
  * Com `itemId`, uma peça; sem, **todas as que ainda não foram entregues**. São a
  * mesma regra aplicada a um item ou a todos — separar em duas rotas duplicaria a
- * regra de desempate, que é justamente a parte delicada.
+ * parte delicada, que é quando a contagem NÃO decide.
  *
- * Empate de votos resolve pelo maior roll. Empate de votos **e** de roll não
- * resolve sozinho: o conselho escolhe à mão. Ver `LootCouncilPanel`.
+ * **Não existe decisão automática.** Peça só ganha dono pela mão do loot master
+ * ou pela contagem de votos, que também é decisão do conselho. Sem voto não sai
+ * peça, nem com um candidato só; empate de votos volta para a mão. O roll não
+ * desempata — ele é auxílio visual, ver `candidatoSchema`.
  */
 export const awardPorMaioriaSchema = z.object({
   itemId: z.string().min(1).optional(),

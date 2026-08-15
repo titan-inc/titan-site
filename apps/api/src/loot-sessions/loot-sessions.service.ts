@@ -405,9 +405,13 @@ export class LootSessionsService {
    * histórico —, então uma peça esquecida viraria buraco permanente, e ninguém
    * receberia erro.
    *
-   * Peça que ninguém quis também precisa de dono: `pass` é resposta e ganha no
-   * maior roll, e o que vai para o banco tem `banking` como resposta. Não existe
-   * "item sem destino" no vocabulário.
+   * Peça que ninguém quis também precisa de dono: `pass` é resposta como
+   * qualquer outra, e o que vai para o banco tem `banking`. Não existe "item sem
+   * destino" no vocabulário.
+   *
+   * Segurar aqui é o outro lado de o sistema não decidir nada sozinho: como
+   * peça sem voto não sai por conta própria, é este erro que devolve a decisão
+   * ao conselho em vez de deixar a sessão fechar com buraco.
    */
   private async exigirTudoResolvido(sessao: SessionRow): Promise<void> {
     const entregues = new Set((await this.repo.findAwards(sessao.id)).map((a) => a.itemId));

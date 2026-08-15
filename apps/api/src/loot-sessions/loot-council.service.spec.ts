@@ -563,41 +563,27 @@ describe('LootCouncilService', () => {
       });
     });
 
-    it('empate de votos resolve pelo maior roll', async () => {
+    it('empate de votos NÃO é desempatado pelo roll', async () => {
+      // O roll é auxílio visual, do mesmo tipo que o histórico de peças
+      // recebidas: está na tela para o conselho olhar. Desempatar por ele seria
+      // decidir por um critério que a tela apresenta como informação.
       tresCandidatos();
       repo.findVotos.mockResolvedValue([
         voto({ candidateNameKey: 'b' }),
         voto({ candidateNameKey: 'a', voterUserId: OUTRO.userId }),
       ]);
 
-      await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
-
-      // A e B com um voto cada; A tem roll 90.
-      expect(repo.awardar.mock.calls[0]?.[0]).toMatchObject({ vencedor: { name: 'A' } });
-    });
-
-    it('empate de votos E de roll não resolve sozinho', async () => {
-      // Roll é 1 a 100, então colisão acontece. Desempatar por ordem de chegada
-      // seria o sistema decidindo por critério que a tela não mostra.
-      repo.findTodasAsRespostas.mockResolvedValue([
-        resposta({ nameKey: 'a', name: 'A', roll: 70 }),
-        resposta({ nameKey: 'b', name: 'B', roll: 70 }),
-      ]);
-      repo.findVotos.mockResolvedValue([
-        voto({ candidateNameKey: 'a' }),
-        voto({ candidateNameKey: 'b', voterUserId: OUTRO.userId }),
-      ]);
-
       const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
 
+      // A e B com um voto cada, e A tem roll 90 — ninguém leva mesmo assim.
       expect(r.entregues).toBe(0);
-      expect(r.pulados[0]?.motivo).toMatch(/empate de votos e roll/);
+      expect(r.pulados[0]?.motivo).toMatch(/empate de votos entre/);
       expect(repo.awardar).not.toHaveBeenCalled();
     });
 
-    it('disputa sem voto nenhum não vira sorteio', async () => {
+    it('sem voto nenhum, ninguém leva', async () => {
       // "Tudo de uma vez" clicado antes de o conselho votar sortearia a noite
-      // inteira pelo roll — e o award é imutável.
+      // inteira — e o award é imutável.
       tresCandidatos();
 
       const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
@@ -606,15 +592,29 @@ describe('LootCouncilService', () => {
       expect(r.pulados[0]?.motivo).toMatch(/ainda não votou/);
     });
 
-    it('candidato único passa sem voto: não há disputa para decidir', async () => {
+    it('candidato único sem voto também espera — votar é o trabalho do conselho', async () => {
+      // Não existe decisão automática, nem na peça sem disputa. A peça sem
+      // decisão segura o encerramento da sessão, e é assim que ela volta para
+      // a mão de quem decide.
+      const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(r.entregues).toBe(0);
+      expect(r.pulados[0]?.motivo).toMatch(/ainda não votou/);
+    });
+
+    it('com voto, o candidato único leva', async () => {
+      repo.findVotos.mockResolvedValue([voto()]);
+
       const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
 
       expect(r.entregues).toBe(1);
     });
 
     it('quem está com a resposta reaberta não leva por maioria', async () => {
-      // Entregar congelaria justamente a resposta de que o conselho duvidou.
+      // Entregar congelaria justamente a resposta de que o conselho duvidou —
+      // mesmo com o voto dado antes da reabertura.
       repo.findTodasAsRespostas.mockResolvedValue([resposta({ aguardandoNovaResposta: true })]);
+      repo.findVotos.mockResolvedValue([voto()]);
 
       const r = await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
 
@@ -637,6 +637,7 @@ describe('LootCouncilService', () => {
         resposta({ itemId: 'item-1' }),
         resposta({ itemId: 'item-2', nameKey: 'b', name: 'B' }),
       ]);
+      repo.findVotos.mockResolvedValue([voto()]);
       repo.findAwards.mockResolvedValue([
         {
           itemId: 'item-2',

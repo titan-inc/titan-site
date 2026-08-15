@@ -446,26 +446,32 @@ function normalizar(name: string, realm: string): Alvo {
 }
 
 /**
- * Quem leva a peça por maioria, ou o motivo de não dar.
+ * Quem leva a peça pela contagem de votos, ou o motivo de não dar.
  *
- * Empate de votos resolve pelo maior roll — é para isso que o roll existe, e ele
- * é imutável desde a primeira resposta (TIT-65).
+ * **Não existe decisão automática.** Uma peça só ganha dono de dois jeitos: o
+ * loot master aponta a pessoa à mão, ou a contagem de votos aponta — e a
+ * contagem também é decisão do conselho, porque foram conselheiros que votaram.
+ * Tudo que não cair num desses dois casos volta como motivo, e a peça espera.
  *
- * **Empate de votos E de roll não resolve sozinho.** Rolls são 1 a 100, então
- * colisão acontece; nesse caso a função devolve o motivo e o conselho escolhe à
- * mão. Desempatar por ordem de chegada, ou por qualquer coisa que a tela não
- * mostra, seria o sistema decidindo a reputação de alguém por critério invisível
- * — o que a Regra 7 diz que faz a liderança parar de confiar na ferramenta.
+ * **O roll não decide nada.** Ele é auxílio visual, do mesmo tipo que o
+ * histórico de peças recebidas: está na tela para o conselho olhar e escolher.
+ * Usá-lo para desempatar seria o sistema decidindo a reputação de alguém por
+ * critério que a tela apresenta como informação, não como regra — o que a Regra
+ * 7 diz que faz a liderança parar de confiar na ferramenta.
  *
- * **Disputa sem voto nenhum também não resolve sozinho.** Zero a zero é empate
- * de votos pela letra, e cair no roll transformaria "tudo de uma vez" clicado
- * antes de o conselho votar em uma noite inteira sorteada — sem erro nenhum, e
- * o award é imutável. Candidato único passa: ali não há disputa para decidir.
+ * Por isso **sem voto não sai peça**, nem quando há um candidato só: votar é o
+ * trabalho do conselho, e peça sem decisão segura o encerramento da sessão em
+ * vez de se resolver sozinha.
  */
 function escolherPorMaioria(candidatos: Candidato[]): Candidato | string {
   const [primeiro, segundo] = ordenar(candidatos);
 
   if (!primeiro) return 'ninguém se candidatou';
+  if (primeiro.votos === 0) return 'o conselho ainda não votou nesta peça — escolha à mão';
+
+  if (segundo && segundo.votos === primeiro.votos) {
+    return `empate de votos entre ${primeiro.name} e ${segundo.name} — escolha à mão`;
+  }
 
   // O conselho pediu outra resposta a quem está na frente, e ela ainda não veio.
   // Entregar agora congelaria no histórico justamente a resposta de que o
@@ -474,22 +480,15 @@ function escolherPorMaioria(candidatos: Candidato[]): Candidato | string {
     return `${primeiro.name} está com a resposta reaberta — escolha à mão ou espere a resposta`;
   }
 
-  if (!segundo) return primeiro;
-
-  if (primeiro.votos === 0) return 'o conselho ainda não votou nesta peça — escolha à mão';
-  if (segundo.votos === primeiro.votos && segundo.roll === primeiro.roll) {
-    return `empate de votos e roll entre ${primeiro.name} e ${segundo.name} — escolha à mão`;
-  }
-
   return primeiro;
 }
 
 /**
  * Mais votos primeiro, depois maior roll.
  *
- * É **sugestão de leitura, nunca decisão**: quem escolhe é o conselho. Sistema
- * que decide sozinho a reputação de alguém erra em público, e a liderança para
- * de confiar nele — Regra 7.
+ * É **ordem de leitura, nunca decisão** — e o roll entra aqui exatamente por
+ * isso: ele existe para o conselho olhar, não para desempatar. Ver
+ * `escolherPorMaioria()`, que não o consulta.
  */
 function ordenar(candidatos: Candidato[]): Candidato[] {
   return [...candidatos].sort((a, b) => b.votos - a.votos || b.roll - a.roll);
