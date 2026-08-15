@@ -8,9 +8,9 @@ folderId: fl_LootSessions1
 authentication: {}
 authenticationType: null
 body:
-  text: '{"characterName": "", "characterRealm": ""}'
+  text: '{"characterName": "", "characterRealm": "", "note": ""}'
 bodyType: application/json
-description: 'OfficerGuard, só em deliberando. Entrega à pessoa escolhida, congelando a resposta declarada e a contagem de votos do momento. Só a quem se candidatou. Devolve 409 se outro conselheiro entregou primeiro — o unique no item é a trava de concorrência.'
+description: 'OfficerGuard, só em deliberando. Entrega à pessoa escolhida, congelando a resposta declarada e a contagem de votos do momento. Só a quem se candidatou — para quem não pediu, use pass-item-to. A nota do loot master é opcional. Devolve 409 se outro conselheiro entregou primeiro: o unique no item é a trava de concorrência.'
 headers:
 - enabled: true
   name: Cookie
