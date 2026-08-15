@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { characterInputSchema, toCharacterKey, toSlug, type CharacterInput } from './wow.js';
+import { characterInputSchema, type CharacterInput } from './wow.js';
 
 /**
  * Quem é oficial — Regra 4. Duas fontes independentes, basta uma:
@@ -12,26 +12,11 @@ import { characterInputSchema, toCharacterKey, toSlug, type CharacterInput } fro
 /**
  * Um personagem como identidade, do jeito que o sistema guarda.
  *
- * Sempre o par nome + realm, nunca o nome sozinho — Regra 6. `nameKey` vem de
- * `toCharacterKey()` (mantém acento) e `realmSlug` de `toSlug()`.
+ * Depois da TIT-132 um personagem é um **id de identidade**, e o casamento
+ * virou interseção de ids. Antes eram dois pares (nome, realm) normalizados na
+ * hora de comparar, porque um grant inserido à mão no banco podia ter grafia
+ * diferente — com id, grafia deixou de participar da conta.
  */
-export interface OfficerCharacterRef {
-  nameKey: string;
-  realmSlug: string;
-}
-
-/**
- * Chave de casamento entre um personagem e um grant.
- *
- * Normaliza os dois lados na hora de comparar, e não só na hora de gravar: o
- * grant pode ter sido inserido à mão no banco, e comparar string crua contra
- * linha escrita à mão falha em silêncio. Mesma composição usada na revalidação
- * de membership, de propósito — se as duas divergirem, uma pessoa vira oficial
- * num caminho e não no outro.
- */
-function matchKey(ref: OfficerCharacterRef): string {
-  return `${toSlug(ref.realmSlug)}/${toCharacterKey(ref.nameKey)}`;
-}
 
 /**
  * A conta é de oficial?
@@ -45,13 +30,13 @@ function matchKey(ref: OfficerCharacterRef): string {
  * o servidor.
  */
 export function isOfficerByGrants(
-  characters: readonly OfficerCharacterRef[],
-  grants: readonly OfficerCharacterRef[],
+  characterIds: readonly string[],
+  grantedCharacterIds: readonly string[],
 ): boolean {
-  if (characters.length === 0 || grants.length === 0) return false;
+  if (characterIds.length === 0 || grantedCharacterIds.length === 0) return false;
 
-  const concedidos = new Set(grants.map(matchKey));
-  return characters.some((char) => concedidos.has(matchKey(char)));
+  const concedidos = new Set(grantedCharacterIds);
+  return characterIds.some((id) => concedidos.has(id));
 }
 
 /**

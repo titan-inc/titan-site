@@ -105,12 +105,9 @@ export class AuthRepository {
    * modelo de autorização, que auth resolve a cada sessão. Quem escreve nela é
    * só o módulo officers.
    */
-  async findOfficerGrants(): Promise<Array<{ nameKey: string; realmKey: string }>> {
-    const grants = await this.prisma.officerGrant.findMany({
-      select: { character: { select: { nameKey: true, realmKey: true } } },
-    });
-
-    return grants.map((g) => g.character);
+  async findOfficerGrants(): Promise<string[]> {
+    const grants = await this.prisma.officerGrant.findMany({ select: { characterId: true } });
+    return grants.map((g) => g.characterId);
   }
 
   async createSession(id: string, userId: string, expiresAt: Date): Promise<Session> {
@@ -120,7 +117,7 @@ export class AuthRepository {
   async findSessionWithUser(id: string): Promise<(Session & { user: UserWithCharacters }) | null> {
     return this.prisma.session.findUnique({
       where: { id },
-      include: { user: { include: { characters: true } } },
+      include: { user: { include: { characters: { include: { character: true } } } } },
     });
   }
 
