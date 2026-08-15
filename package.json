@@ -20,6 +20,7 @@
     "db:status": "pwsh -NoProfile -File scripts/db.ps1 status",
     "db:logs": "pwsh -NoProfile -File scripts/db.ps1 logs",
     "db:psql": "pwsh -NoProfile -File scripts/db.ps1 psql",
+    "dump:escape": "node scripts/escape-dump.js",
     "migrate": "pnpm --filter api exec prisma migrate dev",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\""

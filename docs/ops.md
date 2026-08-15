@@ -140,15 +140,47 @@ curl -X POST "http://localhost:3001/internal/ops/catalog-generate" \
 
 Com a colagem do `/tilc journal` do addon (substitui `--journal <arquivo>` —
 cola o conteúdo direto no campo `journalDump`, em vez de apontar pra um
-arquivo que não existe dentro do container):
+arquivo que não existe dentro do container). **Colar o dump cru direto no
+corpo quebra o JSON** — quebra de linha/tab sem escape dentro de uma string
+não é JSON válido — então primeiro escapa com `pnpm dump:escape`
+(`scripts/escape-dump.js`):
 
 ```bash
+pnpm dump:escape dump.txt          # grava dump.json ao lado
+
 curl -X POST "http://localhost:3001/internal/ops/catalog-generate" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$(node -e 'console.log(JSON.stringify({journalInstanceId: 1307, journalDump: require("fs").readFileSync("dump.txt", "utf8")}))')" \
   -o catalogo/the-voidspire.json
 ```
+
+(o `curl` acima ainda escapa inline com `node -e` porque o body inteiro,
+`journalInstanceId` incluso, é montado na hora; `pnpm dump:escape` é o mesmo
+`JSON.stringify`, só que gravado em arquivo — útil sozinho pro Yaak, abaixo.)
+
+Pelo Yaak: aponte a variável `catalog_dump_path` (environment `Local`) pro
+`dump.json` gerado por `pnpm dump:escape`, e o request `internal/ops/Catalog
+generate` lê com `${[ fs.readFile(path=catalog_dump_path) ]}` — ver
+`yaak/README.md`. **Não dá pra apontar direto pro `.txt` cru**: o Yaak não
+escapa o conteúdo sozinho nesse meio-tempo — `json.escape()` não funciona na
+versão atual da CLI (testado em 15/08/2026, devolve o texto sem escapar, sem
+erro nenhum) — daí o arquivo intermediário ser obrigatório, não estilo.
+
+**Aqueça o cache do Journal antes de colar o `/tilc journal`.** O cliente só
+devolve dado confiável de um item do Encounter Journal depois que ele já
+passou pelo cache local — descoberto em 14/08/2026 (ver TIT-124), gerando
+`filterType` como `?` ou com valores como `-1`/`-4` numa raid cujo Journal
+não tinha sido aberto na sessão. Isso não quebra mais o parser (`filterType`
+é lido e descartado de propósito, ver `packages/shared/src/journal-dump.ts`),
+mas o mesmo cache frio pode devolver a lista de **specs** incompleta para um
+item — e essa vai para o catálogo sem nenhuma validação de completude, em
+silêncio.
+
+Antes de rodar `/tilc journal`: abra o Encounter Journal do jogo naquela
+raid (idealmente visite cada boss) para aquecer o cache, ou rode o comando
+de exportação mais de uma vez e compare as colagens — as duas formas
+resolveram o sintoma na prática.
 
 ## Catálogo — carregar no banco
 
@@ -166,6 +198,14 @@ curl -X POST "http://localhost:3001/internal/ops/catalog-load" \
   -H "Content-Type: application/json" \
   -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/the-voidspire.json"), semConferencia: true}))')"
 ```
+
+Pelo Yaak: aponte a variável `catalog_json_path` (environment `Local`) pro
+`.json` do catálogo (já gerado, sem passo extra nenhum), e o request
+`internal/ops/Catalog load` lê com
+`${[ fs.readFile(path=catalog_json_path) ]}` — ver `yaak/README.md`. Mais
+simples que o `Catalog generate`: `catalog` no corpo é um **valor JSON**, não
+uma string, então `fs.readFile()` puro já produz JSON válido — sem precisar
+de `pnpm dump:escape`.
 
 ## Histórico — importar o export do RCLootCouncil
 

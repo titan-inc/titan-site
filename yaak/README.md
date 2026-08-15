@@ -29,6 +29,27 @@ de segredos do `CLAUDE.md`: **este repositório é público**.
   - `session_cookie` — valor de `titan_session` depois de logar no site
     local (copiar do DevTools, aba Application/Cookies).
   - `ops_token` — o `OPS_TRIGGER_TOKEN` do seu `.env` da API.
+  - `catalog_dump_path` — caminho absoluto, na sua máquina, de um arquivo
+    `.json` com a colagem do `/tilc journal` do addon já escapada como
+    string JSON. Gere com `pnpm dump:escape dump.txt` (grava `dump.json` ao
+    lado — ver `docs/ops.md`, seção "Catálogo — gerar"), **nunca aponte pro
+    `.txt` cru**: testado em 15/08/2026, `json.escape()` não funciona na
+    versão atual da CLI do Yaak (devolve o texto sem escapar, sem erro
+    nenhum), então colar o dump cru aqui quebra o JSON do corpo em silêncio.
+    Usado pelo request `internal/ops/Catalog generate` via
+    `${[ fs.readFile(path=catalog_dump_path) ]}`. Não é segredo — é
+    declarado do mesmo jeito (nome vazio em `Team`, valor em `Local`) só
+    porque o caminho é específico da sua máquina, não porque precisa ficar
+    escondido.
+  - `catalog_json_path` — caminho absoluto, na sua máquina, do `.json` de
+    um catálogo já gerado (ex.: `apps/api/catalogo/the-voidspire.json`, ou
+    a saída salva de `internal/ops/Catalog generate`). Usado pelo request
+    `internal/ops/Catalog load` via
+    `${[ fs.readFile(path=catalog_json_path) ]}`. Mais simples que o
+    `journalDump` do `Catalog generate`: `catalog` no corpo é um **valor
+    JSON** (objeto), não uma string, então `fs.readFile()` sozinho já
+    produz JSON válido — sem precisar de `pnpm dump:escape` nem de nenhum
+    outro tratamento.
 - **`Prod`** — sub-environment irmã de `Local`, também **não marcada
   `public`**. Contra produção, por túnel SSH — nunca direto: o Caddy
   bloqueia `/internal/ops/*` no domínio público, e o resto da área interna
@@ -60,9 +81,9 @@ rotacionar na origem, não só reescrever o histórico). Vale ainda mais para
 - `auth/Iniciar login (Battle.net)` e `auth/Callback (Battle.net)` — fluxo
   de redirect de browser contra o consent da Blizzard. Ficam documentadas
   pra referência de rota, mas `yaak send` não completa esse fluxo.
-- `internal/ops/Catalog load` e `internal/ops/Loot import RC` — corpo é um
-  arquivo grande (catálogo gerado, ou export do RCLootCouncil). O body vem
-  com `{}` de placeholder; colar o JSON real antes de enviar.
+- `internal/ops/Loot import RC` — corpo é o export do RCLootCouncil, um
+  arquivo grande. O body vem com `{}` de placeholder; colar o JSON real
+  antes de enviar.
 
 ## Rotas de `internal/ops/*`
 
