@@ -242,6 +242,174 @@ export class LootSessionsRepository {
     return new Map(porItem.map((r) => [r.itemId, r._count]));
   }
 
+  /**
+   * TODAS as respostas da sessão. É o que só o conselho vê.
+   *
+   * Fica em método separado do `findRespostasDoPersonagem` de propósito: os dois
+   * leem a mesma tabela e respondem a perguntas com permissões opostas. Um
+   * método só, com um filtro opcional, seria um `if` de distância entre a
+   * privacidade da sessão e o vazamento dela.
+   */
+  findTodasAsRespostas(sessionId: string) {
+    return this.prisma.lootSessionResponse.findMany({
+      where: { item: { sessionId } },
+      select: {
+        itemId: true,
+        nameKey: true,
+        realmKey: true,
+        name: true,
+        realm: true,
+        responseOptionSlug: true,
+        roll: true,
+        aguardandoNovaResposta: true,
+      },
+    });
+  }
+
+  /** Todos os votos da sessão, para contar por candidato. */
+  findVotos(sessionId: string) {
+    return this.prisma.lootSessionVote.findMany({
+      where: { item: { sessionId } },
+      select: {
+        itemId: true,
+        candidateNameKey: true,
+        candidateRealmKey: true,
+        voterUserId: true,
+      },
+    });
+  }
+
+  /**
+   * O voto do conselheiro nesta peça.
+   *
+   * `UNIQUE (item, votante)`: votar de novo TROCA o voto, não acrescenta. A
+   * troca fica no log, que é onde "quem mudou o quê" tem resposta.
+   */
+  async votar(dados: {
+    sessionId: string;
+    itemId: string;
+    candidato: { nameKey: string; realmKey: string };
+    ator: Ator;
+  }): Promise<void> {
+    const { sessionId, itemId, candidato, ator } = dados;
+
+    await this.prisma.$transaction([
+      this.prisma.lootSessionVote.upsert({
+        where: { itemId_voterUserId: { itemId, voterUserId: ator.userId } },
+        create: {
+          itemId,
+          candidateNameKey: candidato.nameKey,
+          candidateRealmKey: candidato.realmKey,
+          voterUserId: ator.userId,
+          voterBattletag: ator.battletag,
+        },
+        update: {
+          candidateNameKey: candidato.nameKey,
+          candidateRealmKey: candidato.realmKey,
+        },
+      }),
+      this.registrarEvento(sessionId, 'voto_dado', ator, {
+        itemId,
+        candidato: `${candidato.nameKey}-${candidato.realmKey}`,
+      }),
+    ]);
+  }
+
+  /**
+   * O conselho pede para alguém responder de novo.
+   *
+   * Só para quem **já respondeu** — é o que a issue pede: "reanunciar o item de
+   * novo", "pedir para votar novamente". Os dois pressupõem uma resposta que
+   * existe.
+   *
+   * Quem nunca respondeu não é caso disto. A tentação era criar a linha aqui,
+   * esperando resposta, mas ela exigiria um slug que não existe na tabela de
+   * opções (a FK recusaria) e um roll que não é roll. O caminho para essa pessoa
+   * é reabrir a SESSÃO — `deliberando → aberta` —, que já existe e devolve a
+   * resposta livre para todo mundo.
+   *
+   * Devolve `false` quando não há resposta a reabrir.
+   */
+  async reabrirResposta(dados: {
+    sessionId: string;
+    itemId: string;
+    personagem: { nameKey: string; realmKey: string; name: string; realm: string };
+    ator: Ator;
+  }): Promise<boolean> {
+    const { sessionId, itemId, personagem, ator } = dados;
+    const chave = {
+      itemId_nameKey_realmKey: {
+        itemId,
+        nameKey: personagem.nameKey,
+        realmKey: personagem.realmKey,
+      },
+    };
+
+    const existe = await this.prisma.lootSessionResponse.findUnique({
+      where: chave,
+      select: { id: true },
+    });
+    if (!existe) return false;
+
+    await this.prisma.$transaction([
+      this.prisma.lootSessionResponse.update({
+        where: chave,
+        data: { aguardandoNovaResposta: true },
+      }),
+      this.registrarEvento(sessionId, 'resposta_reaberta', ator, {
+        itemId,
+        personagem: `${personagem.name}-${personagem.realm}`,
+      }),
+    ]);
+
+    return true;
+  }
+
+  /** O conselho corrige a resposta de alguém. Não toca no roll. */
+  async alterarResposta(dados: {
+    sessionId: string;
+    itemId: string;
+    personagem: { nameKey: string; realmKey: string };
+    responseOptionSlug: string;
+    ator: Ator;
+  }): Promise<boolean> {
+    const { sessionId, itemId, personagem, responseOptionSlug, ator } = dados;
+
+    const existe = await this.prisma.lootSessionResponse.findUnique({
+      where: {
+        itemId_nameKey_realmKey: {
+          itemId,
+          nameKey: personagem.nameKey,
+          realmKey: personagem.realmKey,
+        },
+      },
+      select: { responseOptionSlug: true },
+    });
+    if (!existe) return false;
+
+    await this.prisma.$transaction([
+      this.prisma.lootSessionResponse.update({
+        where: {
+          itemId_nameKey_realmKey: {
+            itemId,
+            nameKey: personagem.nameKey,
+            realmKey: personagem.realmKey,
+          },
+        },
+        // Sem `roll`. Nada mexe no roll depois da primeira resposta.
+        data: { responseOptionSlug },
+      }),
+      this.registrarEvento(sessionId, 'resposta_alterada', ator, {
+        itemId,
+        personagem: `${personagem.nameKey}-${personagem.realmKey}`,
+        de: existe.responseOptionSlug,
+        para: responseOptionSlug,
+      }),
+    ]);
+
+    return true;
+  }
+
   /** A peça é mesmo desta sessão? Evita responder item de outra. */
   async itemPertence(sessionId: string, itemId: string): Promise<boolean> {
     const achado = await this.prisma.lootSessionItem.findFirst({

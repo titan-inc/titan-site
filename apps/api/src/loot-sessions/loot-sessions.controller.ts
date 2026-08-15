@@ -2,13 +2,20 @@ import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nes
 import {
   addLootSessionItemSchema,
   changeLootSessionStatusSchema,
+  alterarRespostaSchema,
   createLootSessionSchema,
+  reabrirRespostaSchema,
   respondToLootItemSchema,
+  votarSchema,
   type AddLootSessionItem,
   type RespondToLootItem,
   type ChangeLootSessionStatus,
   type CreateLootSession,
+  type AlterarResposta,
   type CreateLootSessionResult,
+  type LootCouncilPanel,
+  type ReabrirResposta,
+  type Votar,
   type LootSessionDetail,
   type LootSessionSummary,
   type SessionUser,
@@ -16,6 +23,7 @@ import {
 import type { Request } from 'express';
 import { MemberGuard, OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { LootCouncilService } from './loot-council.service';
 import { LootSessionsService, type PersonagemDaConta } from './loot-sessions.service';
 import type { Ator } from './loot-sessions.repository';
 
@@ -59,7 +67,10 @@ function personagens(req: Request): PersonagemDaConta[] {
  */
 @Controller('internal/loot-sessions')
 export class LootSessionsController {
-  constructor(private readonly sessions: LootSessionsService) {}
+  constructor(
+    private readonly sessions: LootSessionsService,
+    private readonly council: LootCouncilService,
+  ) {}
 
   /** As sessões que ainda não encerraram. É o que a aba de Sessão abre. */
   @Get()
@@ -98,6 +109,58 @@ export class LootSessionsController {
     @Req() req: Request,
   ): Promise<LootSessionDetail> {
     return this.sessions.responder(id, itemId, body, ator(req), personagens(req));
+  }
+
+  /**
+   * O painel do conselho — a metade de cima da tela.
+   *
+   * Rota própria, e não um campo do detalhe: se fosse campo, o payload do membro
+   * carregaria as respostas de todo mundo e a tela só esconderia. O teste da
+   * Regra 5 é "chamado sem permissão devolve 403?", e aqui devolve.
+   */
+  @Get(':id/painel')
+  @UseGuards(OfficerGuard)
+  painel(@Param('id') id: string, @Req() req: Request): Promise<LootCouncilPanel> {
+    return this.council.painel(id, ator(req));
+  }
+
+  /** O voto do conselheiro. Um por conselheiro por peça; votar de novo troca. */
+  @Post(':id/itens/:itemId/voto')
+  @UseGuards(OfficerGuard)
+  async votar(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(votarSchema)) body: Votar,
+    @Req() req: Request,
+  ): Promise<LootCouncilPanel> {
+    await this.council.votar(id, itemId, body, ator(req));
+    return this.council.painel(id, ator(req));
+  }
+
+  /** Pede para alguém responder de novo. É o escape do `deliberando`. */
+  @Post(':id/itens/:itemId/reabrir')
+  @UseGuards(OfficerGuard)
+  async reabrirResposta(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(reabrirRespostaSchema)) body: ReabrirResposta,
+    @Req() req: Request,
+  ): Promise<LootCouncilPanel> {
+    await this.council.reabrirResposta(id, itemId, body, ator(req));
+    return this.council.painel(id, ator(req));
+  }
+
+  /** O conselho corrige a resposta de alguém. Vira evento com autor. */
+  @Post(':id/itens/:itemId/resposta-do-conselho')
+  @UseGuards(OfficerGuard)
+  async alterarResposta(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(alterarRespostaSchema)) body: AlterarResposta,
+    @Req() req: Request,
+  ): Promise<LootCouncilPanel> {
+    await this.council.alterarResposta(id, itemId, body, ator(req));
+    return this.council.painel(id, ator(req));
   }
 
   /**
