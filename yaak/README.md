@@ -13,9 +13,9 @@ Se preferir o CLI (`npm install -g @yaakapp/cli`, depois `yaak agent
 install` pra instalar a skill de agente), ele lê e escreve na mesma base
 local do app — o que um faz aparece no outro.
 
-## Environments — por que duas, e por que uma não vai pro git
+## Environments — por que três, e por que só uma vai pro git
 
-O workspace tem duas environments, e a separação existe por causa da Regra
+O workspace tem três environments, e a separação existe por causa da Regra
 de segredos do `CLAUDE.md`: **este repositório é público**.
 
 - **`Team`** — a environment base do workspace, marcada `public` (o que o
@@ -24,19 +24,36 @@ de segredos do `CLAUDE.md`: **este repositório é público**.
   **nomes** das variáveis sensíveis, vazias, pra documentar que elas
   existem.
 - **`Local`** — sub-environment, filha de `Team`, **não marcada `public`**.
-  Nunca sincroniza. Cada dev preenche localmente:
+  Nunca sincroniza. Cada dev preenche localmente, contra a API rodando na
+  própria máquina:
   - `session_cookie` — valor de `titan_session` depois de logar no site
     local (copiar do DevTools, aba Application/Cookies).
   - `ops_token` — o `OPS_TRIGGER_TOKEN` do seu `.env` da API.
+- **`Prod`** — sub-environment irmã de `Local`, também **não marcada
+  `public`**. Contra produção, por túnel SSH — nunca direto: o Caddy
+  bloqueia `/internal/ops/*` no domínio público, e o resto da área interna
+  exige sessão de verdade de qualquer forma. `base_url` aponta pro túnel
+  local (`http://localhost:3002` — de propósito **diferente** da porta
+  3001 da API local, pra `Local` e `Prod` nunca apontarem pro mesmo lugar
+  por acidente de porta). `session_cookie`/`ops_token` vazios, cada dev
+  preenche com o valor **de produção**.
 
-Pra usar valor real, selecione `Local` no seletor de environment antes de
-enviar (`-e ev_...` no CLI) — ela sobrescreve `session_cookie` e
-`ops_token` de `Team` por herança.
+Pra usar valor real, selecione a sub-environment (`Local` ou `Prod`) no
+seletor antes de enviar (`-e ev_...` no CLI) — ela sobrescreve
+`base_url`/`session_cookie`/`ops_token` de `Team` por herança.
 
-**Nunca marque `Local` como `public`/sharable.** Se isso acontecer por
-engano, o valor vai para o próximo commit — trate como o mesmo incidente
-que vazar um `.env` (ver seção Segredos do `CLAUDE.md`: rotacionar na
-origem, não só reescrever o histórico).
+**`Prod` é destacada em vermelho no seletor do Yaak** de propósito. As
+rotas de `internal/ops/*` **escrevem** no banco (snapshot,
+attendance-sync, catalog-load...) — mandar uma dessas achando que está em
+`Local` quando na verdade é `Prod` selecionada não é um teste ruim, é
+grava dado real errado. Confira a environment ativa antes de enviar
+qualquer coisa em `ops/`.
+
+**Nunca marque `Local` ou `Prod` como `public`/sharable.** Se isso
+acontecer por engano, o valor vai para o próximo commit — trate como o
+mesmo incidente que vazar um `.env` (ver seção Segredos do `CLAUDE.md`:
+rotacionar na origem, não só reescrever o histórico). Vale ainda mais para
+`Prod`: o token e o cookie ali são os de produção de verdade.
 
 ## O que não é enviável
 
