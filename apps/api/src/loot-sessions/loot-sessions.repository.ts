@@ -266,6 +266,37 @@ export class LootSessionsRepository {
     });
   }
 
+  /**
+   * O que estes personagens já receberam, do histórico de loot.
+   *
+   * Uma consulta para TODOS os candidatos da sessão, não uma por pessoa: são até
+   * ~26 numa noite, e N+1 aqui seria 26 idas ao banco a cada abertura do painel
+   * — que a tela vai reabrir a cada voto.
+   *
+   * O corte por quantidade é feito depois, em memória, porque "os N mais
+   * recentes POR PESSOA" precisaria de window function e o volume não justifica.
+   * O `take` aqui é teto de segurança, não a regra.
+   */
+  findHistoricoDosCandidatos(chaves: Array<{ nameKey: string; realmKey: string }>) {
+    if (chaves.length === 0) return Promise.resolve([]);
+
+    return this.prisma.lootLine.findMany({
+      where: {
+        OR: chaves.map((c) => ({ winnerNameKey: c.nameKey, winnerRealmKey: c.realmKey })),
+      },
+      orderBy: { awardedAt: 'desc' },
+      take: 500,
+      select: {
+        winnerNameKey: true,
+        winnerRealmKey: true,
+        awardedAt: true,
+        itemId: true,
+        difficulty: true,
+        responseOptionSlug: true,
+      },
+    });
+  }
+
   /** Todos os votos da sessão, para contar por candidato. */
   findVotos(sessionId: string) {
     return this.prisma.lootSessionVote.findMany({
