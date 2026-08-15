@@ -1,0 +1,33 @@
+type: http_request
+model: http_request
+id: rq_EE8NLtVPPz
+createdAt: 2026-08-15T00:16:31.755016400
+updatedAt: 2026-08-15T00:16:31.755019800
+workspaceId: wk_8LmjjnEbam
+folderId: fl_udcD9arQzT
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Progressão (pública)
+sortPriority: 0.0
+url: ${[ base_url ]}/public/raid-progress
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

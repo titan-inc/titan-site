@@ -1,0 +1,49 @@
+type: http_request
+model: http_request
+id: rq_DUph7c2sd3
+createdAt: 2026-08-15T00:16:28.824240300
+updatedAt: 2026-08-15T00:16:28.824244100
+workspaceId: wk_8LmjjnEbam
+folderId: fl_FknhcmhGXn
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+method: GET
+name: Roster probe
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/ops/roster-probe
+urlParameters:
+- enabled: true
+  name: guild
+  value: ''
+  id: null
+- enabled: true
+  name: realm
+  value: ''
+  id: null
+- enabled: false
+  name: characters
+  value: ''
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

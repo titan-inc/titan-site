@@ -14,6 +14,10 @@ alcançável de dentro do container (`docker compose exec`) ou por túnel SSH
 
 Em dev local (`pnpm dev`), a base é `http://localhost:3001`.
 
+Todas as rotas abaixo (e o resto da API) também estão prontas como requests
+na collection do Yaak em `yaak/` — ver `yaak/README.md` — se preferir
+testar por lá em vez de `curl`.
+
 **Corpo até 2mb neste prefixo**, contra 16kb no resto da app (`main.ts`). As duas
 rotas que carregam arquivo — `catalog-load` e `loot-import-rc` — não caberiam no
 teto público: o maior catálogo tem 92 KB e o export do RC tem 304 KB. O teto
