@@ -88,6 +88,30 @@ export function respostaLivre(status: LootSessionStatus): boolean {
   return status === LOOT_SESSION_STATUS.ABERTA;
 }
 
+/**
+ * A sala já pode ver o que cada um declarou?
+ *
+ * **Não é permissão, é fase.** Vale igual para membro e para conselheiro, e a
+ * razão é a mesma que fez a resposta alheia ficar escondida desde a TIT-65: ver
+ * o que os outros declararam muda o que a pessoa declara. Quem ia pedir
+ * `upgrade` vê três `bis` e desiste.
+ *
+ * Isso alcança o conselheiro porque **ele também é candidato** — conselho e loot
+ * master raidam. Dar a ele escolha e roll durante a fase de roll seria dar a uma
+ * parte da sala a informação que a outra não tem, na hora em que ela muda
+ * decisão.
+ *
+ * Quando as respostas fecham, abre para todo mundo: ninguém responde mais (só
+ * quem for reaberto), então mostrar não muda mais declaração nenhuma — e aí vale
+ * a Regra 7, que quer a decisão do conselho acompanhável.
+ *
+ * O que continua sendo só do conselho é **voto** e histórico de peças recebidas.
+ * Isto aqui decide o que a sala vê, não o que o conselho faz.
+ */
+export function respostasVisiveis(status: LootSessionStatus): boolean {
+  return status === LOOT_SESSION_STATUS.DELIBERANDO || status === LOOT_SESSION_STATUS.ENCERRADA;
+}
+
 /** Conselho só vota depois que as respostas fecharam. */
 export function podeVotar(status: LootSessionStatus): boolean {
   return status === LOOT_SESSION_STATUS.DELIBERANDO;

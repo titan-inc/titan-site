@@ -58,12 +58,25 @@ export const candidatoSchema = z.object({
   realmKey: z.string(),
 
   /**
-   * O que a pessoa declarou. **Nulo é quem ainda não se manifestou.**
+   * Esta pessoa já respondeu?
    *
-   * Nulo e `noop` dizem coisas diferentes no tempo: nulo é silêncio provisório,
-   * com a sessão aberta e a pessoa ainda podendo responder; `noop` é o silêncio
-   * já registrado, materializado quando a fase de roll fechou. Nenhum dos dois é
-   * `pass`, que é declaração — a pessoa olhou a peça e abriu mão.
+   * É a **única** coisa que o conselho sabe sobre a resposta alheia enquanto a
+   * fase de roll não fecha, e existe por isso: ali `responseOptionSlug` vem nulo
+   * para todo mundo, e sem este campo "escondido" seria indistinguível de "não
+   * respondeu" — que é justamente o que o conselho precisa saber para decidir
+   * quando fechar. Ver TIT-131.
+   */
+  respondeu: z.boolean(),
+
+  /**
+   * O que a pessoa declarou. **Nulo quando não dá para ver.**
+   *
+   * Duas causas, e o `respondeu` separa as duas: em `aberta` vem nulo para todo
+   * mundo, porque ninguém — nem o conselho — vê escolha alheia na fase de roll;
+   * em `deliberando` só é nulo para quem não respondeu, e aí a linha já é `noop`.
+   *
+   * `noop` não é `pass`: uma é silêncio registrado, a outra é declaração de
+   * quem olhou a peça e abriu mão.
    */
   responseOptionSlug: z.string().nullable(),
 
@@ -76,6 +89,9 @@ export const candidatoSchema = z.object({
    *
    * Nulo é quem não rolou — quem não respondeu nunca rolou. Nunca zero: zero
    * apareceria ao lado de quem tirou 1 parecendo roll ruim.
+   *
+   * Em `aberta` é nulo para todo mundo, pelo mesmo motivo de `responseOptionSlug`
+   * — o roll é parte do que a fase de roll esconde.
    */
   roll: z.number().int().nullable(),
 

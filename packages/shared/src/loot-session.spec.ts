@@ -3,6 +3,7 @@ import {
   LOOT_SESSION_STATUS,
   podeEditarItens,
   respostaLivre,
+  respostasVisiveis,
   sessaoAceitaResposta,
   podeTransicionar,
   podeVotar,
@@ -58,18 +59,33 @@ describe('ciclo de vida da sessão', () => {
 });
 
 describe('o que cada estado permite', () => {
-  const permissoes: Array<[LootSessionStatus, boolean, boolean, boolean]> = [
-    // estado          editar itens  responder  votar
-    ['rascunho', true, false, false],
-    ['aberta', false, true, false],
-    ['deliberando', false, true, true],
-    ['encerrada', false, false, false],
+  const permissoes: Array<[LootSessionStatus, boolean, boolean, boolean, boolean]> = [
+    // estado          editar itens  responder  votar  respostas à vista
+    ['rascunho', true, false, false, false],
+    ['aberta', false, true, false, false],
+    ['deliberando', false, true, true, true],
+    ['encerrada', false, false, false, true],
   ];
 
-  it.each(permissoes)('%s', (estado, itens, responder, votar) => {
+  it.each(permissoes)('%s', (estado, itens, responder, votar, visiveis) => {
     expect(podeEditarItens(estado)).toBe(itens);
     expect(sessaoAceitaResposta(estado)).toBe(responder);
     expect(podeVotar(estado)).toBe(votar);
+    expect(respostasVisiveis(estado)).toBe(visiveis);
+  });
+
+  it('a fase de roll esconde de TODO MUNDO, inclusive do conselho', () => {
+    // Não é permissão, é fase: conselheiro também é candidato, e ver escolha
+    // alheia na hora de declarar muda o que ele declara. A tabela acima é a
+    // mesma para membro e para conselho — não há coluna por papel.
+    expect(respostasVisiveis('aberta')).toBe(false);
+    expect(podeVotar('aberta')).toBe(false);
+  });
+
+  it('encerrada esconde resposta nova, mas não esconde as que houve', () => {
+    // Ela vira histórico, e histórico de loot é aberto — Regra 7.
+    expect(sessaoAceitaResposta('encerrada')).toBe(false);
+    expect(respostasVisiveis('encerrada')).toBe(true);
   });
 
   it('a lista de itens congela quando a sessão abre', () => {
