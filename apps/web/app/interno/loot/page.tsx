@@ -1,5 +1,7 @@
+import { isActingOfficer } from '@titan/shared';
 import Link from 'next/link';
-import { getLootSessions } from '../../../lib/api';
+import { getLootSessions, getSessionUser } from '../../../lib/api';
+import { IniciarSessao } from './_components/iniciar-sessao';
 import { RotuloDeStatus } from './_components/rotulo-de-status';
 
 export const metadata = { title: 'Loot — Titan Inc' };
@@ -13,8 +15,20 @@ export const metadata = { title: 'Loot — Titan Inc' };
  * que vai para o Discord apontando na página exata, como a Regra 7 pede.
  */
 export default async function LootSessaoPage() {
-  const sessoes = await getLootSessions();
+  const [sessoes, usuario] = await Promise.all([getLootSessions(), getSessionUser()]);
 
+  // Esconder é cortesia; quem recusa a criação é o `OfficerGuard` no Nest.
+  const podeIniciar = usuario !== null && isActingOfficer(usuario);
+
+  return (
+    <div className="flex flex-col gap-5">
+      {podeIniciar && <IniciarSessao />}
+      {conteudo(sessoes)}
+    </div>
+  );
+}
+
+function conteudo(sessoes: Awaited<ReturnType<typeof getLootSessions>>) {
   if (sessoes === null) {
     return (
       <p className="border-border text-fg-muted rounded-lg border border-dashed p-5 text-sm">
