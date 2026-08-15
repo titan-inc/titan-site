@@ -3,7 +3,7 @@ model: environment
 id: ev_E7qunsqS2y
 workspaceId: wk_8LmjjnEbam
 createdAt: 2026-08-14T23:50:18.352390200
-updatedAt: 2026-08-14T23:50:18.352390300
+updatedAt: 2026-08-15T01:45:19.910888100
 name: Team
 public: true
 base: true
@@ -13,13 +13,17 @@ variables:
 - enabled: true
   name: base_url
   value: http://localhost:3001
-  id: null
+  id: QxFyw4I9c8
 - enabled: true
   name: session_cookie
   value: ''
-  id: null
+  id: 8TTI00bTeZ
 - enabled: true
   name: ops_token
+  value: ''
+  id: uArE33eIgH
+- enabled: true
+  name: catalog_json_path
   value: ''
   id: null
 color: null

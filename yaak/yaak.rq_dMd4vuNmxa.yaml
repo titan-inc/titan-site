@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_dMd4vuNmxa
 createdAt: 2026-08-15T00:16:28.050603100
-updatedAt: 2026-08-15T00:16:28.050606300
+updatedAt: 2026-08-15T03:27:59.327020300
 workspaceId: wk_8LmjjnEbam
 folderId: fl_FknhcmhGXn
 authentication: {}
@@ -10,10 +10,11 @@ authenticationType: null
 body:
   text: |-
     {
-      "journalInstanceId": 1273
+      "journalInstanceId": 1302,
+      "journalDump": ${[ fs.readFile(path=b64'QzpcVXNlcnNcYW5kcmVcd29ya3NwYWNlXHRpdGFuLXNpdGVcbG9jYWxkb2NzXGV4dHJhY3Rpb25cMTMwMi5qc29u', encoding='utf8') ]}
     }
 bodyType: application/json
-description: journalInstanceId de exemplo — pegar um id real em 'Catalog instances'. journalDump é opcional (colagem do /tilc journal).
+description: 'journalInstanceId de exemplo (Vault of the Incarnates) — pegar um id real em Catalog instances. journalDump é opcional: aponte a variável catalog_dump_path (Local) para o .json gerado por `pnpm dump:escape dump.txt` (ver docs/ops.md). Nunca aponte pro .txt cru: json.escape() não funciona na versão atual da CLI do Yaak (testado em 15/08/2026), então colar o dump cru direto aqui quebra o JSON em silêncio.'
 headers:
 - enabled: true
   name: X-Ops-Token
@@ -25,9 +26,17 @@ headers:
   id: null
 method: POST
 name: Catalog generate
-sortPriority: 0.0
+sortPriority: 3333.3333333333335
 url: ${[ base_url ]}/internal/ops/catalog-generate
-urlParameters: []
+urlParameters:
+- enabled: false
+  name: catalog_dump_path
+  value: C:\Users\andre\workspace\titan-site\localdocs\extraction\1200.json
+  id: 4b7NB4qTVq
+- enabled: true
+  name: ''
+  value: ''
+  id: vTa8iz8sAc
 settingSendCookies:
   enabled: false
   value: true

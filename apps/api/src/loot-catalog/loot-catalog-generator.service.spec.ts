@@ -272,6 +272,25 @@ describe('LootCatalogGeneratorService', () => {
       expect(getItemIcon).toHaveBeenCalledTimes(1);
       expect(primeiroItem(bossEm(arquivo, 1)).itemId).toBe(500);
     });
+
+    it('não repete o item que o journal lista duas vezes no mesmo boss', async () => {
+      // Caso real: receita com múltiplas entradas na loot table do mesmo boss
+      // (liberation-of-undermine.json, Chrome King Gallywix, item 223144 4x).
+      // Sem deduplicar, `dropsDoBoss` gera a mesma (difficulty, itemId) mais de
+      // uma vez e o `createMany` do carregador estoura a unique constraint.
+      const { service } = montar({
+        journal: [
+          encontro(10, 'Boss', {
+            items: [{ item: { id: 500, name: 'Formula' } }, { item: { id: 500, name: 'Formula' } }],
+          }),
+        ],
+        wcl: [encounter(3176, 'Boss')],
+      });
+
+      const arquivo = await service.gerar(1307);
+
+      expect(bossEm(arquivo, 0).items).toHaveLength(1);
+    });
   });
 
   it('registra de qual instância do journal o arquivo saiu', async () => {
