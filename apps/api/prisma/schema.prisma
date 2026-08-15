@@ -85,17 +85,10 @@ model GuildCharacter {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  /// Identidade do personagem via toCharacterKey(): minúsculas em NFC, COM
-  /// acento. Acento distingue personagens diferentes — Shrëwd, Shrêwd e Shrèwd
-  /// são três pessoas com ranks diferentes. Ver Regra 6 do CLAUDE.md.
-  nameKey String
-
-  /// Realm via toSlug(). Aqui remover acento é correto: `area-52` e `Area 52`
-  /// são o mesmo realm em endpoints diferentes da Blizzard.
-  realmSlug String
-
-  /// Nome como a Blizzard exibe, com acento e capitalização. Só para mostrar.
-  name String
+  /// Quem é este personagem. A identidade vive fora do roster e não é apagada
+  /// quando a pessoa sai da guilda — esta linha é que some.
+  characterId String    @unique
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
   /// Rank deste personagem no roster. O rank da PESSOA é o menor entre os dela.
   rank Int
@@ -103,12 +96,65 @@ model GuildCharacter {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  /// A identidade de um personagem é o par nome + realm, nunca o nome sozinho:
-  /// WoW garante nome único por realm, e é justamente por isso que quem acha o
-  /// nome ocupado registra uma variação acentuada dele.
-  @@unique([userId, realmSlug, nameKey])
   @@index([userId])
-  @@index([realmSlug, nameKey])
+}
+
+/// A identidade de um personagem do WoW. Uma linha por pessoa-personagem.
+///
+/// **Nunca apaga linha.** É o que faz o histórico sobreviver a quem sai da
+/// guilda: `GuildCharacter` diz "está no roster agora" e some quando a pessoa
+/// sai; a identidade fica, e com ela o loot que a pessoa levou e as noites em
+/// que ela raidou. Resolve o personagem órfão da TIT-54 por construção.
+///
+/// Até 15/08/2026 cada tabela repetia QUATRO colunas para guardar uma pessoa —
+/// duas chaves para comparar e duas grafias para exibir —, em dez modelos, e
+/// metade deles com a normalização de realm diferente da outra metade. Isto
+/// existe para que cresça num lugar só.
+model Character {
+  id String @id @default(cuid())
+
+  /// A chave de comparação. Ver Regra 6 — e são DUAS funções diferentes.
+  ///
+  /// `nameKey` por `toCharacterKey()`, que **mantém o acento**: `Shrëwd`,
+  /// `Shrêwd` e `Shrèwd` são três pessoas, com ranks diferentes. `realmKey` por
+  /// `toRealmMatchKey()`, a chave frouxa, porque as ferramentas escrevem realm
+  /// composto de jeitos diferentes — `Area 52` na Blizzard, `Area52` no
+  /// WarcraftLogs.
+  ///
+  /// Resolver com a normalização errada junta duas pessoas numa identidade só,
+  /// e o sintoma é histórico trocado, sem erro nenhum.
+  nameKey  String
+  realmKey String
+
+  /// A grafia para exibir. Não é derivável da chave: `area52` não reconstrói
+  /// "Area 52" nem "Area-52", e o `nameKey` é minúsculo.
+  ///
+  /// **Quando as fontes discordam, a Blizzard vence** — o roster sobrescreve, e
+  /// as outras fontes só preenchem o que estiver vazio. É a mesma regra que o
+  /// `OfficerGrant` já seguia ao gravar a grafia da Blizzard, e não a digitada.
+  name  String
+  realm String
+
+  /// Token do cliente (`MAGE`, `DEATHKNIGHT`), quando alguma fonte disse.
+  /// Nulo é lacuna, não "sem classe".
+  class String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  guildCharacter GuildCharacter?
+  officerGrant   OfficerGrant?
+  snapshots      CharacterSnapshot[]
+  attendances    RaidAttendance[]
+  lootWon        LootLine[]               @relation("VencedorDaLinha")
+  lootLooted     LootLine[]               @relation("LooterDaLinha")
+  responses      LootSessionResponse[]
+  participations LootSessionParticipant[]
+  votes          LootSessionVote[]
+  awards         LootSessionAward[]
+
+  /// A identidade é o par nome + realm, nunca o nome sozinho.
+  @@unique([nameKey, realmKey])
 }
 
 /// Personagem que a liderança marcou como oficial.
@@ -128,25 +174,17 @@ model GuildCharacter {
 model OfficerGrant {
   id String @id @default(cuid())
 
-  /// Identidade do personagem via toCharacterKey(): minúsculas em NFC, COM
-  /// acento — Shrëwd e Shrêwd são pessoas diferentes. Ver Regra 6.
-  nameKey String
-
-  /// Realm via toSlug(), igual ao GuildCharacter, para os dois casarem.
-  realmSlug String
-
-  /// Nome e realm como a Blizzard exibe. Só para a tela.
-  name  String
-  realm String
+  /// A quem a liderança concedeu. Grava a identidade, e não o que foi digitado:
+  /// a resolução acontece na concessão, contra o roster, e nome ambíguo é
+  /// recusado ali — ver Regra 4.
+  characterId String    @unique
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
   /// Battletag de quem concedeu, e quando. Promover alguém a ver dado pessoal
   /// de centenas de candidatos não pode ser uma ação anônima.
   grantedBy String
   grantedAt DateTime @default(now())
 
-  /// Um grant por personagem. Conceder duas vezes atualiza, não duplica.
-  @@unique([realmSlug, nameKey])
-  @@index([realmSlug, nameKey])
 }
 
 /// Sessão com estado no banco, não JWT.
@@ -288,25 +326,15 @@ model RaidAttendance {
   raidNightId Int
   raidNight   RaidNight @relation(fields: [raidNightId], references: [id], onDelete: Cascade)
 
-  /// Identidade: nome + realm. Ver Regra 6 — nome sozinho colide.
-  nameKey String
-
-  /// Realm por `toRealmMatchKey()`, NÃO por `toSlug()`.
+  /// Quem raidou (ou não). Ver `Character`.
   ///
-  /// Aqui a linha nasce de duas fontes que escrevem realm diferente: o signup
-  /// do WoWAudit diz "Area 52" e o log do WCL diz "Area52". Por `toSlug()` isso
-  /// viraria `area-52` e `area52` — duas linhas para a mesma pessoa na mesma
-  /// noite, uma "confirmou e sumiu" e outra "raidou sem confirmar".
-  ///
-  /// Para cruzar com `GuildCharacter`, aplique `toRealmMatchKey()` no
-  /// `realmSlug` de lá — a função é idempotente sobre o slug.
-  realmKey String
-
-  /// Nome exibido, com acento.
-  name String
-
-  /// Realm exibido, na forma da fonte que a guilda reconhece.
-  realm String
+  /// Antes eram quatro colunas aqui, e a chave de realm era a FROUXA de
+  /// propósito: o signup do WoWAudit diz "Area 52" e o log do WCL diz "Area52",
+  /// e por `toSlug()` isso viraria duas linhas para a mesma pessoa na mesma
+  /// noite — uma "confirmou e sumiu", outra "raidou sem confirmar". A
+  /// identidade guarda essa mesma chave, então o casamento continua igual.
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
 
   /// Status auto-declarado no signup. Null = a pessoa não estava no signup.
   signup String?
@@ -338,8 +366,8 @@ model RaidAttendance {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   /// Uma linha por personagem por noite. Reprocessar atualiza, não duplica.
-  @@unique([raidNightId, realmKey, nameKey])
-  @@index([realmKey, nameKey])
+  @@unique([raidNightId, characterId])
+  @@index([characterId])
 }
 
 /// Foto semanal de um personagem do time de raid.
@@ -360,12 +388,9 @@ model CharacterSnapshot {
   seasonId Int
   season   GameSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
 
-  /// Identidade: nome + realm. Ver Regra 6 — nome sozinho colide.
-  nameKey   String
-  realmSlug String
-
-  /// Nome exibido, com acento.
-  name String
+  /// De quem é a foto. Ver `Character`.
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
 
   /// `gear.item_level_equipped` do Raider.IO. Nulo = não deu para medir na
   /// semana. NUNCA gravar 0 no lugar: "sem dado" e "sem gear" são coisas
@@ -398,9 +423,9 @@ model CharacterSnapshot {
 
   /// Uma foto por personagem por semana. Rodar o job duas vezes atualiza a
   /// linha, não cria outra.
-  @@unique([period, realmSlug, nameKey])
+  @@unique([period, characterId])
   @@index([seasonId])
-  @@index([realmSlug, nameKey])
+  @@index([characterId])
 }
 
 /// Dificuldade de raid, como contexto do catálogo.
@@ -859,46 +884,28 @@ model LootLine {
   seasonId Int?
   season   GameSeason? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
 
-  /// Identidade de quem levou: o par nome + realm, nunca o nome sozinho.
+  /// Quem levou a peça. Ver `Character`.
   ///
-  /// Regra 6 — `nameKey` por `toCharacterKey()`, que MANTÉM acento, porque no
-  /// roster existem 7 grupos de personagens que só diferem por acento, com ranks
-  /// diferentes.
+  /// Eram quatro colunas até 15/08/2026 — duas chaves e duas grafias —, e o
+  /// motivo delas continua valendo, só que na identidade: a chave de realm é a
+  /// FROUXA, porque o export do RCLootCouncil escreve `Area52` e o roster da
+  /// Blizzard `area-52`, e por `toSlug()` os dois lados nunca casariam.
   ///
-  /// O realm é `toRealmMatchKey()`, a chave FROUXA, e não `toSlug()`. Mesma razão
-  /// do `Attendance.realmKey`: a linha nasce de fonte que escreve realm à moda do
-  /// cliente do jogo. No export do RCLootCouncil o campo vem `Nome-Realm` com
-  /// `Area52` e `DemonSoul`, enquanto o roster da Blizzard guarda `area-52` e
-  /// `demon-soul`. Por `toSlug()` os dois lados nunca casariam, e o sintoma seria
-  /// o histórico da pessoa partido em dois sem erro nenhum.
-  ///
-  /// Para cruzar com `GuildCharacter`, aplique `toRealmMatchKey()` no `realmSlug`
-  /// de lá — a função é idempotente sobre o slug.
-  winnerNameKey  String
-  winnerRealmKey String
-
-  /// Grafia como veio na fonte, para exibir. Nunca para comparar.
-  ///
-  /// O realm também, e aqui vale ainda mais que antes: a chave frouxa colapsa
-  /// todo separador, então `area52` não reconstrói nem "Area 52" nem "Area-52".
-  /// Para personagem que saiu da guilda (ver TIT-54) a fonte é a única coisa que
-  /// sobrou.
-  winnerName  String
-  winnerRealm String
-
-  /// Classe como token do cliente (`MAGE`, `DEATHKNIGHT`). NÃO é localizado.
-  ///
-  /// Guardado cru: alinhar com o vocabulário de `CLASSES` do shared é conversão de
-  /// leitura, e ninguém precisa disso ainda.
-  winnerClass String?
+  /// Aponta para a identidade, e não para o roster, porque histórico tem que
+  /// sobreviver a quem saiu da guilda — TIT-54.
+  winnerCharacterId String
+  winner            Character @relation("VencedorDaLinha", fields: [winnerCharacterId], references: [id])
 
   /// Quem lootou o item no jogo, quando difere de quem levou.
   ///
-  /// É o `owner` do export. Mesmo par nome + realm, e nulo quando a fonte não diz.
-  looterNameKey  String?
-  looterRealmKey String?
-  looterName     String?
-  looterRealm    String?
+  /// É o `owner` do export. Nulo quando a fonte não diz — e não é o mesmo que
+  /// "lootou para si": ler isto como destinatário inverte o propósito da
+  /// ferramenta.
+  looterCharacterId String?
+  /// `Restrict` mesmo sendo nulável: identidade não se apaga, e se alguém
+  /// tentar, o certo é o banco recusar — não anular em silêncio a informação de
+  /// quem lootou.
+  looter Character? @relation("LooterDaLinha", fields: [looterCharacterId], references: [id], onDelete: Restrict)
 
   /// O item. `itemId` para casar com o catálogo, `itemString` cru e inteiro.
   ///
@@ -981,7 +988,7 @@ model LootLine {
   /// Reimportar o mesmo arquivo não duplica.
   @@unique([source, externalId])
   /// "O histórico desta pessoa", que é a consulta central da Regra 7.
-  @@index([winnerNameKey, winnerRealmKey, awardedAt])
+  @@index([winnerCharacterId, awardedAt])
   @@index([itemId])
   @@index([encounterId])
   @@index([awardedAt])
@@ -1092,15 +1099,13 @@ model LootSessionParticipant {
   userId    String
   battletag String
 
-  /// O personagem daquela noite — o par nome + realm da Regra 6.
+  /// O personagem daquela noite.
   ///
   /// É daqui que a RESPOSTA herda a identidade, em vez de cada resposta carregar
   /// o personagem. Antes o padrão era o representante da conta, que erra
   /// justamente para quem raida no alt.
-  nameKey  String
-  realmKey String
-  name     String
-  realm    String
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
 
   joinedAt  DateTime @default(now())
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1158,12 +1163,9 @@ model LootSessionResponse {
   itemId String
   item   LootSessionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
-  /// O personagem que está disputando — o par nome + realm da Regra 6. Mesma
-  /// normalização da linha de loot: `toCharacterKey` e `toRealmMatchKey`.
-  nameKey  String
-  realmKey String
-  name     String
-  realm    String
+  /// O personagem que está disputando. Herdado da participação.
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
 
   /// Quem respondeu, para a auditoria. Sem FK — ver `LootSession`.
   userId String
@@ -1205,7 +1207,7 @@ model LootSessionResponse {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   /// Uma resposta por personagem por item.
-  @@unique([itemId, nameKey, realmKey])
+  @@unique([itemId, characterId])
   @@index([itemId])
 }
 
@@ -1221,8 +1223,8 @@ model LootSessionVote {
   item   LootSessionItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   /// Em quem votou. O par nome + realm, igual à resposta.
-  candidateNameKey  String
-  candidateRealmKey String
+  candidateCharacterId String
+  candidate            Character @relation(fields: [candidateCharacterId], references: [id])
 
   /// Quem votou. Sem FK — ver `LootSession`.
   voterUserId    String
@@ -1252,10 +1254,8 @@ model LootSessionAward {
   /// Sempre um personagem, inclusive quando vai para o banco: ali o vencedor é
   /// quem guardou, e o que marca o destino é a resposta `banking`. Sem caso
   /// especial, e é assim que o histórico importado já registra.
-  winnerNameKey  String
-  winnerRealmKey String
-  winnerName     String
-  winnerRealm    String
+  winnerCharacterId String
+  winner            Character @relation(fields: [winnerCharacterId], references: [id])
 
   /// A resposta do vencedor no momento do award. É ela que vai para a linha de
   /// loot — congelada aqui porque a resposta pode ser corrigida depois.
