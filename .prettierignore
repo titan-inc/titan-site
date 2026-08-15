@@ -6,6 +6,12 @@ dist/
 coverage/
 next-env.d.ts
 
+# Escritos pelo Yaak (app/CLI) via Local Directory/Git Sync — ver
+# yaak/README.md. Reformatar à mão entraria em cabo de guerra com o próprio
+# Yaak, que reescreve no formato dele a cada sync. README.md da pasta
+# continua formatado normalmente, só o YAML gerado é ignorado.
+yaak/*.yaml
+
 # Gerado pelo create-next-app, com marcadores próprios
 apps/web/AGENTS.md
 

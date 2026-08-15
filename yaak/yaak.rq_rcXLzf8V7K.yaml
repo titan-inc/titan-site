@@ -1,0 +1,41 @@
+type: http_request
+model: http_request
+id: rq_rcXLzf8V7K
+createdAt: 2026-08-15T00:16:32.293478800
+updatedAt: 2026-08-15T00:16:32.293482800
+workspaceId: wk_8LmjjnEbam
+folderId: fl_KfLagr4vo9
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: Progressão de M+
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/progress
+urlParameters:
+- enabled: false
+  name: season
+  value: ''
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

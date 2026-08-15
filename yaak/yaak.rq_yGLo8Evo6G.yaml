@@ -1,0 +1,49 @@
+type: http_request
+model: http_request
+id: rq_yGLo8Evo6G
+createdAt: 2026-08-15T00:16:25.552509600
+updatedAt: 2026-08-15T00:16:25.552513600
+workspaceId: wk_8LmjjnEbam
+folderId: fl_w6tr7mEstu
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "note": "Avisou de boa que não ia raidar"
+    }
+bodyType: application/json
+description: ''
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: PUT
+name: Anotar motivo (não raidou)
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/attendance/:id/note
+urlParameters:
+- enabled: true
+  name: :id
+  value: att_exemplo
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

@@ -1,0 +1,46 @@
+type: http_request
+model: http_request
+id: rq_L4eaxWWZFh
+createdAt: 2026-08-15T00:16:30.974420700
+updatedAt: 2026-08-15T00:16:30.974424500
+workspaceId: wk_8LmjjnEbam
+folderId: fl_gutwePd9eK
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "Shrëwd",
+      "realm": "Azralon"
+    }
+bodyType: application/json
+description: Grafia exata como a Blizzard exibe (com acento) — a tela real lista as variações; nome ambíguo é recusado.
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Conceder oficial
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/officers
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

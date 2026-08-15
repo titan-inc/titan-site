@@ -482,6 +482,30 @@ Também não versionar dado de membro ou candidatura: nada de dump de banco, pri
 
 O `.env.example` pode ter placeholder local (`postgresql://titan:titan@localhost:5432/...`) — é credencial de banco de desenvolvimento na sua máquina, não vale nada fora dela. Nunca colocar ali um valor que funcione em produção.
 
+## Collection Yaak (`yaak/`)
+
+Toda rota de `apps/api/src` tem uma request equivalente na collection do
+[Yaak](https://yaak.app) em `yaak/`, sincronizada com o app via Local
+Directory/Git Sync — ver `yaak/README.md` e TIT-123.
+
+**Endpoint novo, alterado ou removido no Nest — a request correspondente
+muda junto, no mesmo PR.** Sem isso a collection é mais uma fonte que
+discorda do código, do jeito que a Regra 2 já evita pro contrato e a Regra 7
+evita pro dado da guilda: desatualizada em silêncio é pior que ausente,
+porque parece confiável.
+
+- Endpoint novo → request na pasta do controller correspondente (uma pasta
+  por controller/módulo, espelhando `apps/api/src/*`).
+- Rota, método ou body mudou → edita a request existente, não duplica.
+- Endpoint removido → apaga a request.
+- Header/variável de autenticação nova → declara o **nome** vazio na
+  environment `Team` (sharable); valor real só em `Local`, que nunca
+  sincroniza. Nunca escrever segredo real na collection compartilhada — ver
+  `yaak/README.md`.
+
+Editar via app Yaak (GUI) ou via `yaak` CLI — os dois leem/escrevem a mesma
+base local, e o sync grava o YAML sozinho.
+
 ## Aviso sobre o Next 16
 
 `apps/web/AGENTS.md` (gerado pelo `create-next-app`) avisa que esta versão do Next tem breaking changes em relação ao conhecimento pré-treinado, e manda ler `node_modules/next/dist/docs/` antes de escrever código.
