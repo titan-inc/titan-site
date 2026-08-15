@@ -662,6 +662,15 @@ export class LootSessionsRepository {
     return this.slugsAtivos('player');
   }
 
+  /** As opções que o jogador vê como botão, na ordem da tela. */
+  findOpcoesDoJogador(): Promise<Array<{ slug: string; label: string }>> {
+    return this.prisma.lootResponseOption.findMany({
+      where: { active: true, kind: 'player' },
+      orderBy: { position: 'asc' },
+      select: { slug: true, label: true },
+    });
+  }
+
   /**
    * As razões que o loot master pode dar a uma entrega: `banking`,
    * `disenchant`, `no_interest`.

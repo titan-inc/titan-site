@@ -1,3 +1,4 @@
+import { urlDoIcone } from './icone-do-item';
 import type { LootHistoryEntry } from '@titan/shared';
 
 const DIFICULDADE_CURTA: Record<string, string> = {
@@ -20,11 +21,6 @@ function dataDaEntrega(iso: string): string {
     month: '2-digit',
     year: '2-digit',
   }).format(new Date(iso));
-}
-
-/** URL do ícone a partir do slug. O slug é estável; a URL se compõe na hora. */
-function urlDoIcone(icon: string): string {
-  return `https://render.worldofwarcraft.com/us/icons/56/${icon}.jpg`;
 }
 
 /**

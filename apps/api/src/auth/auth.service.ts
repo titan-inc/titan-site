@@ -187,6 +187,11 @@ export class AuthService {
       // no primeiro, e tanto faz: são o mesmo rank.
       matchedCharacter: pickRepresentative(user.characters),
       characterCount: user.characters.length,
+      // Do melhor rank para o pior — rank 0 é o mais alto. É a ordem que o
+      // select de entrar na sessão quer, com o representante em cima.
+      characters: [...user.characters]
+        .sort((a, b) => a.rank - b.rank)
+        .map((c) => ({ name: c.name, realm: c.realmSlug, region: this.guild.region })),
       verifiedAt: user.verifiedAt?.toISOString() ?? null,
     };
   }

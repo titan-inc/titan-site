@@ -166,6 +166,13 @@ describe('LootSessionsService', () => {
     findSlugsAtivos: jest.fn<Promise<string[]>, []>(() =>
       Promise.resolve(['bis', 'upgrade', 'pass']),
     ),
+    findOpcoesDoJogador: jest.fn<Promise<Array<{ slug: string; label: string }>>, []>(() =>
+      Promise.resolve([
+        { slug: 'bis', label: 'BiS' },
+        { slug: 'upgrade', label: 'Upgrade' },
+        { slug: 'pass', label: 'Pass' },
+      ]),
+    ),
   };
 
   let service: LootSessionsService;
@@ -191,6 +198,11 @@ describe('LootSessionsService', () => {
     repo.findParticipantes.mockResolvedValue([]);
     repo.registrarSilencio.mockResolvedValue(0);
     repo.findTodasAsRespostas.mockResolvedValue([]);
+    repo.findOpcoesDoJogador.mockResolvedValue([
+      { slug: 'bis', label: 'BiS' },
+      { slug: 'upgrade', label: 'Upgrade' },
+      { slug: 'pass', label: 'Pass' },
+    ]);
 
     service = new LootSessionsService(repo as unknown as LootSessionsRepository);
   });
@@ -743,6 +755,15 @@ describe('LootSessionsService', () => {
       expect(d.items[0]?.totalDeRespostas).toBe(12);
       expect(d.items[0]?.minhaResposta).toBeNull();
       expect(JSON.stringify(d)).not.toContain('roll');
+    });
+
+    it('manda as opções de resposta junto da sessão', async () => {
+      // Vêm com a sessão, e não de um endpoint próprio: assim o botão que a
+      // tela mostra é necessariamente o que a API aceita. A lista é
+      // configurável, e duas fontes divergiriam quando alguém desativasse uma.
+      const d = await service.detalhe('sess-1', ATOR);
+
+      expect(d.opcoesDeResposta.map((o) => o.slug)).toEqual(['bis', 'upgrade', 'pass']);
     });
 
     it('na fase de roll, a resposta alheia NÃO sai da API', async () => {
