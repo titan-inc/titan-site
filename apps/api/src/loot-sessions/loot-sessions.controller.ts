@@ -6,6 +6,7 @@ import {
   alterarRespostaSchema,
   awardarSchema,
   awardPorMaioriaSchema,
+  passItemToSchema,
   createLootSessionSchema,
   reabrirRespostaSchema,
   respondToLootItemSchema,
@@ -19,6 +20,7 @@ import {
   type Awardar,
   type AwardEmMassaResultado,
   type AwardPorMaioria,
+  type PassItemTo,
   type CreateLootSessionResult,
   type LootCouncilPanel,
   type ReabrirResposta,
@@ -196,6 +198,25 @@ export class LootSessionsController {
     @Req() req: Request,
   ): Promise<LootCouncilPanel> {
     await this.council.awardar(id, itemId, body, ator(req));
+    return this.council.painel(id, ator(req));
+  }
+
+  /**
+   * A peça vai para alguém por decisão do loot master, não por interesse.
+   *
+   * Rota própria, e não um campo do `/award`: lá só quem se candidatou, e
+   * congela a declaração dela; aqui qualquer participante, e congela a razão de
+   * quem entregou. É a saída da peça que ninguém pediu.
+   */
+  @Post(':id/itens/:itemId/pass-item-to')
+  @UseGuards(OfficerGuard)
+  async passItemTo(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(passItemToSchema)) body: PassItemTo,
+    @Req() req: Request,
+  ): Promise<LootCouncilPanel> {
+    await this.council.passItemTo(id, itemId, body, ator(req));
     return this.council.painel(id, ator(req));
   }
 

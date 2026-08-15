@@ -12,6 +12,7 @@ import {
   type AlterarResposta,
   type AwardEmMassaResultado,
   type Awardar,
+  type PassItemTo,
   type AwardPorMaioria,
   type Candidato,
   type LootCouncilPanel,
@@ -82,6 +83,7 @@ export class LootCouncilService {
                 votes: award.votes,
                 awardedByBattletag: award.awardedByBattletag,
                 awardedAt: award.awardedAt.toISOString(),
+                note: award.note,
               }
             : null,
         };
@@ -320,7 +322,58 @@ export class LootCouncilService {
     );
     if (!escolhido) throw new BadRequestException(`${dados.characterName} não está na disputa`);
 
-    await this.gravarAward(sessionId, itemId, escolhido, ator);
+    await this.gravarAward(sessionId, itemId, escolhido, ator, dados.note ?? null);
+  }
+
+  /**
+   * A peça vai para alguém por decisão do loot master, não por interesse.
+   *
+   * Rota própria, e não um campo do award, porque as validações são **opostas**:
+   * ali só quem se candidatou, e congela a declaração dela; aqui qualquer
+   * participante, e congela a razão de quem entregou. As duas gravam a mesma
+   * linha, pelo mesmo método privado.
+   *
+   * É a saída da peça que ninguém pediu. Sem ela a sessão trava: entrega sem
+   * voto não sai sozinha, e peça sem dono segura o encerramento.
+   */
+  async passItemTo(
+    sessionId: string,
+    itemId: string,
+    dados: PassItemTo,
+    ator: Ator,
+  ): Promise<void> {
+    const sessao = await this.exigirSessao(sessionId);
+    this.exigirDeliberando(sessao.status);
+    await this.exigirItem(sessionId, itemId);
+
+    const razoes = await this.repo.findRazoesDoLootMaster();
+    if (!razoes.includes(dados.responseOptionSlug)) {
+      throw new BadRequestException(
+        `"${dados.responseOptionSlug}" não é uma razão de loot master. ` +
+          `Use uma de: ${razoes.join(', ')}.`,
+      );
+    }
+
+    const destino = await this.exigirParticipante(sessionId, dados);
+
+    await this.gravarAward(
+      sessionId,
+      itemId,
+      {
+        ...destino,
+        // A razão do loot master ocupa o lugar da declaração, porque é ela que
+        // responde "o que foi esta entrega". Sem voto: não houve votação, e
+        // zero aqui é resultado, não lacuna.
+        responseOptionSlug: dados.responseOptionSlug,
+        roll: null,
+        aguardandoNovaResposta: false,
+        votos: 0,
+        meuVoto: false,
+        recebidoAntes: [],
+      },
+      ator,
+      dados.note ?? null,
+    );
   }
 
   /**
@@ -364,7 +417,7 @@ export class LootCouncilService {
         continue;
       }
 
-      await this.gravarAward(sessionId, alvo, vencedor, ator);
+      await this.gravarAward(sessionId, alvo, vencedor, ator, null);
       entregues += 1;
     }
 
@@ -376,6 +429,7 @@ export class LootCouncilService {
     itemId: string,
     vencedor: Candidato,
     ator: Ator,
+    note: string | null,
   ): Promise<void> {
     // Quem não declarou nada não tem o que congelar, e `exigirCandidato()` já
     // barrou antes de chegar aqui. Entregar a quem não pediu é a TIT-127, e lá
@@ -398,6 +452,7 @@ export class LootCouncilService {
       // histórico guarda o que valia quando a decisão foi tomada.
       responseOptionSlug,
       votes: vencedor.votos,
+      note,
       ator,
     });
 
@@ -429,6 +484,37 @@ export class LootCouncilService {
     if (!(await this.repo.itemPertence(sessionId, itemId))) {
       throw new NotFoundException(`Item "${itemId}" não é desta sessão`);
     }
+  }
+
+  /**
+   * O destino de um `pass item to` precisa estar **na sessão**.
+   *
+   * E o motivo é do jogo, não política nossa: a janela de trade do WoW só existe
+   * para quem estava no grupo quando a peça caiu. Entregar a quem não estava
+   * seria registrar uma entrega que não pode acontecer — e o histórico ficaria
+   * afirmando que ela aconteceu.
+   *
+   * Vale inclusive para `banking`: quem guarda a peça é alguém que estava na
+   * raid, nunca um alt de banco fora do grupo.
+   */
+  private async exigirParticipante(
+    sessionId: string,
+    dados: { characterName: string; characterRealm: string },
+  ): Promise<Alvo> {
+    const alvo = normalizar(dados.characterName, dados.characterRealm);
+    const participantes = await this.repo.findParticipantes(sessionId);
+
+    const esta = participantes.some(
+      (p) => p.nameKey === alvo.nameKey && p.realmKey === alvo.realmKey,
+    );
+    if (!esta) {
+      throw new BadRequestException(
+        `${dados.characterName} não está na sessão. ` +
+          'Só dá para passar a peça para quem estava no grupo — é a janela de trade do jogo.',
+      );
+    }
+
+    return alvo;
   }
 
   /**

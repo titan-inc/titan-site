@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type LootResponseKind } from '@prisma/client';
 import {
   LOOT_RESPONSES,
   type LootSessionEventType,
@@ -561,6 +561,7 @@ export class LootSessionsRepository {
         winnerRealm: true,
         responseOptionSlug: true,
         votes: true,
+        note: true,
         awardedByBattletag: true,
         awardedAt: true,
       },
@@ -584,9 +585,10 @@ export class LootSessionsRepository {
     vencedor: { nameKey: string; realmKey: string; name: string; realm: string };
     responseOptionSlug: string;
     votes: number;
+    note: string | null;
     ator: Ator;
   }): Promise<boolean> {
-    const { sessionId, itemId, vencedor, responseOptionSlug, votes, ator } = dados;
+    const { sessionId, itemId, vencedor, responseOptionSlug, votes, note, ator } = dados;
 
     try {
       await this.prisma.$transaction([
@@ -599,6 +601,7 @@ export class LootSessionsRepository {
             winnerRealm: vencedor.realm,
             responseOptionSlug,
             votes,
+            note,
             awardedByUserId: ator.userId,
             awardedByBattletag: ator.battletag,
           },
@@ -608,6 +611,11 @@ export class LootSessionsRepository {
           vencedor: `${vencedor.name}-${vencedor.realm}`,
           responseOptionSlug,
           votes,
+          // O texto da nota NÃO vai para o log: ela é editável em lugar nenhum,
+          // então a linha do award já é o registro dela. Duplicar aqui criaria
+          // duas cópias do mesmo texto de pessoa, em tabelas com propósitos
+          // diferentes.
+          comNota: note !== null,
         }),
       ]);
 
@@ -634,8 +642,29 @@ export class LootSessionsRepository {
 
   /** Os slugs de resposta ativos. Opção desativada não serve para responder. */
   async findSlugsAtivos(): Promise<string[]> {
+    return this.slugsAtivos('player');
+  }
+
+  /**
+   * As razões que o loot master pode dar a uma entrega: `banking`,
+   * `disenchant`, `no_interest`.
+   */
+  async findRazoesDoLootMaster(): Promise<string[]> {
+    return this.slugsAtivos('loot_master');
+  }
+
+  /**
+   * Os slugs ativos de um tipo.
+   *
+   * **Sempre por tipo, nunca todos.** Antes esta consulta devolvia a tabela
+   * inteira e era o que validava a resposta do jogador — o que deixava alguém
+   * declarar `banking`, que é decisão de destino, e depois da TIT-126 deixaria
+   * declarar `noop`, que é o registro de não ter respondido. Forjar o próprio
+   * silêncio não daria erro nenhum.
+   */
+  private async slugsAtivos(kind: LootResponseKind): Promise<string[]> {
     const opcoes = await this.prisma.lootResponseOption.findMany({
-      where: { active: true },
+      where: { active: true, kind },
       select: { slug: true },
     });
 

@@ -61,6 +61,9 @@ describe('LootCouncilService', () => {
     alterarResposta: jest.fn<Promise<boolean>, [unknown]>(() => Promise.resolve(true)),
     itemPertence: jest.fn<Promise<boolean>, [string, string]>(() => Promise.resolve(true)),
     findSlugsAtivos: jest.fn<Promise<string[]>, []>(() => Promise.resolve(['bis', 'upgrade'])),
+    findRazoesDoLootMaster: jest.fn<Promise<string[]>, []>(() =>
+      Promise.resolve(['banking', 'disenchant', 'no_interest']),
+    ),
 
     findHistoricoDosCandidatos: jest.fn<
       Promise<
@@ -83,6 +86,7 @@ describe('LootCouncilService', () => {
           winnerRealm: string;
           responseOptionSlug: string;
           votes: number;
+          note: string | null;
           awardedByBattletag: string;
           awardedAt: Date;
         }>
@@ -115,6 +119,7 @@ describe('LootCouncilService', () => {
     repo.findAwards.mockResolvedValue([]);
     repo.awardar.mockResolvedValue(true);
     repo.findParticipantes.mockResolvedValue([]);
+    repo.findRazoesDoLootMaster.mockResolvedValue(['banking', 'disenchant', 'no_interest']);
 
     service = new LootCouncilService(repo as unknown as LootSessionsRepository);
   });
@@ -489,6 +494,158 @@ describe('LootCouncilService', () => {
     });
   });
 
+  describe('pass item to', () => {
+    const CALADO = { characterName: 'Calado', characterRealm: 'Azralon' };
+
+    /** Alguém que entrou na sessão e não pediu nada. */
+    const naSessao = () =>
+      repo.findParticipantes.mockResolvedValue([
+        { nameKey: 'calado', realmKey: 'azralon', name: 'Calado', realm: 'Azralon' },
+      ]);
+
+    const gravado = () => repo.awardar.mock.calls[0]?.[0];
+
+    it('entrega a quem NÃO se candidatou, congelando a razão do loot master', async () => {
+      // É a saída da peça que ninguém pediu. O `/award` recusaria esta pessoa.
+      naSessao();
+
+      await service.passItemTo(
+        'sess-1',
+        'item-1',
+        { ...CALADO, responseOptionSlug: 'no_interest' },
+        ATOR,
+      );
+
+      expect(gravado()).toMatchObject({
+        vencedor: { nameKey: 'calado', realmKey: 'azralon' },
+        responseOptionSlug: 'no_interest',
+        // Sem votação, então zero é resultado e não lacuna.
+        votes: 0,
+        note: null,
+      });
+    });
+
+    it('a razão precisa ser de loot master', async () => {
+      // Senão a rota vira um jeito de forjar declaração alheia: o conselho
+      // gravaria `bis` no nome de quem nunca pediu nada.
+      naSessao();
+
+      await expect(
+        service.passItemTo('sess-1', 'item-1', { ...CALADO, responseOptionSlug: 'bis' }, ATOR),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.awardar).not.toHaveBeenCalled();
+    });
+
+    it('quem não está na sessão não recebe, e a mensagem diz por quê', async () => {
+      // Regra do jogo, não nossa: a janela de trade só existe para quem estava
+      // no grupo quando a peça caiu.
+      await expect(
+        service.passItemTo(
+          'sess-1',
+          'item-1',
+          { characterName: 'DeFora', characterRealm: 'Azralon', responseOptionSlug: 'banking' },
+          ATOR,
+        ),
+      ).rejects.toThrow(/janela de trade/);
+    });
+
+    it('vale para banking também: quem guarda estava na raid', async () => {
+      naSessao();
+
+      await service.passItemTo(
+        'sess-1',
+        'item-1',
+        { ...CALADO, responseOptionSlug: 'banking' },
+        ATOR,
+      );
+
+      expect(gravado()).toMatchObject({ responseOptionSlug: 'banking' });
+    });
+
+    it('grava a nota do loot master quando ela vem', async () => {
+      naSessao();
+
+      await service.passItemTo(
+        'sess-1',
+        'item-1',
+        { ...CALADO, responseOptionSlug: 'banking', note: 'ninguém quis, foi pro banco' },
+        ATOR,
+      );
+
+      expect(gravado()).toMatchObject({ note: 'ninguém quis, foi pro banco' });
+    });
+
+    it('só vale em deliberando', async () => {
+      naSessao();
+      repo.findById.mockResolvedValue(sessao({ status: 'aberta' }));
+
+      await expect(
+        service.passItemTo('sess-1', 'item-1', { ...CALADO, responseOptionSlug: 'banking' }, ATOR),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('peça já entregue por outro conselheiro dá conflito', async () => {
+      naSessao();
+      repo.awardar.mockResolvedValueOnce(false);
+
+      await expect(
+        service.passItemTo('sess-1', 'item-1', { ...CALADO, responseOptionSlug: 'banking' }, ATOR),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('a nota do loot master no award normal', () => {
+    it('vai junto da entrega', async () => {
+      await service.awardar(
+        'sess-1',
+        'item-1',
+        { characterName: 'Fulano', characterRealm: 'Azralon', note: 'nunca recebeu nada' },
+        ATOR,
+      );
+
+      expect(repo.awardar.mock.calls[0]?.[0]).toMatchObject({ note: 'nunca recebeu nada' });
+    });
+
+    it('sem nota, fica nulo — e não string vazia', async () => {
+      await service.awardar(
+        'sess-1',
+        'item-1',
+        { characterName: 'Fulano', characterRealm: 'Azralon' },
+        ATOR,
+      );
+
+      expect(repo.awardar.mock.calls[0]?.[0]).toMatchObject({ note: null });
+    });
+
+    it('a entrega por maioria não inventa nota', async () => {
+      // Ninguém escreveu uma: o botão entrega em massa.
+      repo.findVotos.mockResolvedValue([voto()]);
+
+      await service.awardarPorMaioria('sess-1', { itemId: 'item-1' }, ATOR);
+
+      expect(repo.awardar.mock.calls[0]?.[0]).toMatchObject({ note: null });
+    });
+
+    it('a nota aparece no painel, junto do award', async () => {
+      repo.findAwards.mockResolvedValue([
+        {
+          itemId: 'item-1',
+          winnerName: 'Fulano',
+          winnerRealm: 'Azralon',
+          responseOptionSlug: 'bis',
+          votes: 2,
+          note: 'levou porque nunca recebeu nada esta season',
+          awardedByBattletag: 'Loot#0001',
+          awardedAt: new Date('2026-08-15T01:00:00.000Z'),
+        },
+      ]);
+
+      const p = await service.painel('sess-1', ATOR);
+
+      expect(p.itens[0]?.award?.note).toBe('levou porque nunca recebeu nada esta season');
+    });
+  });
+
   describe('alterar a resposta de alguém', () => {
     it('troca a resposta', async () => {
       await service.alterarResposta(
@@ -539,6 +696,7 @@ describe('LootCouncilService', () => {
           winnerRealm: 'Azralon',
           responseOptionSlug: 'bis',
           votes: 3,
+          note: null,
           awardedByBattletag: 'Loot#0001',
           awardedAt: new Date('2026-08-15T01:00:00.000Z'),
         },
@@ -731,6 +889,7 @@ describe('LootCouncilService', () => {
           winnerRealm: 'Azralon',
           responseOptionSlug: 'bis',
           votes: 1,
+          note: null,
           awardedByBattletag: OUTRO.battletag,
           awardedAt: new Date('2026-08-15T01:00:00.000Z'),
         },

@@ -1247,7 +1247,25 @@ model LootSessionAward {
   responseOption     LootResponseOption @relation(fields: [responseOptionSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
 
   /// Quantos votos o vencedor tinha quando levou.
+  ///
+  /// Zero é resultado legítimo, e não lacuna: entrega à mão e `pass item to` não
+  /// passam por votação nenhuma.
   votes Int
+
+  /// A justificativa do loot master. Opcional.
+  ///
+  /// "Foi pro banco, ninguém quis", "levou porque é BiS e nunca recebeu nada
+  /// esta season". Vale em qualquer entrega, não só no `pass item to`.
+  ///
+  /// **Não é a nota do jogador** (TIT-125), que fica na `LootSessionResponse`.
+  /// As duas podem existir na mesma peça e para a mesma pessoa, e dizem coisas
+  /// diferentes: uma é a pessoa sobre si mesma ao pedir, a outra é o conselho
+  /// sobre a decisão. Cada uma na sua tabela, para não haver como confundir.
+  ///
+  /// Vira histórico junto com a entrega, e histórico de loot é aberto a toda a
+  /// área interna — decisão do conselho é auditável (Regra 7). Não é bilhete
+  /// privado, e quem escreve precisa saber disso.
+  note String?
 
   awardedByUserId    String
   awardedByBattletag String

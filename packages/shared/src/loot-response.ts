@@ -56,11 +56,29 @@ export const LOOT_RESPONSES = {
   /**
    * Foi para o banco da guilda, não para uma pessoa.
    *
-   * Única opção de **loot master** entre as semeadas: é decisão sobre o destino
-   * do item, não declaração de interesse. O próprio RCLootCouncil a marca com
-   * `isAwardReason=true`, e era o único rótulo assim nos 445 registros.
+   * Opção de **loot master**: é decisão sobre o destino do item, não declaração
+   * de interesse. O próprio RCLootCouncil a marca com `isAwardReason=true`, e
+   * era o único rótulo assim nos 445 registros do export.
+   *
+   * O vencedor continua sendo um personagem — alguém guardou a peça —, e quem
+   * marca o destino é esta resposta. Sem caso especial.
    */
   BANKING: 'banking',
+  /**
+   * Virou pó. Decisão do loot master, como `banking`.
+   */
+  DISENCHANT: 'disenchant',
+  /**
+   * Ninguém pediu, e o loot master escolheu alguém para ficar com ela.
+   *
+   * É a saída da peça que ninguém quis. Sem ela a sessão trava: desde a TIT-67
+   * entrega sem voto não sai sozinha, e peça sem dono segura o encerramento.
+   *
+   * **Não é `noop` nem `pass`.** Aquelas duas são sobre o que o jogador fez —
+   * abriu mão, ou não disse nada. Esta é sobre o que o conselho fez diante de
+   * uma peça que ninguém quis.
+   */
+  NO_INTEREST: 'no_interest',
 } as const;
 
 /**

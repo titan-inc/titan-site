@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notaSchema } from './nota.js';
 
 /**
  * O painel do conselho.
@@ -112,6 +113,9 @@ export const awardDaPecaSchema = z.object({
   votes: z.number().int().nonnegative(),
   awardedByBattletag: z.string(),
   awardedAt: z.string().datetime(),
+
+  /** A justificativa de quem entregou. Nula quando não escreveu nada. */
+  note: z.string().nullable(),
 });
 export type AwardDaPeca = z.infer<typeof awardDaPecaSchema>;
 
@@ -186,9 +190,45 @@ export const alterarRespostaSchema = alvoDaAcaoSchema.extend({
 });
 export type AlterarResposta = z.infer<typeof alterarRespostaSchema>;
 
-/** O conselho entrega a peça a uma pessoa específica. */
-export const awardarSchema = alvoDaAcaoSchema;
+/**
+ * O conselho entrega a peça a uma pessoa específica.
+ *
+ * A nota é a justificativa do loot master, e é opcional. **Não é a nota do
+ * jogador**, que fica na resposta: as duas podem existir na mesma peça e para a
+ * mesma pessoa, e dizem coisas diferentes — uma é a pessoa sobre si mesma ao
+ * pedir, a outra é o conselho sobre a decisão.
+ *
+ * Ela vira histórico junto com a entrega, e histórico de loot é aberto a toda a
+ * área interna: decisão do conselho é auditável (Regra 7). Não é bilhete
+ * privado.
+ */
+export const awardarSchema = alvoDaAcaoSchema.extend({
+  note: notaSchema.optional(),
+});
 export type Awardar = z.infer<typeof awardarSchema>;
+
+/**
+ * A peça vai para alguém por decisão do loot master, não por interesse.
+ *
+ * Rota própria, e não um campo opcional do award, porque as validações são
+ * **opostas**: ali só quem se candidatou, e congela a declaração dela; aqui
+ * qualquer participante, e congela a razão de quem entregou. Um campo que
+ * invertesse a validação deixaria as duas regras a um `if` de distância.
+ *
+ * **O alvo precisa estar na sessão, e o motivo é do jogo**: a janela de trade do
+ * WoW só existe para quem estava no grupo quando a peça caiu. Por isso o
+ * `banking` vai para alguém que estava na raid, nunca para um alt de banco fora
+ * do grupo.
+ *
+ * `no_interest` é a saída da peça que ninguém pediu — sem ela a sessão trava,
+ * porque entrega sem voto não sai sozinha e peça sem dono segura o encerramento.
+ */
+export const passItemToSchema = alvoDaAcaoSchema.extend({
+  /** Razão de loot master: `banking`, `disenchant` ou `no_interest`. */
+  responseOptionSlug: z.string().min(1),
+  note: notaSchema.optional(),
+});
+export type PassItemTo = z.infer<typeof passItemToSchema>;
 
 /**
  * Entrega por maioria: a peça vai para quem tem mais votos do conselho.
