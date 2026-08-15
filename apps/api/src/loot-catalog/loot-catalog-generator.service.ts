@@ -83,8 +83,15 @@ export class LootCatalogGeneratorService {
         );
       }
 
+      // A Blizzard às vezes lista o mesmo item mais de uma vez no mesmo boss
+      // (receita com múltiplas entradas na loot table, encontro com sub-bosses
+      // que compartilham item) — sem filtrar, o carregador tenta inserir a
+      // mesma (encounterId, difficulty, itemId) duas vezes e o Postgres recusa.
       const items: CatalogFileItem[] = [];
+      const itensVistos = new Set<number>();
       for (const entrada of encontro.items) {
+        if (itensVistos.has(entrada.item.id)) continue;
+        itensVistos.add(entrada.item.id);
         items.push(await this.item(entrada.item.id, cache, specsPorItem));
       }
 
