@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { CatalogFile } from '@titan/shared';
+import { BONUS_KINDS, type BonusDictionaryFile, type CatalogFile } from '@titan/shared';
 import type { AttendanceService } from '../attendance/attendance.service';
 import type { BlizzardService } from '../blizzard/blizzard.service';
 import type { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
@@ -13,6 +13,11 @@ import type {
 import type { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
+import type {
+  RelatorioDeDesconhecidos,
+  WowBonusReportService,
+} from '../wow-bonus/wow-bonus-report.service';
+import type { ResultadoDaCargaDeBonus, WowBonusService } from '../wow-bonus/wow-bonus.service';
 import { OpsController } from './ops.controller';
 import type { FixCharacterIdsResult, OpsService } from './ops.service';
 
@@ -37,6 +42,7 @@ describe('OpsController', () => {
   const catalogGenerator = { gerar: jest.fn(() => Promise.resolve({ slug: 'the-voidspire' })) };
   const catalogService = {
     carregarArquivo: jest.fn(() => Promise.resolve({ bosses: 8, itens: 40, drops: 120 })),
+    listarItemIdsCatalogados: jest.fn(() => Promise.resolve([249276, 249277])),
   };
   const raidProgress = {
     getReport: jest.fn(() => Promise.resolve({ season: { id: 17 } })),
@@ -71,6 +77,16 @@ describe('OpsController', () => {
       Promise.resolve({ dummies: [{ name: 'Dummy1', realm: 'TestDummy' }], killSwitchAt: 'x' }),
     ),
   };
+  const wowBonus = {
+    carregarArquivo: jest.fn<Promise<ResultadoDaCargaDeBonus>, [BonusDictionaryFile]>(() =>
+      Promise.resolve({ lidos: 3, porKind: { tertiary: 2, socket: 1 } }),
+    ),
+  };
+  const wowBonusReport = {
+    gerar: jest.fn<Promise<RelatorioDeDesconhecidos>, []>(() =>
+      Promise.resolve({ bonusIds: [], itemIds: [] }),
+    ),
+  };
 
   let controller: OpsController;
 
@@ -88,6 +104,8 @@ describe('OpsController', () => {
       pasteGenerator as unknown as LootCatalogPasteGeneratorService,
       dummies as unknown as LootSessionDummiesService,
       ops as unknown as OpsService,
+      wowBonus as unknown as WowBonusService,
+      wowBonusReport as unknown as WowBonusReportService,
     );
   });
 
@@ -139,6 +157,12 @@ describe('OpsController', () => {
   it('raid-progress com season inválida (não numérica) ignora e passa undefined', async () => {
     await controller.getRaidProgress('não-é-numero');
     expect(raidProgress.getReport).toHaveBeenCalledWith(undefined);
+  });
+
+  it('catalog-item-ids devolve total e a lista do service', async () => {
+    const resultado = await controller.catalogItemIds();
+
+    expect(resultado).toEqual({ total: 2, itemIds: [249276, 249277] });
   });
 
   it('catalog-instances sem filtro devolve as mais recentes por id desc', async () => {
@@ -218,6 +242,29 @@ describe('OpsController', () => {
     const resultado = await controller.gerarColagemDeSessao();
 
     expect(resultado).toEqual({ paste: 'TILC/1\tencounter=1' });
+  });
+
+  it('bonus-load repassa o dicionário e devolve o resultado da carga', async () => {
+    const dictionary: BonusDictionaryFile = {
+      version: 1,
+      bonuses: [{ bonusId: 40, kind: BONUS_KINDS.TERTIARY, tertiary: 'avoidance' }],
+    };
+
+    const resultado = await controller.bonusLoad({ dictionary });
+
+    expect(wowBonus.carregarArquivo).toHaveBeenCalledWith(dictionary);
+    expect(resultado).toEqual({ lidos: 3, porKind: { tertiary: 2, socket: 1 } });
+  });
+
+  it('bonus-unknown-report devolve o relatório do service', async () => {
+    wowBonusReport.gerar.mockResolvedValueOnce({
+      bonusIds: [{ bonusId: 9999, ocorrencias: 5 }],
+      itemIds: [],
+    });
+
+    const resultado = await controller.bonusUnknownReport();
+
+    expect(resultado.bonusIds).toEqual([{ bonusId: 9999, ocorrencias: 5 }]);
   });
 
   describe('rodar-dummies', () => {

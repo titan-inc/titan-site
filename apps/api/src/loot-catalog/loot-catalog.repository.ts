@@ -299,6 +299,35 @@ export class LootCatalogRepository {
     ]);
   }
 
+  /**
+   * Quais destes `itemId` já existem no dicionário.
+   *
+   * Para o relatório de "itens não catalogados" (TIT-82): quem chama subtrai
+   * o retorno da lista pedida e sobra o que falta cadastrar.
+   */
+  async findExistingItemIds(itemIds: number[]): Promise<number[]> {
+    if (itemIds.length === 0) return [];
+
+    const itens = await this.prisma.wowItem.findMany({
+      where: { itemId: { in: itemIds } },
+      select: { itemId: true },
+    });
+
+    return itens.map((i) => i.itemId);
+  }
+
+  /**
+   * Todo `itemId` que o dicionário conhece.
+   *
+   * Para a TIT-136 filtrar o `ItemSparse.db2` (~59MB) pelos itens que
+   * interessam antes de carregar — algumas centenas de linhas em vez de
+   * milhares, e cobrindo o histórico inteiro em vez de só a expansão atual.
+   */
+  async findAllItemIds(): Promise<number[]> {
+    const itens = await this.prisma.wowItem.findMany({ select: { itemId: true } });
+    return itens.map((i) => i.itemId);
+  }
+
   /** Itens que nunca foram enriquecidos — a fila do job que preenche nome e ícone. */
   findItemsToEnrich(limite: number) {
     return this.prisma.wowItem.findMany({

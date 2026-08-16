@@ -310,6 +310,18 @@ export class LootLinesRepository {
     return this.prisma.lootLine.groupBy({ by: ['itemId'], where, _count: true });
   }
 
+  /**
+   * `itemId` + `itemString` de toda linha do histórico.
+   *
+   * Usado pelo relatório de "o que ainda não conhecemos" (TIT-82) — quem
+   * extrai os `bonusIds` e agrega por frequência é o `WowBonusReportService`,
+   * não este repository: a mesma consulta crua alimenta a mesma extração para
+   * `LootSessionItem`, e a leitura fica igual nos dois lados.
+   */
+  findAllItemStrings(): Promise<Array<{ itemId: number; itemString: string }>> {
+    return this.prisma.lootLine.findMany({ select: { itemId: true, itemString: true } });
+  }
+
   /** Os `itemId` de um slot, para o filtro de slot virar `itemId IN (...)`. */
   async findItemIdsBySlot(equipLoc: string): Promise<number[]> {
     const itens = await this.prisma.wowItem.findMany({

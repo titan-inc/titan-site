@@ -44,6 +44,14 @@ export class LootLinesService {
   constructor(private readonly repo: LootLinesRepository) {}
 
   /**
+   * `itemId` + `itemString` de todo o histórico — para o relatório de bonus
+   * desconhecidos (TIT-82). Leitura crua, sem filtro: o relatório varre tudo.
+   */
+  listarItensParaRelatorioDeBonus(): Promise<Array<{ itemId: number; itemString: string }>> {
+    return this.repo.findAllItemStrings();
+  }
+
+  /**
    * Grava as linhas do encerramento de uma sessão.
    *
    * `tx` OPCIONAL — ver o comentário de `LootLinesRepository.upsertDaSessao`.

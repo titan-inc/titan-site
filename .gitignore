@@ -32,3 +32,14 @@ Thumbs.db
 
 # Testes
 coverage/
+
+# Documentos e dados de trabalho local, nunca versionados.
+#
+# É onde ficam os db2 extraídos do cliente do WoW para a análise de stats de
+# item — ver docs/db2-do-cliente.md. O ItemSparse sozinho tem ~59 MB, e dado
+# extraído do cliente num repositório público é confusão desnecessária. O que
+# vira commit é só o resultado: schema, fórmula e fixtures.
+#
+# Estava apenas em .git/info/exclude, que protege UMA máquina. Aqui protege
+# quem clonar.
+localdocs/

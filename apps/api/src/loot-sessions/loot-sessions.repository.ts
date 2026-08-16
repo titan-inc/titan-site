@@ -147,6 +147,18 @@ export class LootSessionsRepository {
     });
   }
 
+  /**
+   * `itemId` + `itemString` de toda peça de toda sessão, encerrada ou não.
+   *
+   * Para o relatório de "o que ainda não conhecemos" (TIT-82) — mesmo papel do
+   * `LootLinesRepository.findAllItemStrings`, e de propósito uma sessão ainda
+   * aberta entra também: o bonus desconhecido dela é tão real quanto o de uma
+   * já encerrada.
+   */
+  findAllItemStrings(): Promise<Array<{ itemId: number; itemString: string }>> {
+    return this.prisma.lootSessionItem.findMany({ select: { itemId: true, itemString: true } });
+  }
+
   /** Nome e ícone dos itens desta sessão, do catálogo. */
   findItems(itemIds: number[]) {
     return this.prisma.wowItem.findMany({

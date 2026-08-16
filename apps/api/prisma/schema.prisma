@@ -746,6 +746,70 @@ model EncounterDrop {
   @@index([itemId])
 }
 
+/// Tipo de uma entrada do dicionário de bonus IDs — ver `WowBonus`.
+enum WowBonusKind {
+  track
+  tertiary
+  socket
+}
+
+/// Os quatro terciários observados. Ver o comentário de `BONUS_TERTIARIES` no
+/// shared — lista fechada de propósito.
+enum WowBonusTertiary {
+  avoidance
+  leech
+  speed
+  indestructible
+}
+
+/// Dicionário `bonusId -> significado` — TIT-82. Traduz o `itemString` em algo
+/// legível: "Myth 4/6 + Avoidance + Socket" em vez de uma lista de números.
+///
+/// Mesmo formato de problema do `WowItem`/`LootCatalogRaid`: dado externo,
+/// atualizado a cada patch, consultável — não constante no código nem JSON no
+/// bundle do browser (Regra 1: a decodificação roda no Nest).
+///
+/// Carregado por `POST /internal/ops/bonus-load` a partir de um arquivo obtido
+/// e curado à mão do wago.tools — a app nunca fala com o wago.tools, ver
+/// `docs/ops.md`.
+///
+/// `kind` decide quais campos abaixo têm valor — ver o decodificador em
+/// `apps/api/src/wow-bonus/wow-bonus-decoder.ts`. Bonus AUSENTE desta tabela é
+/// DESCONHECIDO, nunca zero — Regra 7. Os campos nuláveis por kind espelham a
+/// union discriminada de `BonusDictionaryEntry` no shared: quem lê de volta
+/// (`toBonusEntry`) reconstrói a mesma union, e recusa se a linha não bater
+/// com o invariante do próprio `kind`.
+model WowBonus {
+  /// Id do bonus na Blizzard. Natural key — mesmo precedente do `WowItem.itemId`.
+  bonusId Int @id
+
+  kind WowBonusKind
+
+  /// `Myth`, `Hero`, `Champion`... Só kind=track.
+  trackName String?
+
+  /// O `4` em "4/6". Só kind=track.
+  trackRank Int?
+
+  /// O `6` em "4/6". Só kind=track.
+  ///
+  /// Repetido em cada linha do mesmo track de propósito: o valor vem do
+  /// ARQUIVO, um id de cada vez — nunca derivado por aritmética (a regra mais
+  /// importante da TIT-82). Redundância é o preço de não adivinhar.
+  trackMaxRank Int?
+
+  /// O item level que este bonus determina — só kind=track, e mesmo assim
+  /// opcional: rank e ilvl são duas curadorias diferentes, e nulo aqui é "não
+  /// curado ainda", nunca "não tem ilvl". Pré-requisito da TIT-136.
+  itemLevel Int?
+
+  /// Só kind=tertiary.
+  tertiary WowBonusTertiary?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+}
+
 /// Opção de resposta que o jogador (ou o loot master) escolhe sobre um item.
 ///
 /// **Tabela, e não enum, porque é configurável no app.** A liderança ajusta a

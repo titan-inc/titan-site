@@ -77,6 +77,14 @@ export class LootCatalogService {
   }
 
   /**
+   * Todo `itemId` cadastrado — para a rota de ops que filtra o `ItemSparse.db2`
+   * pelos itens que interessam (TIT-136).
+   */
+  listarItemIdsCatalogados(): Promise<number[]> {
+    return this.repo.findAllItemIds();
+  }
+
+  /**
    * Aplica um arquivo de catálogo ao banco.
    *
    * Orquestra em três tempos: confere, grava, relata. A conferência vem antes de

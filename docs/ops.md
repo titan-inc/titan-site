@@ -122,6 +122,24 @@ curl "http://localhost:3001/internal/ops/catalog-instances?filtro=voidspire" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
 ```
 
+## Catálogo — listar itemIds cadastrados (TIT-82/TIT-136)
+
+Sem script antigo equivalente. Todo `itemId` que já existe no dicionário
+(`WowItem`) — serve para filtrar db2 gigantes pelos itens que interessam
+antes de carregar, em vez de trazer o arquivo inteiro. O caso concreto é o
+`ItemSparse.db2` (~59MB) da TIT-136: filtrado por esta lista vira algumas
+centenas de linhas e cobre o histórico inteiro, contra milhares de linhas e
+um corte na Dragonflight S1 se o filtro fosse "expansão atual".
+
+```bash
+curl "http://localhost:3001/internal/ops/catalog-item-ids" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "total": 842, "itemIds": [249276, 249277, ...] }
+```
+
 ## Catálogo — gerar
 
 Era `pnpm --filter api catalog:generate <id> --saida <arquivo.json> [--slug <slug>] [--journal <arquivo>]`.
@@ -302,6 +320,124 @@ fique órfã.
 **Idempotente**: o teste é o hífen (cuid nunca tem, uuid sempre tem), então
 rodar de novo depois de corrigido não acha mais nenhum id fora do padrão e
 devolve `corrigidos: 0`.
+
+## Dicionário de bonus IDs — carregar (TIT-82)
+
+Sem script antigo equivalente. Traduz `bonusId` (do `itemString`) em algo
+legível: "Myth 4/6 + Avoidance + Socket" em vez de `7980:9330:6652:...`.
+
+**A app nunca fala com o [wago.tools](http://wago.tools).** O arquivo é obtido e
+curado à mão, do jeito abaixo, e esta rota só carrega o que já foi decidido.
+
+### Como obter e curar o arquivo
+
+1. **A fonte bruta é o `ItemBonus.db2`**, exportado em
+   [wago.tools/db2/ItemBonus](https://wago.tools/db2/ItemBonus) (botão
+   "Export" → CSV/JSON). Ele confirma QUE IDS EXISTEM no patch atual, mas as
+   colunas cruas (`Type`, `Value_0..3`) não dizem por si só "isto é rank 4 do
+   track Myth" — não são um dicionário pronto, são o material bruto.
+
+2. **O significado vem de fonte já traduzida, nunca de adivinhar a coluna.**
+   A própria issue TIT-82 cita o precedente: o **BonusIdTool** do
+   TradeSkillMaster já faz esse trabalho e publica o resultado na biblioteca
+   `LibBonusId` (código aberto, repositório do TSM). Use-o como referência de
+   nome/kind por id, em vez de inferir de `Type`/`Value` por conta própria —
+   é exatamente o tipo de "regularidade tentadora" que a issue manda nunca
+   codificar sem conferir (ver a seção "nunca derivar por aritmética" da
+   issue).
+
+3. **Confira contra dado real antes de adicionar uma entrada.** Mesma
+   disciplina de curadoria do `usableBySpecs` do catálogo: um id só entra no
+   arquivo depois de aparecer num `itemString` de verdade (sessão ao vivo,
+   histórico importado, ou o relatório de desconhecidos abaixo) com o
+   significado batendo. **Nunca gerar o arquivo por padrão numérico** — os
+   blocos de track sobem de 8 em 8 de um jeito tentador, e isso é hipótese a
+   testar, não regra a codificar.
+
+4. **Monte o JSON no formato do `BonusDictionaryFile`** (`packages/shared/src/bonus-dictionary-file.ts`):
+
+   ```json
+   {
+     "version": 1,
+     "bonuses": [
+       { "bonusId": 40, "kind": "tertiary", "tertiary": "avoidance" },
+       { "bonusId": 41, "kind": "tertiary", "tertiary": "leech" },
+       { "bonusId": 42, "kind": "tertiary", "tertiary": "speed" },
+       { "bonusId": 43, "kind": "tertiary", "tertiary": "indestructible" },
+       {
+         "bonusId": 12806,
+         "kind": "track",
+         "trackName": "Myth",
+         "trackRank": 4,
+         "trackMaxRank": 6,
+         "itemLevel": 681
+       },
+       { "bonusId": 13534, "kind": "socket" }
+     ]
+   }
+   ```
+
+   `trackMaxRank` é repetido em toda entrada do mesmo track de propósito —
+   cada linha vem de um id observado, nunca derivada das outras.
+
+   `itemLevel` é **opcional mesmo numa entrada de track** — rank e ilvl são
+   duas curadorias diferentes, a segunda pode ficar para trás, e ausente
+   aqui é "não curado ainda", não "este bonus não tem ilvl". É o dado que a
+   TIT-136 (cálculo de stats) depende: o orçamento de pontos de stat é
+   função do item level final, que só existe quando este campo está curado.
+
+### Carregar
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/bonus-load" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(node -e 'console.log(JSON.stringify({dictionary: require("./dicionario-de-bonus.json")}))')"
+```
+
+```json
+{ "lidos": 6, "porKind": { "tertiary": 4, "track": 1, "socket": 1 } }
+```
+
+**Idempotente por `bonusId`.** Recarregar com uma entrada corrigida
+atualiza a linha, nunca duplica — mesmo precedente do `catalog-load`.
+
+Pelo Yaak: aponte a variável `bonus_dictionary_path` (environment `Local`)
+para o `.json` do dicionário, e o request `internal/ops/Bonus load` lê com
+`${[ fs.readFile(path=bonus_dictionary_path) ]}`. `dictionary` no corpo é um
+**valor JSON**, igual ao `catalog` do `Catalog load` — sem precisar de
+`pnpm dump:escape`.
+
+## Dicionário de bonus IDs — relatório de desconhecidos (TIT-82)
+
+Sem script antigo equivalente. Consulta sobre dado que **já temos
+guardado** — não faz chamada externa nenhuma:
+
+- **bônus desconhecidos**: varre os `itemString` de `LootLine` e
+  `LootSessionItem`, extrai os `bonusIds` com o `parseItemString()` do
+  shared, e subtrai o dicionário já carregado.
+- **itens não catalogados**: `itemId` que aparece no histórico/sessões e
+  não tem `WowItem` cadastrado.
+
+As duas listas vêm **ordenadas por frequência** — quantas linhas cada id
+afeta. É o que transforma "a exibição está incompleta" em lista de trabalho
+priorizada: vale rodar depois de todo patch, mesmo com o dicionário ainda
+incompleto.
+
+```bash
+curl "http://localhost:3001/internal/ops/bonus-unknown-report" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{
+  "bonusIds": [
+    { "bonusId": 9226, "ocorrencias": 38 },
+    { "bonusId": 1485, "ocorrencias": 12 }
+  ],
+  "itemIds": [{ "itemId": 249999, "ocorrencias": 3 }]
+}
+```
 
 ## Regerar o histórico de uma sessão de loot council (TIT-69)
 
