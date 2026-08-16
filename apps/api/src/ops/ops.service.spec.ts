@@ -1,6 +1,10 @@
 import type { RosterSnapshot } from '../blizzard/blizzard.service';
 import type { BlizzardService } from '../blizzard/blizzard.service';
+import type { CharactersRepository } from '../characters/characters.repository';
 import { OpsService } from './ops.service';
+
+// Nenhum teste de `probeRoster`/`checkOauth` toca identidade — mock vazio.
+const semCharacters = {} as unknown as CharactersRepository;
 
 describe('OpsService.probeRoster', () => {
   const fetchMock = jest.fn();
@@ -11,7 +15,7 @@ describe('OpsService.probeRoster', () => {
   });
 
   function service(): OpsService {
-    return new OpsService({} as unknown as BlizzardService);
+    return new OpsService({} as unknown as BlizzardService, semCharacters);
   }
 
   it('monta a URL certa e devolve distribuição de rank ordenada', async () => {
@@ -90,7 +94,7 @@ describe('OpsService.checkOauth', () => {
     const getGuildRosterSnapshot = jest.fn(() => Promise.resolve(snapshot({ stale: true })));
     const blizzard = { getGuildRosterSnapshot } as unknown as BlizzardService;
 
-    const resultado = await new OpsService(blizzard).checkOauth([]);
+    const resultado = await new OpsService(blizzard, semCharacters).checkOauth([]);
 
     expect(getGuildRosterSnapshot).toHaveBeenCalledWith(true);
     expect(resultado.stale).toBe(true);
@@ -102,10 +106,58 @@ describe('OpsService.checkOauth', () => {
       getGuildRosterSnapshot: () => Promise.resolve(snapshot()),
     } as unknown as BlizzardService;
 
-    const resultado = await new OpsService(blizzard).checkOauth(['Zenithus']);
+    const resultado = await new OpsService(blizzard, semCharacters).checkOauth(['Zenithus']);
 
     expect(resultado.matches).toEqual([
       { input: 'Zenithus', found: true, character: 'Zenithus', rank: 4 },
     ]);
+  });
+});
+
+describe('OpsService.fixCharacterIds', () => {
+  const characters = {
+    findIdsForaDoPadrao: jest.fn<Promise<string[]>, []>(),
+    renomearId: jest.fn<Promise<void>, [string, string]>(() => Promise.resolve()),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  function service(): OpsService {
+    return new OpsService(
+      {} as unknown as BlizzardService,
+      characters as unknown as CharactersRepository,
+    );
+  }
+
+  it('não faz nada quando não há id fora do padrão', async () => {
+    characters.findIdsForaDoPadrao.mockResolvedValue([]);
+
+    const resultado = await service().fixCharacterIds();
+
+    expect(resultado).toEqual({ corrigidos: 0, trocas: [] });
+    expect(characters.renomearId).not.toHaveBeenCalled();
+  });
+
+  it('troca cada id fora do padrão, um de cada vez', async () => {
+    characters.findIdsForaDoPadrao.mockResolvedValue([
+      'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      'b2c3d4e5-f6a7-8901-bcde-f12345678901',
+    ]);
+
+    const resultado = await service().fixCharacterIds();
+
+    expect(resultado.corrigidos).toBe(2);
+    expect(characters.renomearId).toHaveBeenCalledTimes(2);
+
+    // O id novo de cada troca é o que `renomearId` recebeu como segundo
+    // argumento, e nenhum deles é o uuid original.
+    for (const [i, troca] of resultado.trocas.entries()) {
+      const chamada = characters.renomearId.mock.calls[i];
+      expect(troca.de).toBe(chamada?.[0]);
+      expect(troca.para).toBe(chamada?.[1]);
+      expect(troca.para).not.toContain('-');
+    }
   });
 });

@@ -33,6 +33,7 @@
     "@prisma/client": "^7.9.1",
     "@titan/shared": "workspace:*",
     "cookie-parser": "^1.4.7",
+    "cuid": "^3.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "prisma": "^7.9.1",

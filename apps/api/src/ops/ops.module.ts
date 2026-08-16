@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { BlizzardModule } from '../blizzard/blizzard.module';
+import { CharactersModule } from '../characters/characters.module';
 import { LootCatalogModule } from '../loot-catalog/loot-catalog.module';
 import { LootLinesModule } from '../loot-lines/loot-lines.module';
 import { RaidProgressModule } from '../raidprogress/raidprogress.module';
@@ -19,6 +20,7 @@ import { OpsService } from './ops.service';
     SnapshotsModule,
     AttendanceModule,
     BlizzardModule,
+    CharactersModule,
     LootCatalogModule,
     LootLinesModule,
     RaidProgressModule,

@@ -8,7 +8,7 @@ import type { RcImportService } from '../loot-lines/rc-import.service';
 import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
 import { OpsController } from './ops.controller';
-import type { OpsService } from './ops.service';
+import type { FixCharacterIdsResult, OpsService } from './ops.service';
 
 describe('OpsController', () => {
   const snapshots = {
@@ -50,6 +50,9 @@ describe('OpsController', () => {
   const ops = {
     probeRoster: jest.fn(() => Promise.resolve({ guild: 'Titan Inc' })),
     checkOauth: jest.fn(() => Promise.resolve({ ok: true, stale: false })),
+    fixCharacterIds: jest.fn<Promise<FixCharacterIdsResult>, []>(() =>
+      Promise.resolve({ corrigidos: 0, trocas: [] }),
+    ),
   };
 
   let controller: OpsController;
@@ -166,5 +169,17 @@ describe('OpsController', () => {
   it('oauth-check sem characters passa array vazio', async () => {
     await controller.oauthCheck();
     expect(ops.checkOauth).toHaveBeenCalledWith([]);
+  });
+
+  it('fix-character-ids repassa o resultado do service', async () => {
+    ops.fixCharacterIds.mockResolvedValueOnce({
+      corrigidos: 2,
+      trocas: [{ de: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', para: 'cnovoid00005opg4hxu00tl' }],
+    });
+
+    const resultado = await controller.fixCharacterIds();
+
+    expect(ops.fixCharacterIds).toHaveBeenCalledTimes(1);
+    expect(resultado.corrigidos).toBe(2);
   });
 });
