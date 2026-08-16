@@ -9,6 +9,7 @@ function linha(over: Partial<WowBonusRow>): WowBonusRow {
     trackName: null,
     trackRank: null,
     trackMaxRank: null,
+    itemLevel: null,
     tertiary: null,
     ...over,
   };
@@ -56,11 +57,32 @@ describe('WowBonusService', () => {
 
       expect(findByIds).toHaveBeenCalledWith([12806, 40, 9999]);
       expect(resultado).toEqual({
+        itemLevel: null,
         track: { nome: 'Myth', rank: 4, de: 6 },
         sockets: 0,
         terciarios: ['avoidance'],
         desconhecidos: [9999],
       });
+    });
+
+    it('itemLevel curado na linha passa para a saída decodificada', async () => {
+      const findByIds = jest.fn(() =>
+        Promise.resolve([
+          linha({
+            bonusId: 12806,
+            kind: 'track',
+            trackName: 'Myth',
+            trackRank: 4,
+            trackMaxRank: 6,
+            itemLevel: 681,
+          }),
+        ]),
+      );
+      const service = new WowBonusService({ findByIds } as unknown as WowBonusRepository);
+
+      const resultado = await service.decodificar([12806]);
+
+      expect(resultado.itemLevel).toBe(681);
     });
 
     it('lista vazia não consulta o banco', async () => {
@@ -70,7 +92,13 @@ describe('WowBonusService', () => {
       const resultado = await service.decodificar([]);
 
       expect(findByIds).not.toHaveBeenCalled();
-      expect(resultado).toEqual({ track: null, sockets: 0, terciarios: [], desconhecidos: [] });
+      expect(resultado).toEqual({
+        itemLevel: null,
+        track: null,
+        sockets: 0,
+        terciarios: [],
+        desconhecidos: [],
+      });
     });
 
     it('linha kind=track sem trackName é bug de gravação — estoura em vez de adivinhar', async () => {

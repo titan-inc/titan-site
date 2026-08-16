@@ -68,6 +68,16 @@ const bonusTrackEntrySchema = z.object({
    * partir das outras linhas. Redundância é o preço de não adivinhar.
    */
   trackMaxRank: z.number().int().positive(),
+
+  /**
+   * O item level que ESTE bonus determina, quando já curado.
+   *
+   * Opcional mesmo dentro de uma entrada de track: saber o rank não implica
+   * saber o ilvl — são duas curadorias, e a segunda pode ficar para trás.
+   * Ausente aqui é "não curado ainda", nunca "este item não tem ilvl" — quem
+   * lê isso é o decodificador, que devolve `itemLevel: null` nesse caso.
+   */
+  itemLevel: z.number().int().positive().optional(),
 });
 
 const bonusTertiaryEntrySchema = z.object({

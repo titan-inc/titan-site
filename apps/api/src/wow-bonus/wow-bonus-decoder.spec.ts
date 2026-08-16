@@ -17,6 +17,7 @@ const MYTH_RANK_4: BonusDictionaryEntry = {
   trackRank: 4,
   trackMaxRank: 6,
 };
+const MYTH_RANK_4_COM_ILVL: BonusDictionaryEntry = { ...MYTH_RANK_4, itemLevel: 681 };
 const MYTH_RANK_6: BonusDictionaryEntry = {
   bonusId: 12808,
   kind: BONUS_KINDS.TRACK,
@@ -48,6 +49,7 @@ describe('decodeBonuses', () => {
     );
 
     expect(resultado).toEqual({
+      itemLevel: null,
       track: { nome: 'Myth', rank: 4, de: 6 },
       sockets: 1,
       terciarios: ['avoidance'],
@@ -68,11 +70,27 @@ describe('decodeBonuses', () => {
 
   it('bonusIds vazio devolve a estrutura zerada, sem estourar', () => {
     expect(decodeBonuses([], dicionario())).toEqual({
+      itemLevel: null,
       track: null,
       sockets: 0,
       terciarios: [],
       desconhecidos: [],
     });
+  });
+
+  it('itemLevel curado no bonus de track passa para a saída', () => {
+    const resultado = decodeBonuses(
+      [MYTH_RANK_4_COM_ILVL.bonusId],
+      dicionario(MYTH_RANK_4_COM_ILVL),
+    );
+
+    expect(resultado.itemLevel).toBe(681);
+  });
+
+  it('bonus de track SEM itemLevel curado deixa a saída em null — nunca aproxima', () => {
+    const resultado = decodeBonuses([MYTH_RANK_4.bonusId], dicionario(MYTH_RANK_4));
+
+    expect(resultado.itemLevel).toBeNull();
   });
 
   it('soma mais de um socket', () => {
@@ -102,6 +120,18 @@ describe('decodeBonuses', () => {
     );
 
     expect(resultado.track).toEqual({ nome: 'Myth', rank: 6, de: 6 });
+  });
+
+  it('itemLevel anda junto do track: o último bonus decide os dois juntos', () => {
+    // MYTH_RANK_4_COM_ILVL vem primeiro e tem itemLevel; MYTH_RANK_6 vem
+    // depois e não tem — o último vence nos dois campos, não só no track.
+    const resultado = decodeBonuses(
+      [MYTH_RANK_4_COM_ILVL.bonusId, MYTH_RANK_6.bonusId],
+      dicionario(MYTH_RANK_4_COM_ILVL, MYTH_RANK_6),
+    );
+
+    expect(resultado.track).toEqual({ nome: 'Myth', rank: 6, de: 6 });
+    expect(resultado.itemLevel).toBeNull();
   });
 
   it('bonus repetido na lista conta socket duas vezes e terciário duas vezes', () => {

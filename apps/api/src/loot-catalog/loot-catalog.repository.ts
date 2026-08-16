@@ -316,6 +316,18 @@ export class LootCatalogRepository {
     return itens.map((i) => i.itemId);
   }
 
+  /**
+   * Todo `itemId` que o dicionário conhece.
+   *
+   * Para a TIT-136 filtrar o `ItemSparse.db2` (~59MB) pelos itens que
+   * interessam antes de carregar — algumas centenas de linhas em vez de
+   * milhares, e cobrindo o histórico inteiro em vez de só a expansão atual.
+   */
+  async findAllItemIds(): Promise<number[]> {
+    const itens = await this.prisma.wowItem.findMany({ select: { itemId: true } });
+    return itens.map((i) => i.itemId);
+  }
+
   /** Itens que nunca foram enriquecidos — a fila do job que preenche nome e ícone. */
   findItemsToEnrich(limite: number) {
     return this.prisma.wowItem.findMany({

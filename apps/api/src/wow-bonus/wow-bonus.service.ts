@@ -14,7 +14,13 @@ export interface ResultadoDaCargaDeBonus {
   porKind: Record<string, number>;
 }
 
-const saidaVazia: DecodedBonuses = { track: null, sockets: 0, terciarios: [], desconhecidos: [] };
+const saidaVazia: DecodedBonuses = {
+  itemLevel: null,
+  track: null,
+  sockets: 0,
+  terciarios: [],
+  desconhecidos: [],
+};
 
 @Injectable()
 export class WowBonusService {
@@ -71,6 +77,9 @@ function toBonusEntry(linha: WowBonusRow): BonusDictionaryEntry {
         trackName: linha.trackName,
         trackRank: linha.trackRank,
         trackMaxRank: linha.trackMaxRank,
+        // `?? undefined`, não `?? null`: o campo do shared é OPCIONAL (não
+        // curado), e `null` não é um valor válido dele — só "ausente" ou "número".
+        itemLevel: linha.itemLevel ?? undefined,
       };
     case BONUS_KINDS.TERTIARY:
       if (linha.tertiary === null) {

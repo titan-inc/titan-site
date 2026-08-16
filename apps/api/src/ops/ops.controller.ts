@@ -161,6 +161,21 @@ export class OpsController {
     return this.raidProgress.getReport(id);
   }
 
+  /**
+   * Todo `itemId` cadastrado no catálogo — TIT-82/TIT-136. Sem script
+   * antigo equivalente.
+   *
+   * Serve para filtrar db2 gigantes (`ItemSparse.db2`, ~59MB) pelos itens que
+   * interessam antes de carregar, no mesmo espírito do que a colagem do
+   * `/tilc journal` já resolve para o catálogo. Mesmo formato de resposta do
+   * `catalog-instances`.
+   */
+  @Get('catalog-item-ids')
+  async catalogItemIds(): Promise<{ total: number; itemIds: number[] }> {
+    const itemIds = await this.catalogService.listarItemIdsCatalogados();
+    return { total: itemIds.length, itemIds };
+  }
+
   /** Era `pnpm --filter api catalog:generate --lista [filtro]`. */
   @Get('catalog-instances')
   async catalogInstances(

@@ -122,6 +122,24 @@ curl "http://localhost:3001/internal/ops/catalog-instances?filtro=voidspire" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
 ```
 
+## Catálogo — listar itemIds cadastrados (TIT-82/TIT-136)
+
+Sem script antigo equivalente. Todo `itemId` que já existe no dicionário
+(`WowItem`) — serve para filtrar db2 gigantes pelos itens que interessam
+antes de carregar, em vez de trazer o arquivo inteiro. O caso concreto é o
+`ItemSparse.db2` (~59MB) da TIT-136: filtrado por esta lista vira algumas
+centenas de linhas e cobre o histórico inteiro, contra milhares de linhas e
+um corte na Dragonflight S1 se o filtro fosse "expansão atual".
+
+```bash
+curl "http://localhost:3001/internal/ops/catalog-item-ids" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "total": 842, "itemIds": [249276, 249277, ...] }
+```
+
 ## Catálogo — gerar
 
 Era `pnpm --filter api catalog:generate <id> --saida <arquivo.json> [--slug <slug>] [--journal <arquivo>]`.
@@ -351,7 +369,8 @@ curado à mão, do jeito abaixo, e esta rota só carrega o que já foi decidido.
          "kind": "track",
          "trackName": "Myth",
          "trackRank": 4,
-         "trackMaxRank": 6
+         "trackMaxRank": 6,
+         "itemLevel": 681
        },
        { "bonusId": 13534, "kind": "socket" }
      ]
@@ -360,6 +379,12 @@ curado à mão, do jeito abaixo, e esta rota só carrega o que já foi decidido.
 
    `trackMaxRank` é repetido em toda entrada do mesmo track de propósito —
    cada linha vem de um id observado, nunca derivada das outras.
+
+   `itemLevel` é **opcional mesmo numa entrada de track** — rank e ilvl são
+   duas curadorias diferentes, a segunda pode ficar para trás, e ausente
+   aqui é "não curado ainda", não "este bonus não tem ilvl". É o dado que a
+   TIT-136 (cálculo de stats) depende: o orçamento de pontos de stat é
+   função do item level final, que só existe quando este campo está curado.
 
 ### Carregar
 

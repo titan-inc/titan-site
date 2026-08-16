@@ -9,6 +9,7 @@ const bonusSelect = {
   trackName: true,
   trackRank: true,
   trackMaxRank: true,
+  itemLevel: true,
   tertiary: true,
 } as const;
 
@@ -69,6 +70,7 @@ function paraColunas(entrada: BonusDictionaryEntry): {
   trackName: string | null;
   trackRank: number | null;
   trackMaxRank: number | null;
+  itemLevel: number | null;
   tertiary: WowBonusTertiary | null;
 } {
   return {
@@ -77,6 +79,9 @@ function paraColunas(entrada: BonusDictionaryEntry): {
     trackName: entrada.kind === 'track' ? entrada.trackName : null,
     trackRank: entrada.kind === 'track' ? entrada.trackRank : null,
     trackMaxRank: entrada.kind === 'track' ? entrada.trackMaxRank : null,
+    // `?? null`: ausente no arquivo é "não curado ainda", e a coluna é o
+    // mesmo nulo — não há um terceiro estado a preservar aqui.
+    itemLevel: entrada.kind === 'track' ? (entrada.itemLevel ?? null) : null,
     tertiary: entrada.kind === 'tertiary' ? entrada.tertiary : null,
   };
 }

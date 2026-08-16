@@ -42,6 +42,7 @@ describe('OpsController', () => {
   const catalogGenerator = { gerar: jest.fn(() => Promise.resolve({ slug: 'the-voidspire' })) };
   const catalogService = {
     carregarArquivo: jest.fn(() => Promise.resolve({ bosses: 8, itens: 40, drops: 120 })),
+    listarItemIdsCatalogados: jest.fn(() => Promise.resolve([249276, 249277])),
   };
   const raidProgress = {
     getReport: jest.fn(() => Promise.resolve({ season: { id: 17 } })),
@@ -156,6 +157,12 @@ describe('OpsController', () => {
   it('raid-progress com season inválida (não numérica) ignora e passa undefined', async () => {
     await controller.getRaidProgress('não-é-numero');
     expect(raidProgress.getReport).toHaveBeenCalledWith(undefined);
+  });
+
+  it('catalog-item-ids devolve total e a lista do service', async () => {
+    const resultado = await controller.catalogItemIds();
+
+    expect(resultado).toEqual({ total: 2, itemIds: [249276, 249277] });
   });
 
   it('catalog-instances sem filtro devolve as mais recentes por id desc', async () => {

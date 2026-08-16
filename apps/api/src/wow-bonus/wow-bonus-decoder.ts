@@ -15,7 +15,13 @@ export function decodeBonuses(
   bonusIds: number[],
   dicionario: Map<number, BonusDictionaryEntry>,
 ): DecodedBonuses {
-  const saida: DecodedBonuses = { track: null, sockets: 0, terciarios: [], desconhecidos: [] };
+  const saida: DecodedBonuses = {
+    itemLevel: null,
+    track: null,
+    sockets: 0,
+    terciarios: [],
+    desconhecidos: [],
+  };
 
   for (const bonusId of bonusIds) {
     const entrada = dicionario.get(bonusId);
@@ -43,6 +49,11 @@ function aplicar(saida: DecodedBonuses, entrada: BonusDictionaryEntry): void {
   switch (entrada.kind) {
     case BONUS_KINDS.TRACK:
       saida.track = { nome: entrada.trackName, rank: entrada.trackRank, de: entrada.trackMaxRank };
+      // Anda junto do `track`, não é campo independente: se este bonus não
+      // tem ilvl curado, o ilvl da saída volta a nulo mesmo que uma entrada
+      // de track anterior (no mesmo itemString) tivesse um valor — são o
+      // mesmo bonus de track, o último é que vale.
+      saida.itemLevel = entrada.itemLevel ?? null;
       return;
     case BONUS_KINDS.TERTIARY:
       saida.terciarios.push(entrada.tertiary);

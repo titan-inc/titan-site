@@ -22,6 +22,14 @@ export const decodedTrackSchema = z.object({
 export type DecodedTrack = z.infer<typeof decodedTrackSchema>;
 
 export const decodedBonusesSchema = z.object({
+  /**
+   * O item level que o bonus de track determina, quando curado.
+   *
+   * Nulo quando nenhum bonus conhecido determina o ilvl — lacuna, nunca o
+   * ilvl base do item disfarçado de real. Nunca aproximar.
+   */
+  itemLevel: z.number().int().positive().nullable(),
+
   /** Nulo quando nenhum bonus de track está presente — não é erro. */
   track: decodedTrackSchema.nullable(),
 

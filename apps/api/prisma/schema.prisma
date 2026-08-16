@@ -798,6 +798,11 @@ model WowBonus {
   /// importante da TIT-82). Redundância é o preço de não adivinhar.
   trackMaxRank Int?
 
+  /// O item level que este bonus determina — só kind=track, e mesmo assim
+  /// opcional: rank e ilvl são duas curadorias diferentes, e nulo aqui é "não
+  /// curado ainda", nunca "não tem ilvl". Pré-requisito da TIT-136.
+  itemLevel Int?
+
   /// Só kind=tertiary.
   tertiary WowBonusTertiary?
 
