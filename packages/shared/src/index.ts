@@ -12,6 +12,7 @@ export * from './loot-response.js';
 export * from './loot-council-dto.js';
 export * from './loot-session.js';
 export * from './loot-session-dto.js';
+export * from './loot-session-realtime.js';
 export * from './membership.js';
 export * from './nota.js';
 export * from './officers.js';

@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, Sse, UseGuards } from '@nestjs/common';
+import type { MessageEvent } from '@nestjs/common';
+import type { Observable } from 'rxjs';
 import {
   addLootSessionItemSchema,
   changeLootSessionStatusSchema,
@@ -33,6 +35,7 @@ import type { Request } from 'express';
 import { MemberGuard, OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LootCouncilService } from './loot-council.service';
+import { LootSessionChangeBus } from './loot-session-change-bus';
 import { LootSessionsService, type PersonagemDaConta } from './loot-sessions.service';
 import type { Ator } from './loot-sessions.repository';
 
@@ -79,6 +82,7 @@ export class LootSessionsController {
   constructor(
     private readonly sessions: LootSessionsService,
     private readonly council: LootCouncilService,
+    private readonly changes: LootSessionChangeBus,
   ) {}
 
   /** As sessões que ainda não encerraram. É o que a aba de Sessão abre. */
@@ -99,6 +103,20 @@ export class LootSessionsController {
   @UseGuards(MemberGuard)
   detalhe(@Param('id') id: string, @Req() req: Request): Promise<LootSessionDetail> {
     return this.sessions.detalhe(id, ator(req));
+  }
+
+  /**
+   * O aviso de que a sessão mudou — TIT-68. Nunca dado, só "mudou": quem
+   * recebe chama `router.refresh()`, que já é o caminho testado em raid.
+   *
+   * `MemberGuard` de novo, igual a qualquer rota: `@Sse()` é rota normal, e
+   * o teste da Regra 5 vale igual — chamado sem cookie devolve 401.
+   */
+  @Sse(':id/mudancas')
+  @UseGuards(MemberGuard)
+  async mudancas(@Param('id') id: string): Promise<Observable<MessageEvent>> {
+    await this.sessions.exigirQueExista(id);
+    return this.changes.abrirStream(id);
   }
 
   /**

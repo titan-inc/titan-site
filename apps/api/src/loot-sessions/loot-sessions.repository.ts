@@ -8,6 +8,7 @@ import {
 } from '@titan/shared';
 import { characterSelect, CharactersRepository } from '../characters/characters.repository';
 import { PrismaService } from '../prisma/prisma.service';
+import { LootSessionChangeBus } from './loot-session-change-bus';
 
 /** Uma peça a gravar, já normalizada. */
 export interface ItemDaSessao {
@@ -68,11 +69,25 @@ const sessionSelect = {
 
 export type SessionRow = Prisma.LootSessionGetPayload<{ select: typeof sessionSelect }>;
 
+/**
+ * Único lugar que toca o Prisma para a sessão de loot (Regra 3) — e, desde a
+ * TIT-68, também o único lugar que avisa `LootSessionChangeBus` de que algo
+ * mudou.
+ *
+ * `changes.avisar(sessionId)` é sempre a ÚLTIMA linha de cada método que
+ * escreve, depois que o `await` da escrita já resolveu — nunca antes, e nunca
+ * de dentro de uma transação interativa. Publicado cedo demais, quem recebe o
+ * aviso rebusca e lê o estado de ANTES do commit, e não vem segundo aviso —
+ * fica desatualizado até alguém dar F5. Método com `return false`/`return 0`
+ * de "nada mudou" (item que não existia, resposta que não tinha o que
+ * reabrir) não avisa: não houve escrita.
+ */
 @Injectable()
 export class LootSessionsRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly characters: CharactersRepository,
+    private readonly changes: LootSessionChangeBus,
   ) {}
 
   /**
@@ -116,6 +131,7 @@ export class LootSessionsRepository {
       select: { id: true },
     });
 
+    this.changes.avisar(sessao.id);
     return sessao.id;
   }
 
@@ -254,6 +270,8 @@ export class LootSessionsRepository {
         },
       });
     });
+
+    this.changes.avisar(sessionId);
   }
 
   /**
@@ -282,6 +300,8 @@ export class LootSessionsRepository {
         personagem: `${personagem.name}-${personagem.realm}`,
       }),
     ]);
+
+    this.changes.avisar(sessionId);
   }
 
   /** Quem está na sessão. Ordenado por chegada, que é como a raid encheu. */
@@ -365,6 +385,7 @@ export class LootSessionsRepository {
       },
     });
 
+    this.changes.avisar(sessionId);
     return count;
   }
 
@@ -543,6 +564,8 @@ export class LootSessionsRepository {
         candidato: `${candidato.nameKey}-${candidato.realmKey}`,
       }),
     ]);
+
+    this.changes.avisar(sessionId);
   }
 
   /**
@@ -591,6 +614,7 @@ export class LootSessionsRepository {
       }),
     ]);
 
+    this.changes.avisar(sessionId);
     return true;
   }
 
@@ -629,6 +653,7 @@ export class LootSessionsRepository {
       }),
     ]);
 
+    this.changes.avisar(sessionId);
     return true;
   }
 
@@ -761,6 +786,7 @@ export class LootSessionsRepository {
         }),
       ]);
 
+      this.changes.avisar(sessionId);
       return true;
     } catch (erro: unknown) {
       // P2002 é o unique do item: alguém entregou primeiro. Qualquer outro erro
@@ -841,6 +867,8 @@ export class LootSessionsRepository {
       this.prisma.lootSessionItem.create({ data: { sessionId, ...paraCriar } }),
       this.registrarEvento(sessionId, 'item_adicionado', ator, { itemId: item.itemId }),
     ]);
+
+    this.changes.avisar(sessionId);
   }
 
   /** Remove uma peça e registra o evento. Devolve false se não era da sessão. */
@@ -856,6 +884,7 @@ export class LootSessionsRepository {
       this.registrarEvento(sessionId, 'item_removido', ator, { itemId: item.itemId }),
     ]);
 
+    this.changes.avisar(sessionId);
     return true;
   }
 
@@ -877,6 +906,8 @@ export class LootSessionsRepository {
       }),
       this.registrarEvento(sessionId, 'status_alterado', ator, { de, para }),
     ]);
+
+    this.changes.avisar(sessionId);
   }
 
   /**
@@ -911,7 +942,7 @@ export class LootSessionsRepository {
     ator: Ator,
     gravarLinhas: (tx: Prisma.TransactionClient) => Promise<number>,
   ): Promise<number> {
-    return this.prisma.$transaction(async (tx) => {
+    const gravadas = await this.prisma.$transaction(async (tx) => {
       await tx.lootSession.update({
         where: { id: sessionId },
         data: { status: 'encerrada', closedAt: new Date() },
@@ -929,6 +960,9 @@ export class LootSessionsRepository {
 
       return gravarLinhas(tx);
     });
+
+    this.changes.avisar(sessionId);
+    return gravadas;
   }
 
   /**
