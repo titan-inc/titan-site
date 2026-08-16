@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LootLineSource, LootResponseKind, RaidDifficultyLevel } from '@titan/shared';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { characterSelect } from '../characters/characters.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SeasonInicio } from './season-da-entrega';
@@ -48,6 +48,49 @@ export interface LootLineUpsert {
 
   /** O registro do export, inteiro e sem interpretar. */
   rawImportedLine: Prisma.InputJsonValue;
+}
+
+/**
+ * Uma linha do encerramento de sessão, pronta para gravar.
+ *
+ * Irmã do `LootLineUpsert`, com a nulidade espelhada — de propósito (TIT-69).
+ * Lá os quatro campos de sessão são literal `null`, guardrail para o import
+ * nunca preencher campo de sessão; aqui `sessionId` e `awardedBy*` são
+ * obrigatórios, e é `rawImportedLine` que vira literal `null` — a sessão ao
+ * vivo nasce no nosso formato, sem fonte externa a preservar. O compilador
+ * garante os dois lados.
+ *
+ * `votes` é `number`, não `number | null`: `LootSessionAward.votes` nunca é
+ * nulo (zero é resultado legítimo — entrega à mão e `pass item to` não passam
+ * por votação), diferente do import, onde a fonte pode não ter o conceito.
+ */
+export interface LootLineFromSession {
+  source: LootLineSource;
+  externalId: string;
+  sessionId: string;
+  awardedAt: Date;
+  awardedByUserId: string;
+  awardedByBattletag: string;
+
+  winnerCharacterId: string;
+  looterCharacterId: string | null;
+
+  itemId: number;
+  itemString: string;
+
+  encounterId: string | null;
+  difficulty: RaidDifficultyLevel | null;
+
+  seasonId: number | null;
+
+  responseOptionSlug: string;
+  responseKind: LootResponseKind;
+
+  votes: number;
+  playerNote: string | null;
+  councilNote: string | null;
+
+  rawImportedLine: null;
 }
 
 /** Um boss do catálogo, o mínimo para casar com o nome que a fonte escreveu. */
@@ -114,6 +157,37 @@ export class LootLinesRepository {
 
   countBySource(source: LootLineSource): Promise<number> {
     return this.prisma.lootLine.count({ where: { source } });
+  }
+
+  /**
+   * Grava as linhas do encerramento de uma sessão. Irmã do `upsertMany`, mesma
+   * chave (`source, externalId`) — mesma trava de duplicata.
+   *
+   * `tx` é OPCIONAL: cai em `this.prisma` quando ausente, para não obrigar quem
+   * chama fora de transação (a rota de ops que regera o histórico) a inventar
+   * uma. Quando `loot-sessions` chama durante o encerramento, passa o client da
+   * PRÓPRIA transação — é o que faz a troca de status e a gravação da linha
+   * commitarem juntas (TIT-69). Convenção nova neste projeto: ver o comentário
+   * da issue sobre por que a alternativa (loot-sessions escrevendo direto
+   * nesta tabela) era pior.
+   *
+   * Sem client externo, ainda assim tudo numa transação só — mesmo motivo do
+   * `upsertMany`: ou a sessão inteira virou histórico, ou nenhuma linha dela
+   * virou.
+   */
+  async upsertDaSessao(
+    linhas: LootLineFromSession[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    if (tx) {
+      const feitas = await Promise.all(linhas.map((linha) => upsertLinhaDaSessao(tx, linha)));
+      return feitas.length;
+    }
+
+    const feitas = await this.prisma.$transaction(
+      linhas.map((linha) => upsertLinhaDaSessao(this.prisma, linha)),
+    );
+    return feitas.length;
   }
 
   /**
@@ -245,6 +319,25 @@ export class LootLinesRepository {
 
     return itens.map((i) => i.itemId);
   }
+}
+
+/**
+ * O `upsert` de uma linha de sessão, contra o client que o chamador passou.
+ *
+ * `rawImportedLine` vira `Prisma.JsonNull`, não o `null` do TypeScript: campo
+ * JSON nulável no Prisma distingue "coluna SQL nula" de "JSON contendo
+ * `null`", e só o marcador aceita ir para `create`/`update`. `null` no tipo
+ * `LootLineFromSession` continua sendo o guardrail — é aqui, na única borda
+ * que fala com o Prisma, que ele vira o valor que a API do client aceita.
+ */
+function upsertLinhaDaSessao(client: Prisma.TransactionClient, linha: LootLineFromSession) {
+  const dados = { ...linha, rawImportedLine: Prisma.JsonNull };
+
+  return client.lootLine.upsert({
+    where: { source_externalId: { source: linha.source, externalId: linha.externalId } },
+    create: dados,
+    update: dados,
+  });
 }
 
 /**

@@ -1,4 +1,13 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   catalogFileSchema,
   parseJournalDump,
@@ -14,6 +23,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
 import { LootCatalogService } from '../loot-catalog/loot-catalog.service';
 import { RcImportService, type RcImportResult } from '../loot-lines/rc-import.service';
+import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
 import { OpsTokenGuard } from './ops-token.guard';
@@ -81,6 +91,7 @@ export class OpsController {
     private readonly catalogService: LootCatalogService,
     private readonly raidProgress: RaidProgressService,
     private readonly rcImport: RcImportService,
+    private readonly lootSessions: LootSessionsService,
     private readonly ops: OpsService,
   ) {}
 
@@ -211,5 +222,22 @@ export class OpsController {
   @Post('fix-character-ids')
   async fixCharacterIds(): Promise<FixCharacterIdsResult> {
     return this.ops.fixCharacterIds();
+  }
+
+  /**
+   * Regera as linhas de histórico de uma sessão de loot council já encerrada
+   * — TIT-69, Regra 8.
+   *
+   * Rede de segurança: o encerramento já grava status e histórico na mesma
+   * transação, mas isto cobre o caso de uma sessão ter ficado encerrada sem
+   * linha nenhuma (dado de antes desta atomicidade, ou intervenção manual no
+   * banco). Idempotente — a chave é `LootSessionItem.id`, então rodar de novo
+   * atualiza as mesmas linhas em vez de duplicar.
+   *
+   * Sem corpo: o único parâmetro é o id da sessão, no caminho.
+   */
+  @Post('loot-sessions/:id/regerar-historico')
+  async regerarHistoricoDaSessao(@Param('id') id: string): Promise<{ linhas: number }> {
+    return { linhas: await this.lootSessions.regerarHistorico(id) };
   }
 }

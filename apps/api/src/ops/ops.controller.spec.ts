@@ -5,6 +5,7 @@ import type { BlizzardService } from '../blizzard/blizzard.service';
 import type { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
 import type { LootCatalogService } from '../loot-catalog/loot-catalog.service';
 import type { RcImportService } from '../loot-lines/rc-import.service';
+import type { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
 import { OpsController } from './ops.controller';
@@ -54,6 +55,9 @@ describe('OpsController', () => {
       Promise.resolve({ corrigidos: 0, trocas: [] }),
     ),
   };
+  const lootSessions = {
+    regerarHistorico: jest.fn<Promise<number>, [string]>(() => Promise.resolve(0)),
+  };
 
   let controller: OpsController;
 
@@ -67,6 +71,7 @@ describe('OpsController', () => {
       catalogService as unknown as LootCatalogService,
       raidProgress as unknown as RaidProgressService,
       rcImport as unknown as RcImportService,
+      lootSessions as unknown as LootSessionsService,
       ops as unknown as OpsService,
     );
   });
@@ -181,5 +186,14 @@ describe('OpsController', () => {
 
     expect(ops.fixCharacterIds).toHaveBeenCalledTimes(1);
     expect(resultado.corrigidos).toBe(2);
+  });
+
+  it('regerar-historico repassa o id e devolve a contagem', async () => {
+    lootSessions.regerarHistorico.mockResolvedValueOnce(3);
+
+    const resultado = await controller.regerarHistoricoDaSessao('sess-1');
+
+    expect(lootSessions.regerarHistorico).toHaveBeenCalledWith('sess-1');
+    expect(resultado).toEqual({ linhas: 3 });
   });
 });

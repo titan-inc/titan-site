@@ -24,6 +24,7 @@ import {
   type LootSessionSummary,
   type SessionPasteItem,
 } from '@titan/shared';
+import { LootLinesService } from '../loot-lines/loot-lines.service';
 import {
   LootSessionsRepository,
   type Ator,
@@ -64,7 +65,10 @@ interface ParticipanteDoBanco {
 export class LootSessionsService {
   private readonly logger = new Logger(LootSessionsService.name);
 
-  constructor(private readonly repo: LootSessionsRepository) {}
+  constructor(
+    private readonly repo: LootSessionsRepository,
+    private readonly lootLines: LootLinesService,
+  ) {}
 
   /**
    * A colagem do addon vira sessão montada.
@@ -262,7 +266,12 @@ export class LootSessionsService {
     if (para === 'aberta' && sessao.items.length === 0) {
       throw new BadRequestException('Sessão sem item nenhum não tem o que anunciar');
     }
-    if (para === 'encerrada') await this.exigirTudoResolvido(sessao);
+
+    if (para === 'encerrada') {
+      await this.exigirTudoResolvido(sessao);
+      await this.encerrar(sessao, ator);
+      return this.detalhe(id, ator);
+    }
 
     await this.repo.trocarStatus(id, sessao.status, para, ator, sessao.openedAt === null);
 
@@ -276,6 +285,53 @@ export class LootSessionsService {
     }
 
     return this.detalhe(id, ator);
+  }
+
+  /**
+   * Encerra E grava o histórico na mesma transação — TIT-69.
+   *
+   * Fora do `repo.trocarStatus` genérico de propósito: é a única transição que
+   * precisa atravessar módulo, porque `encerrada` é terminal e uma sessão sem
+   * histórico não teria caminho de volta. `exigirTudoResolvido` já rodou antes
+   * de chegar aqui.
+   */
+  private async encerrar(sessao: SessionRow, ator: Ator): Promise<void> {
+    const itens = await this.repo.findAwardsParaHistorico(sessao.id);
+
+    const gravadas = await this.repo.encerrarComHistorico(sessao.id, sessao.status, ator, (tx) =>
+      this.lootLines.gravarDaSessao(
+        { sessionId: sessao.id, encounterId: sessao.encounter?.id ?? null, itens },
+        tx,
+      ),
+    );
+
+    this.logger.log(`sessão ${sessao.id}: encerrada, ${gravadas} linha(s) de histórico gravada(s)`);
+  }
+
+  /**
+   * Regera as linhas de histórico de uma sessão já encerrada — Regra 8.
+   *
+   * Rede de segurança para o caso em que `encerrarComHistorico` tenha
+   * commitado o status sem gravar (dado de antes desta atomicidade, ou
+   * intervenção manual). Segura por construção: `externalId` faz a gravação
+   * idempotente, então rodar isto de novo sobre uma sessão já regerada não
+   * duplica nada — atualiza as mesmas linhas.
+   */
+  async regerarHistorico(sessionId: string): Promise<number> {
+    const sessao = await this.exigirSessao(sessionId);
+    if (sessao.status !== 'encerrada') {
+      throw new BadRequestException(`Sessão "${sessionId}" não está encerrada — nada a regerar`);
+    }
+
+    const itens = await this.repo.findAwardsParaHistorico(sessionId);
+    const gravadas = await this.lootLines.gravarDaSessao({
+      sessionId,
+      encounterId: sessao.encounter?.id ?? null,
+      itens,
+    });
+
+    this.logger.log(`sessão ${sessionId}: histórico regerado, ${gravadas} linha(s)`);
+    return gravadas;
   }
 
   /**

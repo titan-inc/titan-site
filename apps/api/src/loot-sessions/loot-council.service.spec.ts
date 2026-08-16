@@ -347,6 +347,28 @@ describe('LootCouncilService', () => {
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    it('award à mão também recusa quem só tem noop', async () => {
+      // Mesma trava do voto (`exigirCandidato`), aqui pelo caminho do award
+      // direto. É a propriedade que o TIT-69 se apoia: `responseKind =
+      // 'sistema'` nunca chega numa `LootLine` de sessão, porque nem o award
+      // à mão nem a maioria conseguem escolher alguém em `noop` — só sobra o
+      // `pass item to`, que sempre grava a razão do LOOT MASTER no lugar,
+      // nunca o `noop` da pessoa.
+      repo.findTodasAsRespostas.mockResolvedValue([
+        resposta({ nameKey: 'calado', name: 'Calado', responseOptionSlug: 'noop', roll: null }),
+      ]);
+
+      await expect(
+        service.awardar(
+          'sess-1',
+          'item-1',
+          { characterName: 'Calado', characterRealm: 'Azralon' },
+          ATOR,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.awardar).not.toHaveBeenCalled();
+    });
   });
 
   describe('o contexto embutido', () => {
