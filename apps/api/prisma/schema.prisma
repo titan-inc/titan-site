@@ -148,6 +148,7 @@ model Character {
   attendances    RaidAttendance[]
   lootWon        LootLine[]               @relation("VencedorDaLinha")
   lootLooted     LootLine[]               @relation("LooterDaLinha")
+  lootedItems    LootSessionItem[]
   responses      LootSessionResponse[]
   participations LootSessionParticipant[]
   votes          LootSessionVote[]
@@ -1059,6 +1060,17 @@ model LootSession {
   /// e o vocabulário do site usa slug. A conversão é explícita, nunca implícita.
   difficulty RaidDifficulty?
 
+  /// A colagem crua do addon, inteira, como ela chegou.
+  ///
+  /// Mesmo instinto do `itemString` guardado sem interpretar: grava o fato,
+  /// interpreta depois (Regra 7). É o que permite o `looter` do item virar
+  /// identidade sem perder a grafia que a fonte escreveu — e o que salva a
+  /// sessão no dia em que o addon mudar de formato e o parser errar um campo.
+  ///
+  /// Nula nas sessões criadas antes de 16/08/2026, quando ela passou a ser
+  /// guardada. Lacuna, não vazio.
+  rawPaste String?
+
   createdByUserId    String
   createdByBattletag String
 
@@ -1141,8 +1153,11 @@ model LootSessionItem {
   ///
   /// Ler isto como destinatário final inverte o propósito da ferramenta. Quem
   /// fica com o item é o award.
-  looterName  String
-  looterRealm String
+  ///
+  /// Nulo quando a colagem não disse. A grafia original da fonte não se perde:
+  /// ela continua na `rawPaste` da sessão.
+  looterCharacterId String?
+  looter            Character? @relation(fields: [looterCharacterId], references: [id], onDelete: Restrict)
 
   responses LootSessionResponse[]
   votes     LootSessionVote[]
