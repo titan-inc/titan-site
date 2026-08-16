@@ -5,6 +5,7 @@ import {
   raidDifficultyFromItemString,
   splitNomeRealm,
   toEncounterMatchKey,
+  type LootResponseKind,
   type RaidDifficultyLevel,
   type RcExport,
   type RcExportRecord,
@@ -21,6 +22,9 @@ import {
   type LootLineUpsert,
 } from './loot-lines.repository';
 import { seasonDaEntrega, type SeasonInicio } from './season-da-entrega';
+
+/** Slug → `kind` da opção, para congelar na linha. Ver `LootLinesRepository.findResponseOptions`. */
+type ResponseKindPorSlug = Map<string, LootResponseKind>;
 
 /**
  * Uma linha traduzida do export, antes de a identidade virar id.
@@ -85,17 +89,20 @@ export class RcImportService {
    * do RC (`servertime-índice`), único nos 445 registros do arquivo real.
    */
   async importar(arquivo: RcExport): Promise<RcImportResult> {
-    const [encounters, slugsValidos, seasons] = await Promise.all([
+    const [encounters, respostas, seasons] = await Promise.all([
       this.repo.findEncounters(),
-      this.repo.findResponseOptionSlugs(),
+      this.repo.findResponseOptions(),
       this.repo.findSeasons(),
     ]);
 
     const bosses = this.indexarBosses(encounters);
+    const responseKindPorSlug: ResponseKindPorSlug = new Map(
+      respostas.map((r) => [r.slug, r.kind]),
+    );
     const { rascunhos, descartados, problemas } = this.traduzir(
       arquivo,
       bosses,
-      slugsValidos,
+      responseKindPorSlug,
       seasons,
     );
 
@@ -177,10 +184,9 @@ export class RcImportService {
   private traduzir(
     arquivo: RcExport,
     bosses: Map<string, string | null>,
-    slugsValidos: string[],
+    responseKindPorSlug: ResponseKindPorSlug,
     seasons: readonly SeasonInicio[],
   ): { rascunhos: LootLineRascunho[]; descartados: number; problemas: Problema[] } {
-    const conhecidos = new Set(slugsValidos);
     const rascunhos: LootLineRascunho[] = [];
     const problemas: Problema[] = [];
     let descartados = 0;
@@ -196,7 +202,7 @@ export class RcImportService {
         descartados += 1;
         continue;
       }
-      if (!conhecidos.has(resposta.response)) {
+      if (!responseKindPorSlug.has(resposta.response)) {
         problemas.push({
           id: registro.id,
           motivo: `opção "${resposta.response}" não existe em LootResponseOption`,
@@ -204,7 +210,13 @@ export class RcImportService {
         continue;
       }
 
-      const rascunho = this.montarLinha(registro, resposta.response, bosses, seasons);
+      const rascunho = this.montarLinha(
+        registro,
+        resposta.response,
+        bosses,
+        responseKindPorSlug,
+        seasons,
+      );
       if (rascunho === null) {
         problemas.push({ id: registro.id, motivo: 'não deu para separar nome e realm' });
         continue;
@@ -221,6 +233,7 @@ export class RcImportService {
     registro: RcExportRecord,
     responseOptionSlug: string,
     bosses: Map<string, string | null>,
+    responseKindPorSlug: ResponseKindPorSlug,
     seasons: readonly SeasonInicio[],
   ): LootLineRascunho | null {
     const nomeVencedor = splitNomeRealm(registro.player);
@@ -240,12 +253,27 @@ export class RcImportService {
       ? { name: nomeLootador.name, realm: nomeLootador.realm }
       : null;
 
+    const responseKind = responseKindPorSlug.get(responseOptionSlug);
+    if (responseKind === undefined) {
+      // Não deveria acontecer: `traduzir` já confirmou `responseKindPorSlug.has`
+      // antes de chamar esta função.
+      throw new Error(`kind não resolvido para a opção "${responseOptionSlug}"`);
+    }
+
     return {
       vencedor,
       lootador,
       base: {
         source: LOOT_LINE_SOURCES.IMPORT_RC,
         externalId: registro.id,
+
+        // Nulos os quatro: quem os preenche é o encerramento de sessão
+        // (TIT-69), não o import.
+        sessionId: null,
+        awardedByUserId: null,
+        awardedByBattletag: null,
+        councilNote: null,
+
         awardedAt,
 
         // Pela data da entrega, não pelo tier da peça — ver `seasonDaEntrega`.
@@ -256,18 +284,18 @@ export class RcImportService {
         itemId: registro.itemID,
         itemString: registro.itemString,
 
-        rawInstance: registro.instance,
-        rawBoss: registro.boss,
         encounterId: this.resolverBoss(registro.boss, bosses),
         difficulty: this.resolverDificuldade(registro.itemString),
 
         responseOptionSlug,
-        rawResponse: registro.response,
-        rawResponseId: registro.responseID,
+        responseKind,
 
         votes: registro.votes ?? null,
-        note: registro.note === '' ? null : registro.note,
-        rawReplacedGear: [registro.gear1, registro.gear2].filter((g) => g !== ''),
+        playerNote: registro.note === '' ? null : registro.note,
+
+        // O registro inteiro, sem interpretar — nada de picar em rawInstance/
+        // rawBoss/rawResponse/rawReplacedGear como antes da TIT-130.
+        rawImportedLine: registro,
       },
     };
   }
@@ -277,8 +305,9 @@ export class RcImportService {
    *
    * Não casa em 22% do histórico, e isso é esperado, não erro: o `boss` vem no
    * idioma do cliente de quem era loot master, e 56 registros trazem `Unknown` ou
-   * `Desconhecido`. Nulo aqui é "não deu para identificar" — o `rawBoss` fica
-   * gravado para o dia em que alguém mapear os nomes traduzidos.
+   * `Desconhecido`. Nulo aqui é "não deu para identificar" — o nome cru fica
+   * gravado em `rawImportedLine` para o dia em que alguém mapear os nomes
+   * traduzidos.
    */
   private resolverBoss(rawBoss: string, bosses: Map<string, string | null>): string | null {
     if (rawBoss === '') return null;

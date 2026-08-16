@@ -33,6 +33,11 @@ function dataDaEntrega(iso: string): string {
  * Voto e nota ficam de fora de propósito. Voto fora de contexto vira placar
  * entre pessoas, que é o que a Regra 7 manda evitar — a régua dela é "isto vira
  * comparação entre membros?".
+ *
+ * Linha com `responseKind = loot_master` não é "X levou" — é decisão do
+ * conselho sobre o destino do item. `winner` continua sendo quem guardou (o
+ * schema nunca tem caso especial aí), mas a coluna Personagem lê "guardado
+ * por" em vez de implicar que a pessoa pediu a peça (TIT-130).
  */
 export function TabelaHistorico({
   entries,
@@ -87,8 +92,21 @@ export function TabelaHistorico({
                 </td>
 
                 <td className="text-fg px-3 py-2 whitespace-nowrap">
-                  {e.winner.name}
-                  <span className="text-fg-subtle">-{e.winner.realm}</span>
+                  {e.responseKind === 'loot_master' ? (
+                    // Foi decisão do conselho sobre o destino da peça, não
+                    // interesse de quem guardou — nunca ler como "X levou".
+                    <>
+                      <span className="text-fg-subtle italic">Banco</span>{' '}
+                      <span className="text-fg-subtle text-xs">
+                        (guardado por {e.winner.name}-{e.winner.realm})
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {e.winner.name}
+                      <span className="text-fg-subtle">-{e.winner.realm}</span>
+                    </>
+                  )}
                 </td>
 
                 <td className="px-3 py-2">
@@ -112,11 +130,12 @@ export function TabelaHistorico({
                 </td>
 
                 <td className="px-3 py-2">
-                  {/* 26% do histórico não casou com o catálogo, por nome
-                      traduzido ou boss `Unknown`. A grafia da fonte fica, em
-                      tom apagado — esconder um quarto das linhas seria pior. */}
+                  {/* 26% do histórico não casa com o catálogo, por nome
+                      traduzido ou boss desconhecido. Desde a TIT-130 isso é
+                      lacuna explícita, não mais o texto de outra ferramenta —
+                      esconder a linha seria pior. */}
                   <span className={e.boss.encounterId ? 'text-fg-muted' : 'text-fg-subtle italic'}>
-                    {e.boss.name}
+                    {e.boss.name ?? 'Boss não identificado'}
                   </span>
                   {e.difficulty && (
                     <span className="text-fg-subtle ml-2 font-mono text-xs">

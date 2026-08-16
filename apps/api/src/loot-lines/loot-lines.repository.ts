@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { LootLineSource, RaidDifficultyLevel } from '@titan/shared';
+import type { LootLineSource, LootResponseKind, RaidDifficultyLevel } from '@titan/shared';
 import type { Prisma } from '@prisma/client';
 import { characterSelect } from '../characters/characters.repository';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,11 +11,18 @@ import type { SeasonInicio } from './season-da-entrega';
  * Campo a campo de propósito, e não um spread do registro da fonte: o export tem
  * 22 campos e a tabela guarda outros, então espalhar o objeto inteiro faria o
  * Prisma receber colunas que não existem — erro em runtime, longe daqui.
+ *
+ * Todos os campos de sessão (`sessionId`, `awardedByUserId`,
+ * `awardedByBattletag`, `councilNote`) ficam nulos aqui: quem os preenche é o
+ * encerramento de sessão (TIT-69), não o import.
  */
 export interface LootLineUpsert {
   source: LootLineSource;
   externalId: string;
+  sessionId: null;
   awardedAt: Date;
+  awardedByUserId: null;
+  awardedByBattletag: null;
 
   /** Identidades já resolvidas — quem resolve é o `CharactersRepository`. */
   winnerCharacterId: string;
@@ -24,8 +31,6 @@ export interface LootLineUpsert {
   itemId: number;
   itemString: string;
 
-  rawInstance: string;
-  rawBoss: string;
   encounterId: string | null;
   difficulty: RaidDifficultyLevel | null;
 
@@ -33,12 +38,16 @@ export interface LootLineUpsert {
   seasonId: number | null;
 
   responseOptionSlug: string;
-  rawResponse: string;
-  rawResponseId: string;
+
+  /** O `kind` da opção, congelado no momento do import — nunca o de hoje. */
+  responseKind: LootResponseKind;
 
   votes: number | null;
-  note: string | null;
-  rawReplacedGear: string[];
+  playerNote: string | null;
+  councilNote: null;
+
+  /** O registro do export, inteiro e sem interpretar. */
+  rawImportedLine: Prisma.InputJsonValue;
 }
 
 /** Um boss do catálogo, o mínimo para casar com o nome que a fonte escreveu. */
@@ -72,10 +81,12 @@ export class LootLinesRepository {
     return this.prisma.gameSeason.findMany({ select: { id: true, startedAt: true } });
   }
 
-  /** Os slugs de resposta que existem hoje, para conferir antes de gravar. */
-  async findResponseOptionSlugs(): Promise<string[]> {
-    const opcoes = await this.prisma.lootResponseOption.findMany({ select: { slug: true } });
-    return opcoes.map((o) => o.slug);
+  /**
+   * As opções de resposta que existem hoje, com o `kind` para congelar na
+   * linha — nunca o de uma leitura futura, que a TIT-64 pode ter editado.
+   */
+  findResponseOptions(): Promise<Array<{ slug: string; kind: LootResponseKind }>> {
+    return this.prisma.lootResponseOption.findMany({ select: { slug: true, kind: true } });
   }
 
   /**
@@ -239,19 +250,19 @@ export class LootLinesRepository {
 /**
  * Colunas que a tela do histórico precisa.
  *
- * `rawBoss` e `rawInstance` entram porque são o fallback de 26% das linhas, que
- * não resolveram para boss do catálogo.
+ * Sem `rawBoss`/`rawInstance` desde a TIT-130: não há mais fallback de bruto
+ * picado, boss não resolvido vira lacuna na tela. `responseKind` entra porque é
+ * o congelado da linha — nunca `responseOption.kind`, que pode ter mudado.
  */
 const historySelect = {
   id: true,
   awardedAt: true,
   winner: { select: { ...characterSelect, class: true } },
   itemId: true,
-  rawBoss: true,
-  rawInstance: true,
   difficulty: true,
   votes: true,
-  note: true,
+  playerNote: true,
+  responseKind: true,
   encounter: { select: { id: true, name: true, raid: { select: { name: true } } } },
   responseOption: { select: { slug: true, label: true } },
 } as const;

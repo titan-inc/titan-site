@@ -91,6 +91,30 @@ export const LOOT_RESPONSES = {
 export const lootResponseSlugSchema = z.string().min(1);
 export type LootResponseSlug = z.infer<typeof lootResponseSlugSchema>;
 
+/**
+ * O que uma resposta É, ao contrário do que ela diz — fechado, diferente do
+ * slug.
+ *
+ * Espelha o enum `LootResponseKind` do Prisma, mesmo padrão de `RAID_DIFFICULTIES`
+ * e `WowSpec`: o banco valida o que a tabela de opções grava, e o typecheck aqui
+ * pega divergência de digitação entre os dois lados.
+ *
+ * Diferente do slug, que a liderança estende livremente (TIT-64), o conjunto de
+ * `kind` é fixo — é o vocabulário que decide se uma entrega conta como recebida
+ * por alguém (TIT-130).
+ */
+export const LOOT_RESPONSE_KINDS = {
+  /** O jogador declara o quanto quer a peça. */
+  PLAYER: 'player',
+  /** Decisão do loot master sobre o destino do item, não interesse de ninguém. */
+  LOOT_MASTER: 'loot_master',
+  /** Derivada pelo sistema, nunca clicada por ninguém — hoje só `noop`. */
+  SISTEMA: 'sistema',
+} as const;
+
+export const lootResponseKindSchema = z.nativeEnum(LOOT_RESPONSE_KINDS);
+export type LootResponseKind = z.infer<typeof lootResponseKindSchema>;
+
 /** Um dos slugs semeados. Só para o tradutor e o seed — ver `LOOT_RESPONSES`. */
 export type SeededLootResponse = (typeof LOOT_RESPONSES)[keyof typeof LOOT_RESPONSES];
 
