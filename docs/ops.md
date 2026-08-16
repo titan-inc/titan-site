@@ -271,3 +271,34 @@ fresco (`force: true`), mas se já existir cache de uma chamada anterior
 bem-sucedida, uma falha degrada pra ele em vez de estourar — por isso o
 campo `stale` na resposta: `stale: true` significa que aquilo **não** é uma
 validação fresca da credencial.
+
+## Correção dos ids do backfill de identidade (TIT-132)
+
+`Character.id` é `@default(cuid())`, mas isso é avaliado em JS pelo Prisma —
+não existe em SQL puro. O backfill de 16/08/2026 criou as 69 identidades
+daquela rodada com `gen_random_uuid()`, então elas saíram em uuid em vez do
+cuid que a aplicação sempre gerou (e continua gerando, em todo `resolver()`/
+`resolverVarios()`/`resolverDoRoster()` do `CharactersRepository`).
+
+Sem corpo — a operação não recebe parâmetro.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/fix-character-ids" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{
+  "corrigidos": 69,
+  "trocas": [{ "de": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "para": "cmsv4ocyc00005opg4hxu00tl" }]
+}
+```
+
+**Não derruba nenhuma constraint.** Os 11 FKs que apontam para `Character.id`
+são `ON UPDATE CASCADE` (conferido no `pg_constraint`) — o `UPDATE` no id
+propaga sozinho para as tabelas filhas, sem janela em que uma referência
+fique órfã.
+
+**Idempotente**: o teste é o hífen (cuid nunca tem, uuid sempre tem), então
+rodar de novo depois de corrigido não acha mais nenhum id fora do padrão e
+devolve `corrigidos: 0`.

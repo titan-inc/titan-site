@@ -1,15 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import type { GuildCharacter, Membership, Session, User } from '@prisma/client';
+import type { Character, GuildCharacter, Membership, Session, User } from '@prisma/client';
+import { chaveDe } from '../characters/characters.repository';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Personagem da conta que está no roster, como o login acabou de ver. */
 export interface MatchedCharacterInput {
-  /** Identidade via toCharacterKey() — COM acento. Ver Regra 6. */
-  nameKey: string;
-  /** Realm via toSlug() — aqui remover acento é correto. */
-  realmSlug: string;
-  /** Nome exibido, com acento e capitalização da Blizzard. */
+  /** Nome e realm como a Blizzard exibe. As chaves saem daqui. */
   name: string;
+  realmSlug: string;
   rank: number;
 }
 
@@ -22,8 +20,16 @@ export interface UpsertUserInput {
   characters: MatchedCharacterInput[];
 }
 
-/** User com os personagens carregados. É sempre assim que auth precisa dele. */
-export type UserWithCharacters = User & { characters: GuildCharacter[] };
+/**
+ * User com os personagens carregados, e cada um com a identidade junto.
+ *
+ * A identidade vem sempre no mesmo `include` porque auth precisa do nome e do
+ * realm em toda leitura de sessão — sem ela, cada uso viraria uma consulta a
+ * mais para descobrir quem é o personagem que o guard acabou de carregar.
+ */
+export type UserWithCharacters = User & {
+  characters: Array<GuildCharacter & { character: Character }>;
+};
 
 /**
  * Único lugar do módulo auth que fala com o Prisma — ver Regra 3 do CLAUDE.md.
@@ -63,15 +69,26 @@ export class AuthRepository {
 
       await tx.guildCharacter.deleteMany({ where: { userId: user.id } });
 
-      if (input.characters.length > 0) {
-        await tx.guildCharacter.createMany({
-          data: input.characters.map((c) => ({ ...c, userId: user.id })),
+      // A identidade é resolvida DO ROSTER: aqui a grafia é a da Blizzard, e é
+      // ela que vence quando as fontes discordam.
+      for (const personagem of input.characters) {
+        const chave = chaveDe({ name: personagem.name, realm: personagem.realmSlug });
+
+        const identidade = await tx.character.upsert({
+          where: { nameKey_realmKey: chave },
+          create: { ...chave, name: personagem.name, realm: personagem.realmSlug },
+          update: { name: personagem.name, realm: personagem.realmSlug },
+          select: { id: true },
+        });
+
+        await tx.guildCharacter.create({
+          data: { userId: user.id, characterId: identidade.id, rank: personagem.rank },
         });
       }
 
       return tx.user.findUniqueOrThrow({
         where: { id: user.id },
-        include: { characters: true },
+        include: { characters: { include: { character: true } } },
       });
     });
   }
@@ -88,10 +105,9 @@ export class AuthRepository {
    * modelo de autorização, que auth resolve a cada sessão. Quem escreve nela é
    * só o módulo officers.
    */
-  async findOfficerGrants(): Promise<Array<{ nameKey: string; realmSlug: string }>> {
-    return this.prisma.officerGrant.findMany({
-      select: { nameKey: true, realmSlug: true },
-    });
+  async findOfficerGrants(): Promise<string[]> {
+    const grants = await this.prisma.officerGrant.findMany({ select: { characterId: true } });
+    return grants.map((g) => g.characterId);
   }
 
   async createSession(id: string, userId: string, expiresAt: Date): Promise<Session> {
@@ -101,7 +117,7 @@ export class AuthRepository {
   async findSessionWithUser(id: string): Promise<(Session & { user: UserWithCharacters }) | null> {
     return this.prisma.session.findUnique({
       where: { id },
-      include: { user: { include: { characters: true } } },
+      include: { user: { include: { characters: { include: { character: true } } } } },
     });
   }
 

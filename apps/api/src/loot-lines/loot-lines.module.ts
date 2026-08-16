@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CharactersModule } from '../characters/characters.module';
 import { LootHistoryController } from './loot-history.controller';
 import { LootHistoryService } from './loot-history.service';
 import { LootLinesRepository } from './loot-lines.repository';
@@ -18,9 +19,11 @@ import { RcImportService } from './rc-import.service';
  * pessoa da área interna. Mesmo arranjo do `LootCatalogModule`.
  *
  * `AuthModule` entra pelo `MemberGuard` do controller de leitura.
+ * `CharactersModule` entra pelo `RcImportService`, que resolve identidade de
+ * quem venceu e de quem lootou antes de gravar.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CharactersModule],
   controllers: [LootHistoryController],
   providers: [RcImportService, LootHistoryService, LootLinesRepository],
   exports: [RcImportService],

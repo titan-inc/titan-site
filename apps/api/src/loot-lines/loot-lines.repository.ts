@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { LootLineSource, RaidDifficultyLevel } from '@titan/shared';
 import type { Prisma } from '@prisma/client';
+import { characterSelect } from '../characters/characters.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SeasonInicio } from './season-da-entrega';
 
@@ -16,16 +17,9 @@ export interface LootLineUpsert {
   externalId: string;
   awardedAt: Date;
 
-  winnerNameKey: string;
-  winnerRealmKey: string;
-  winnerName: string;
-  winnerRealm: string;
-  winnerClass: string | null;
-
-  looterNameKey: string | null;
-  looterRealmKey: string | null;
-  looterName: string | null;
-  looterRealm: string | null;
+  /** Identidades já resolvidas — quem resolve é o `CharactersRepository`. */
+  winnerCharacterId: string;
+  looterCharacterId: string | null;
 
   itemId: number;
   itemString: string;
@@ -181,9 +175,25 @@ export class LootLinesRepository {
   /** Personagens que aparecem, com a grafia da fonte para exibir. */
   contarPorPersonagem(where: Prisma.LootLineWhereInput) {
     return this.prisma.lootLine.groupBy({
-      by: ['winnerNameKey', 'winnerRealmKey', 'winnerName', 'winnerRealm'],
+      by: ['winnerCharacterId'],
       where,
       _count: true,
+    });
+  }
+
+  /** Nome e realm destas identidades, para a faceta virar rótulo. */
+  findCharacterNames(ids: string[]) {
+    return this.prisma.character.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, realm: true },
+    });
+  }
+
+  /** A identidade deste par nome + realm, se existir. Não cria. */
+  findCharacterByKeys(nameKey: string, realmKey: string) {
+    return this.prisma.character.findUnique({
+      where: { nameKey_realmKey: { nameKey, realmKey } },
+      select: { id: true },
     });
   }
 
@@ -235,11 +245,7 @@ export class LootLinesRepository {
 const historySelect = {
   id: true,
   awardedAt: true,
-  winnerNameKey: true,
-  winnerRealmKey: true,
-  winnerName: true,
-  winnerRealm: true,
-  winnerClass: true,
+  winner: { select: { ...characterSelect, class: true } },
   itemId: true,
   rawBoss: true,
   rawInstance: true,

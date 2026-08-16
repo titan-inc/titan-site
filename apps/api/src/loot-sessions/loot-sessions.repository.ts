@@ -6,6 +6,7 @@ import {
   type LootSessionStatus,
   type RaidDifficultyLevel,
 } from '@titan/shared';
+import { characterSelect, CharactersRepository } from '../characters/characters.repository';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Uma peça a gravar, já normalizada. */
@@ -41,8 +42,7 @@ const sessionSelect = {
       position: true,
       itemId: true,
       itemString: true,
-      looterName: true,
-      looterRealm: true,
+      looter: { select: characterSelect },
     },
   },
 } as const;
@@ -51,7 +51,10 @@ export type SessionRow = Prisma.LootSessionGetPayload<{ select: typeof sessionSe
 
 @Injectable()
 export class LootSessionsRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly characters: CharactersRepository,
+  ) {}
 
   /**
    * Cria a sessão com os itens e o evento de criação, numa transação só.
@@ -69,6 +72,9 @@ export class LootSessionsRepository {
     ator: Ator;
     itens: ItemDaSessao[];
   }): Promise<string> {
+    const itensParaCriar = [];
+    for (const item of dados.itens) itensParaCriar.push(await this.paraCriarItem(item));
+
     const sessao = await this.prisma.lootSession.create({
       data: {
         encounterId: dados.encounterId,
@@ -78,7 +84,7 @@ export class LootSessionsRepository {
         difficulty: dados.difficulty,
         createdByUserId: dados.ator.userId,
         createdByBattletag: dados.ator.battletag,
-        items: { create: dados.itens },
+        items: { create: itensParaCriar },
         events: {
           create: {
             type: 'sessao_criada',
@@ -176,6 +182,7 @@ export class LootSessionsRepository {
     ator: Ator;
   }): Promise<void> {
     const { sessionId, itemId, personagem, responseOptionSlug, roll, note, ator } = dados;
+    const characterId = await this.exigirIdentidade(personagem);
 
     // Transação interativa, e não a forma de array: o evento precisa do roll que
     // FICOU, e só a resposta do upsert sabe qual é. Com o array, o evento
@@ -184,16 +191,10 @@ export class LootSessionsRepository {
     // aparência de sorteio viciado que ele existe para desmentir.
     await this.prisma.$transaction(async (tx) => {
       const gravada = await tx.lootSessionResponse.upsert({
-        where: {
-          itemId_nameKey_realmKey: {
-            itemId,
-            nameKey: personagem.nameKey,
-            realmKey: personagem.realmKey,
-          },
-        },
+        where: { itemId_characterId: { itemId, characterId } },
         create: {
           itemId,
-          ...personagem,
+          characterId,
           userId: ator.userId,
           responseOptionSlug,
           roll,
@@ -250,12 +251,13 @@ export class LootSessionsRepository {
     ator: Ator;
   }): Promise<void> {
     const { sessionId, personagem, ator } = dados;
+    const characterId = await this.exigirIdentidade(personagem);
 
     await this.prisma.$transaction([
       this.prisma.lootSessionParticipant.upsert({
         where: { sessionId_userId: { sessionId, userId: ator.userId } },
-        create: { sessionId, userId: ator.userId, battletag: ator.battletag, ...personagem },
-        update: personagem,
+        create: { sessionId, userId: ator.userId, battletag: ator.battletag, characterId },
+        update: { characterId },
       }),
       this.registrarEvento(sessionId, 'participante_entrou', ator, {
         personagem: `${personagem.name}-${personagem.realm}`,
@@ -264,20 +266,28 @@ export class LootSessionsRepository {
   }
 
   /** Quem está na sessão. Ordenado por chegada, que é como a raid encheu. */
-  findParticipantes(sessionId: string) {
-    return this.prisma.lootSessionParticipant.findMany({
+  async findParticipantes(sessionId: string) {
+    const linhas = await this.prisma.lootSessionParticipant.findMany({
       where: { sessionId },
       orderBy: { joinedAt: 'asc' },
       select: {
         userId: true,
         battletag: true,
-        nameKey: true,
-        realmKey: true,
-        name: true,
-        realm: true,
         joinedAt: true,
+        character: { select: characterSelect },
       },
     });
+
+    return linhas.map((l) => ({
+      userId: l.userId,
+      battletag: l.battletag,
+      joinedAt: l.joinedAt,
+      characterId: l.character.id,
+      nameKey: l.character.nameKey,
+      realmKey: l.character.realmKey,
+      name: l.character.name,
+      realm: l.character.realm,
+    }));
   }
 
   /**
@@ -300,21 +310,18 @@ export class LootSessionsRepository {
       this.findParticipantes(sessionId),
       this.prisma.lootSessionResponse.findMany({
         where: { item: { sessionId } },
-        select: { itemId: true, nameKey: true, realmKey: true },
+        select: { itemId: true, characterId: true },
       }),
     ]);
 
-    const respondeu = new Set(respostas.map((r) => `${r.itemId}|${r.nameKey}|${r.realmKey}`));
+    const respondeu = new Set(respostas.map((r) => `${r.itemId}|${r.characterId}`));
 
     const silencios = itens.flatMap((item) =>
       participantes
-        .filter((p) => !respondeu.has(`${item.id}|${p.nameKey}|${p.realmKey}`))
+        .filter((p) => !respondeu.has(`${item.id}|${p.characterId}`))
         .map((p) => ({
           itemId: item.id,
-          nameKey: p.nameKey,
-          realmKey: p.realmKey,
-          name: p.name,
-          realm: p.realm,
+          characterId: p.characterId,
           userId: p.userId,
           responseOptionSlug: LOOT_RESPONSES.NOOP,
           roll: null,
@@ -343,18 +350,29 @@ export class LootSessionsRepository {
   }
 
   /** As respostas de UM personagem nesta sessão. É o que o jogador pode ver. */
-  findRespostasDoPersonagem(sessionId: string, nameKey: string, realmKey: string) {
-    return this.prisma.lootSessionResponse.findMany({
-      where: { item: { sessionId }, nameKey, realmKey },
+  async findRespostasDoPersonagem(sessionId: string, nameKey: string, realmKey: string) {
+    const characterId = await this.exigirIdentidade({ nameKey, realmKey });
+
+    const linhas = await this.prisma.lootSessionResponse.findMany({
+      where: { item: { sessionId }, characterId },
       select: {
         itemId: true,
         responseOptionSlug: true,
         roll: true,
         note: true,
         aguardandoNovaResposta: true,
-        name: true,
+        character: { select: { name: true } },
       },
     });
+
+    return linhas.map((l) => ({
+      itemId: l.itemId,
+      responseOptionSlug: l.responseOptionSlug,
+      roll: l.roll,
+      note: l.note,
+      aguardandoNovaResposta: l.aguardandoNovaResposta,
+      name: l.character.name,
+    }));
   }
 
   /** Quantas respostas cada peça já tem. Só a contagem, nunca o conteúdo. */
@@ -376,21 +394,30 @@ export class LootSessionsRepository {
    * método só, com um filtro opcional, seria um `if` de distância entre a
    * privacidade da sessão e o vazamento dela.
    */
-  findTodasAsRespostas(sessionId: string) {
-    return this.prisma.lootSessionResponse.findMany({
+  async findTodasAsRespostas(sessionId: string) {
+    const linhas = await this.prisma.lootSessionResponse.findMany({
       where: { item: { sessionId } },
       select: {
         itemId: true,
-        nameKey: true,
-        realmKey: true,
-        name: true,
-        realm: true,
         responseOptionSlug: true,
         roll: true,
         note: true,
         aguardandoNovaResposta: true,
+        character: { select: characterSelect },
       },
     });
+
+    return linhas.map((l) => ({
+      itemId: l.itemId,
+      nameKey: l.character.nameKey,
+      realmKey: l.character.realmKey,
+      name: l.character.name,
+      realm: l.character.realm,
+      responseOptionSlug: l.responseOptionSlug,
+      roll: l.roll,
+      note: l.note,
+      aguardandoNovaResposta: l.aguardandoNovaResposta,
+    }));
   }
 
   /**
@@ -404,37 +431,66 @@ export class LootSessionsRepository {
    * recentes POR PESSOA" precisaria de window function e o volume não justifica.
    * O `take` aqui é teto de segurança, não a regra.
    */
-  findHistoricoDosCandidatos(chaves: Array<{ nameKey: string; realmKey: string }>) {
-    if (chaves.length === 0) return Promise.resolve([]);
+  async findHistoricoDosCandidatos(chaves: Array<{ nameKey: string; realmKey: string }>) {
+    if (chaves.length === 0) return [];
 
-    return this.prisma.lootLine.findMany({
-      where: {
-        OR: chaves.map((c) => ({ winnerNameKey: c.nameKey, winnerRealmKey: c.realmKey })),
-      },
+    const identidades = await this.prisma.character.findMany({
+      where: { OR: chaves.map((c) => ({ nameKey: c.nameKey, realmKey: c.realmKey })) },
+      select: { id: true, nameKey: true, realmKey: true },
+    });
+    if (identidades.length === 0) return [];
+
+    const porId = new Map(identidades.map((i) => [i.id, i]));
+
+    const linhas = await this.prisma.lootLine.findMany({
+      where: { winnerCharacterId: { in: identidades.map((i) => i.id) } },
       orderBy: { awardedAt: 'desc' },
       take: 500,
       select: {
-        winnerNameKey: true,
-        winnerRealmKey: true,
+        winnerCharacterId: true,
         awardedAt: true,
         itemId: true,
         difficulty: true,
         responseOptionSlug: true,
       },
     });
+
+    return linhas.flatMap((l) => {
+      const identidade = porId.get(l.winnerCharacterId);
+      // Não deveria faltar: veio do `IN` sobre os mesmos ids. Defensivo, para
+      // não quebrar o painel se algo mudar embaixo.
+      if (!identidade) return [];
+
+      return [
+        {
+          winnerNameKey: identidade.nameKey,
+          winnerRealmKey: identidade.realmKey,
+          awardedAt: l.awardedAt,
+          itemId: l.itemId,
+          difficulty: l.difficulty,
+          responseOptionSlug: l.responseOptionSlug,
+        },
+      ];
+    });
   }
 
   /** Todos os votos da sessão, para contar por candidato. */
-  findVotos(sessionId: string) {
-    return this.prisma.lootSessionVote.findMany({
+  async findVotos(sessionId: string) {
+    const linhas = await this.prisma.lootSessionVote.findMany({
       where: { item: { sessionId } },
       select: {
         itemId: true,
-        candidateNameKey: true,
-        candidateRealmKey: true,
         voterUserId: true,
+        candidate: { select: { nameKey: true, realmKey: true } },
       },
     });
+
+    return linhas.map((l) => ({
+      itemId: l.itemId,
+      candidateNameKey: l.candidate.nameKey,
+      candidateRealmKey: l.candidate.realmKey,
+      voterUserId: l.voterUserId,
+    }));
   }
 
   /**
@@ -450,21 +506,18 @@ export class LootSessionsRepository {
     ator: Ator;
   }): Promise<void> {
     const { sessionId, itemId, candidato, ator } = dados;
+    const candidateCharacterId = await this.exigirIdentidade(candidato);
 
     await this.prisma.$transaction([
       this.prisma.lootSessionVote.upsert({
         where: { itemId_voterUserId: { itemId, voterUserId: ator.userId } },
         create: {
           itemId,
-          candidateNameKey: candidato.nameKey,
-          candidateRealmKey: candidato.realmKey,
+          candidateCharacterId,
           voterUserId: ator.userId,
           voterBattletag: ator.battletag,
         },
-        update: {
-          candidateNameKey: candidato.nameKey,
-          candidateRealmKey: candidato.realmKey,
-        },
+        update: { candidateCharacterId },
       }),
       this.registrarEvento(sessionId, 'voto_dado', ator, {
         itemId,
@@ -486,7 +539,8 @@ export class LootSessionsRepository {
    * é reabrir a SESSÃO — `deliberando → aberta` —, que já existe e devolve a
    * resposta livre para todo mundo.
    *
-   * Devolve `false` quando não há resposta a reabrir.
+   * Devolve `false` quando não há resposta a reabrir — inclusive quando o nome
+   * digitado nem casa com identidade nenhuma, que é o mesmo "não achei".
    */
   async reabrirResposta(dados: {
     sessionId: string;
@@ -495,13 +549,11 @@ export class LootSessionsRepository {
     ator: Ator;
   }): Promise<boolean> {
     const { sessionId, itemId, personagem, ator } = dados;
-    const chave = {
-      itemId_nameKey_realmKey: {
-        itemId,
-        nameKey: personagem.nameKey,
-        realmKey: personagem.realmKey,
-      },
-    };
+
+    const characterId = await this.idExistente(personagem);
+    if (characterId === null) return false;
+
+    const chave = { itemId_characterId: { itemId, characterId } };
 
     const existe = await this.prisma.lootSessionResponse.findUnique({
       where: chave,
@@ -533,27 +585,20 @@ export class LootSessionsRepository {
   }): Promise<boolean> {
     const { sessionId, itemId, personagem, responseOptionSlug, ator } = dados;
 
+    const characterId = await this.idExistente(personagem);
+    if (characterId === null) return false;
+
+    const chave = { itemId_characterId: { itemId, characterId } };
+
     const existe = await this.prisma.lootSessionResponse.findUnique({
-      where: {
-        itemId_nameKey_realmKey: {
-          itemId,
-          nameKey: personagem.nameKey,
-          realmKey: personagem.realmKey,
-        },
-      },
+      where: chave,
       select: { responseOptionSlug: true },
     });
     if (!existe) return false;
 
     await this.prisma.$transaction([
       this.prisma.lootSessionResponse.update({
-        where: {
-          itemId_nameKey_realmKey: {
-            itemId,
-            nameKey: personagem.nameKey,
-            realmKey: personagem.realmKey,
-          },
-        },
+        where: chave,
         // Sem `roll`. Nada mexe no roll depois da primeira resposta.
         data: { responseOptionSlug },
       }),
@@ -569,20 +614,30 @@ export class LootSessionsRepository {
   }
 
   /** Os awards da sessão, para o painel mostrar o que já foi resolvido. */
-  findAwards(sessionId: string) {
-    return this.prisma.lootSessionAward.findMany({
+  async findAwards(sessionId: string) {
+    const linhas = await this.prisma.lootSessionAward.findMany({
       where: { item: { sessionId } },
       select: {
         itemId: true,
-        winnerName: true,
-        winnerRealm: true,
         responseOptionSlug: true,
         votes: true,
         note: true,
         awardedByBattletag: true,
         awardedAt: true,
+        winner: { select: { name: true, realm: true } },
       },
     });
+
+    return linhas.map((l) => ({
+      itemId: l.itemId,
+      winnerName: l.winner.name,
+      winnerRealm: l.winner.realm,
+      responseOptionSlug: l.responseOptionSlug,
+      votes: l.votes,
+      note: l.note,
+      awardedByBattletag: l.awardedByBattletag,
+      awardedAt: l.awardedAt,
+    }));
   }
 
   /**
@@ -606,16 +661,14 @@ export class LootSessionsRepository {
     ator: Ator;
   }): Promise<boolean> {
     const { sessionId, itemId, vencedor, responseOptionSlug, votes, note, ator } = dados;
+    const winnerCharacterId = await this.exigirIdentidade(vencedor);
 
     try {
       await this.prisma.$transaction([
         this.prisma.lootSessionAward.create({
           data: {
             itemId,
-            winnerNameKey: vencedor.nameKey,
-            winnerRealmKey: vencedor.realmKey,
-            winnerName: vencedor.name,
-            winnerRealm: vencedor.realm,
+            winnerCharacterId,
             responseOptionSlug,
             votes,
             note,
@@ -710,8 +763,10 @@ export class LootSessionsRepository {
 
   /** Acrescenta uma peça e registra o evento, na mesma transação. */
   async adicionarItem(sessionId: string, item: ItemDaSessao, ator: Ator): Promise<void> {
+    const paraCriar = await this.paraCriarItem(item);
+
     await this.prisma.$transaction([
-      this.prisma.lootSessionItem.create({ data: { sessionId, ...item } }),
+      this.prisma.lootSessionItem.create({ data: { sessionId, ...paraCriar } }),
       this.registrarEvento(sessionId, 'item_adicionado', ator, { itemId: item.itemId }),
     ]);
   }
@@ -750,6 +805,63 @@ export class LootSessionsRepository {
       }),
       this.registrarEvento(sessionId, 'status_alterado', ator, { de, para }),
     ]);
+  }
+
+  /**
+   * Normaliza a peça para gravar, resolvendo o looter contra a identidade.
+   *
+   * O looter vem da colagem do addon — pode ser qualquer personagem da raid,
+   * inclusive alguém que nunca logou no site. Por isso `resolver()`, e não
+   * `buscarPorChave()`: aqui, ao contrário do resto deste arquivo, a
+   * identidade pode não existir ainda. String vazia é "a colagem não disse",
+   * herdada do formato antigo — vira `null`, não uma identidade vazia.
+   */
+  private async paraCriarItem(item: ItemDaSessao): Promise<{
+    position: number;
+    itemId: number;
+    itemString: string;
+    looterCharacterId: string | null;
+  }> {
+    const looterCharacterId =
+      item.looterName === ''
+        ? null
+        : await this.characters.resolver({ name: item.looterName, realm: item.looterRealm });
+
+    return {
+      position: item.position,
+      itemId: item.itemId,
+      itemString: item.itemString,
+      looterCharacterId,
+    };
+  }
+
+  /**
+   * A identidade já existente desta pessoa. Nunca cria: por aqui só passa
+   * quem já entrou na sessão ou já respondeu antes — a identidade já existe
+   * desde o login (Regra 4) ou desde a primeira ação nesta sessão.
+   *
+   * Lança se não achar: diferente do looter da colagem, chegar aqui sem
+   * identidade é estado que a validação do serviço já deveria ter barrado, não
+   * um "não encontrado" de negócio.
+   */
+  private async exigirIdentidade(chave: { nameKey: string; realmKey: string }): Promise<string> {
+    const id = await this.idExistente(chave);
+    if (id === null) {
+      throw new Error(`identidade ${chave.nameKey}/${chave.realmKey} deveria existir e não existe`);
+    }
+    return id;
+  }
+
+  /**
+   * A identidade desta pessoa, se existir. Nunca cria.
+   *
+   * Usado onde o nome vem digitado à mão pelo conselho (reabrir/alterar
+   * resposta): typo aqui é "não achei a resposta", não motivo para inventar
+   * uma identidade nova.
+   */
+  private async idExistente(chave: { nameKey: string; realmKey: string }): Promise<string | null> {
+    const identidade = await this.characters.buscarPorChave(chave);
+    return identidade?.id ?? null;
   }
 
   private registrarEvento(

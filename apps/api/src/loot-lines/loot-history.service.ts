@@ -26,6 +26,15 @@ import {
  */
 const NENHUM_ITEM = -1;
 
+/**
+ * Id que não existe, para o filtro de personagem que não casou.
+ *
+ * Devolver lista vazia é a resposta certa: nome que não existe é filtro sem
+ * resultado, não erro. Sem o sentinela, o `where` sairia sem a condição e a
+ * tela mostraria o histórico INTEIRO como se fosse daquela pessoa.
+ */
+const NENHUMA_IDENTIDADE = 'nenhuma-identidade';
+
 @Injectable()
 export class LootHistoryService {
   private readonly guild: GuildConfig;
@@ -75,25 +84,54 @@ export class LootHistoryService {
       this.repo.contarPorItem(where),
     ]);
 
-    const [seasons, bosses, slots] = await Promise.all([
+    const [seasons, characters, bosses, slots] = await Promise.all([
       this.montarSeasons(porSeason),
+      this.montarPersonagens(porPersonagem),
       this.montarBosses(porBoss),
       this.montarSlots(porItem),
     ]);
 
-    return {
-      seasons,
-      characters: porPersonagem
-        .map((p) => ({
-          name: p.winnerName,
-          realm: p.winnerRealm,
-          value: `${p.winnerName}-${p.winnerRealm}`,
-          total: p._count,
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-      bosses,
-      slots,
-    };
+    return { seasons, characters, bosses, slots };
+  }
+
+  /**
+   * Agrupa por identidade e busca os nomes — a mesma forma das outras três
+   * facetas, que já agrupam por id e resolvem o rótulo depois.
+   *
+   * Antes o `groupBy` levava as quatro colunas de identidade junto e ganhava a
+   * grafia de graça. O efeito colateral era uma pessoa com duas grafias virar
+   * **duas opções** no filtro, com as mesmas chaves. Por id isso não acontece.
+   *
+   * O `value` continua sendo `Nome-Realm`, e não o id: ele vai para a URL, e
+   * link que circula no Discord precisa ser legível — Regra 7. Quem desmonta é
+   * o `montarWhere`, resolvendo para identidade.
+   */
+  private async montarPersonagens(
+    porPersonagem: Array<{ winnerCharacterId: string; _count: number }>,
+  ): Promise<LootHistoryFacets['characters']> {
+    const nomes = new Map(
+      (await this.repo.findCharacterNames(porPersonagem.map((p) => p.winnerCharacterId))).map(
+        (c) => [c.id, c],
+      ),
+    );
+
+    return porPersonagem
+      .flatMap((p) => {
+        const identidade = nomes.get(p.winnerCharacterId);
+        // Identidade some do banco só se alguém apagar à mão, e o FK recusa.
+        // Se acontecer, a opção some do filtro em vez de virar linha sem nome.
+        if (!identidade) return [];
+
+        return [
+          {
+            name: identidade.name,
+            realm: identidade.realm,
+            value: `${identidade.name}-${identidade.realm}`,
+            total: p._count,
+          },
+        ];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /** Mais recente primeiro, e a fatia sem season por último. */
@@ -173,10 +211,12 @@ export class LootHistoryService {
     // Ausente é "todas as seasons", e não um estado de erro: é opção da tela.
     if (filtros.season !== undefined) where.seasonId = filtros.season;
 
-    const personagem = identidadeDoPersonagem(filtros.character);
-    if (personagem) {
-      where.winnerNameKey = personagem.nameKey;
-      where.winnerRealmKey = personagem.realmKey;
+    // `Nome-Realm` da URL vira identidade aqui. Nome que não existe devolve
+    // lista vazia, e não erro: filtro que não casa é resultado vazio.
+    const chaves = identidadeDoPersonagem(filtros.character);
+    if (chaves) {
+      const identidade = await this.repo.findCharacterByKeys(chaves.nameKey, chaves.realmKey);
+      where.winnerCharacterId = identidade?.id ?? NENHUMA_IDENTIDADE;
     }
 
     const janela = janelaDeDatas(filtros.from, filtros.to, this.guild.timezone);
@@ -315,12 +355,12 @@ function montarEntrada(
     awardedAt: linha.awardedAt.toISOString(),
 
     winner: {
-      name: linha.winnerName,
-      realm: linha.winnerRealm,
-      nameKey: linha.winnerNameKey,
-      realmKey: linha.winnerRealmKey,
+      name: linha.winner.name,
+      realm: linha.winner.realm,
+      nameKey: linha.winner.nameKey,
+      realmKey: linha.winner.realmKey,
     },
-    winnerClass: linha.winnerClass,
+    winnerClass: linha.winner.class,
 
     item: {
       itemId: linha.itemId,

@@ -17,7 +17,12 @@ import { RcImportService, type RcImportResult } from '../loot-lines/rc-import.se
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
 import { OpsTokenGuard } from './ops-token.guard';
-import { OpsService, type OauthCheckResult, type RosterProbeResult } from './ops.service';
+import {
+  OpsService,
+  type FixCharacterIdsResult,
+  type OauthCheckResult,
+  type RosterProbeResult,
+} from './ops.service';
 
 const catalogGenerateBodySchema = z.object({
   journalInstanceId: z.number().int().positive(),
@@ -193,5 +198,18 @@ export class OpsController {
   @Get('oauth-check')
   async oauthCheck(@Query('characters') characters?: string): Promise<OauthCheckResult> {
     return this.ops.checkOauth(parseCharacters(characters));
+  }
+
+  /**
+   * Corrige os ids de identidade que o backfill da TIT-132 (16/08) criou em
+   * uuid — `cuid()` é `@default` avaliado em JS, não existe em SQL puro.
+   *
+   * Idempotente: rodar de novo não acha mais nenhum id fora do padrão e
+   * devolve `corrigidos: 0`. Sem corpo — nada a validar, a operação não
+   * recebe parâmetro nenhum.
+   */
+  @Post('fix-character-ids')
+  async fixCharacterIds(): Promise<FixCharacterIdsResult> {
+    return this.ops.fixCharacterIds();
   }
 }

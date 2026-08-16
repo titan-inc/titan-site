@@ -4,19 +4,37 @@ import {
   matchLegacyResponse,
   raidDifficultyFromItemString,
   splitNomeRealm,
-  toCharacterKey,
   toEncounterMatchKey,
-  toRealmMatchKey,
   type RaidDifficultyLevel,
   type RcExport,
   type RcExportRecord,
 } from '@titan/shared';
+import {
+  chaveDe,
+  CharactersRepository,
+  indice,
+  type PersonagemDaFonte,
+} from '../characters/characters.repository';
 import {
   LootLinesRepository,
   type EncounterRef,
   type LootLineUpsert,
 } from './loot-lines.repository';
 import { seasonDaEntrega, type SeasonInicio } from './season-da-entrega';
+
+/**
+ * Uma linha traduzida do export, antes de a identidade virar id.
+ *
+ * `montarLinha` roda antes de qualquer ida ao banco — não dá para resolver
+ * identidade linha a linha sem fazer centenas de queries. `vencedor` e
+ * `lootador` ficam à parte para o import juntar todo mundo do arquivo numa
+ * única chamada a `resolverVarios()`.
+ */
+interface LootLineRascunho {
+  vencedor: PersonagemDaFonte;
+  lootador: PersonagemDaFonte | null;
+  base: Omit<LootLineUpsert, 'winnerCharacterId' | 'looterCharacterId'>;
+}
 
 export interface RcImportResult {
   /** Registros no arquivo. */
@@ -55,7 +73,10 @@ interface Problema {
 export class RcImportService {
   private readonly logger = new Logger(RcImportService.name);
 
-  constructor(private readonly repo: LootLinesRepository) {}
+  constructor(
+    private readonly repo: LootLinesRepository,
+    private readonly characters: CharactersRepository,
+  ) {}
 
   /**
    * Importa um export do RCLootCouncil.
@@ -71,7 +92,7 @@ export class RcImportService {
     ]);
 
     const bosses = this.indexarBosses(encounters);
-    const { linhas, descartados, problemas } = this.traduzir(
+    const { rascunhos, descartados, problemas } = this.traduzir(
       arquivo,
       bosses,
       slugsValidos,
@@ -79,6 +100,11 @@ export class RcImportService {
     );
 
     this.recusarSeHouveProblema(problemas);
+
+    // Uma chamada só para o arquivo inteiro — resolver por linha seriam
+    // centenas de idas ao banco.
+    const identidades = await this.characters.resolverVarios(this.personagensDe(rascunhos));
+    const linhas = rascunhos.map((r) => this.comIdentidades(r, identidades));
 
     const gravados = await this.repo.upsertMany(linhas);
     const resultado = this.montarResultado(arquivo.length, linhas, gravados, descartados);
@@ -89,6 +115,41 @@ export class RcImportService {
         `${resultado.semSeason} sem season`,
     );
     return resultado;
+  }
+
+  /**
+   * Todo mundo que aparece no arquivo, uma vez cada.
+   *
+   * O looter entra primeiro e o vencedor por último de propósito: quando as
+   * duas linhas apontam para a mesma identidade, `resolverVarios` guarda o
+   * último objeto de cada chave, e só a entrada de vencedor carrega `class` —
+   * o export não diz a classe de quem só lootou para outro.
+   */
+  private personagensDe(rascunhos: LootLineRascunho[]): PersonagemDaFonte[] {
+    const looters = rascunhos.flatMap((r) => (r.lootador ? [r.lootador] : []));
+    const vencedores = rascunhos.map((r) => r.vencedor);
+    return [...looters, ...vencedores];
+  }
+
+  /** Troca `vencedor`/`lootador` pelos ids já resolvidos. */
+  private comIdentidades(
+    rascunho: LootLineRascunho,
+    identidades: Map<string, string>,
+  ): LootLineUpsert {
+    const winnerCharacterId = identidades.get(indice(chaveDe(rascunho.vencedor)));
+    if (!winnerCharacterId) {
+      // Não deveria acontecer: toda identidade de `personagensDe` passou por
+      // `resolverVarios` antes desta chamada.
+      throw new Error(
+        `identidade não resolvida para ${rascunho.vencedor.name}-${rascunho.vencedor.realm}`,
+      );
+    }
+
+    const looterCharacterId = rascunho.lootador
+      ? (identidades.get(indice(chaveDe(rascunho.lootador))) ?? null)
+      : null;
+
+    return { ...rascunho.base, winnerCharacterId, looterCharacterId };
   }
 
   /**
@@ -118,9 +179,9 @@ export class RcImportService {
     bosses: Map<string, string | null>,
     slugsValidos: string[],
     seasons: readonly SeasonInicio[],
-  ): { linhas: LootLineUpsert[]; descartados: number; problemas: Problema[] } {
+  ): { rascunhos: LootLineRascunho[]; descartados: number; problemas: Problema[] } {
     const conhecidos = new Set(slugsValidos);
-    const linhas: LootLineUpsert[] = [];
+    const rascunhos: LootLineRascunho[] = [];
     const problemas: Problema[] = [];
     let descartados = 0;
 
@@ -143,69 +204,71 @@ export class RcImportService {
         continue;
       }
 
-      const linha = this.montarLinha(registro, resposta.response, bosses, seasons);
-      if (linha === null) {
+      const rascunho = this.montarLinha(registro, resposta.response, bosses, seasons);
+      if (rascunho === null) {
         problemas.push({ id: registro.id, motivo: 'não deu para separar nome e realm' });
         continue;
       }
 
-      linhas.push(linha);
+      rascunhos.push(rascunho);
     }
 
-    return { linhas, descartados, problemas };
+    return { rascunhos, descartados, problemas };
   }
 
-  /** Um registro do export vira uma linha, campo a campo. */
+  /** Um registro do export vira um rascunho, campo a campo. */
   private montarLinha(
     registro: RcExportRecord,
     responseOptionSlug: string,
     bosses: Map<string, string | null>,
     seasons: readonly SeasonInicio[],
-  ): LootLineUpsert | null {
-    const vencedor = splitNomeRealm(registro.player);
-    if (vencedor === null) return null;
+  ): LootLineRascunho | null {
+    const nomeVencedor = splitNomeRealm(registro.player);
+    if (nomeVencedor === null) return null;
 
     // Quem lootou pode ser a mesma pessoa; nulo só quando não dá para ler.
-    const lootador = splitNomeRealm(registro.owner);
+    const nomeLootador = splitNomeRealm(registro.owner);
 
     const awardedAt = new Date(Number(registro.servertime) * 1_000);
 
+    const vencedor: PersonagemDaFonte = {
+      name: nomeVencedor.name,
+      realm: nomeVencedor.realm,
+      class: registro.class === '' ? null : registro.class,
+    };
+    const lootador: PersonagemDaFonte | null = nomeLootador
+      ? { name: nomeLootador.name, realm: nomeLootador.realm }
+      : null;
+
     return {
-      source: LOOT_LINE_SOURCES.IMPORT_RC,
-      externalId: registro.id,
-      awardedAt,
+      vencedor,
+      lootador,
+      base: {
+        source: LOOT_LINE_SOURCES.IMPORT_RC,
+        externalId: registro.id,
+        awardedAt,
 
-      // Pela data da entrega, não pelo tier da peça — ver `seasonDaEntrega`.
-      // Nulo aqui é lacuna: se o job de snapshot ainda não criou a linha da
-      // season, rederivar depois é melhor que gravar a season errada agora.
-      seasonId: seasonDaEntrega(awardedAt, seasons),
+        // Pela data da entrega, não pelo tier da peça — ver `seasonDaEntrega`.
+        // Nulo aqui é lacuna: se o job de snapshot ainda não criou a linha da
+        // season, rederivar depois é melhor que gravar a season errada agora.
+        seasonId: seasonDaEntrega(awardedAt, seasons),
 
-      winnerNameKey: toCharacterKey(vencedor.name),
-      winnerRealmKey: toRealmMatchKey(vencedor.realm),
-      winnerName: vencedor.name,
-      winnerRealm: vencedor.realm,
-      winnerClass: registro.class === '' ? null : registro.class,
+        itemId: registro.itemID,
+        itemString: registro.itemString,
 
-      looterNameKey: lootador && toCharacterKey(lootador.name),
-      looterRealmKey: lootador && toRealmMatchKey(lootador.realm),
-      looterName: lootador?.name ?? null,
-      looterRealm: lootador?.realm ?? null,
+        rawInstance: registro.instance,
+        rawBoss: registro.boss,
+        encounterId: this.resolverBoss(registro.boss, bosses),
+        difficulty: this.resolverDificuldade(registro.itemString),
 
-      itemId: registro.itemID,
-      itemString: registro.itemString,
+        responseOptionSlug,
+        rawResponse: registro.response,
+        rawResponseId: registro.responseID,
 
-      rawInstance: registro.instance,
-      rawBoss: registro.boss,
-      encounterId: this.resolverBoss(registro.boss, bosses),
-      difficulty: this.resolverDificuldade(registro.itemString),
-
-      responseOptionSlug,
-      rawResponse: registro.response,
-      rawResponseId: registro.responseID,
-
-      votes: registro.votes ?? null,
-      note: registro.note === '' ? null : registro.note,
-      rawReplacedGear: [registro.gear1, registro.gear2].filter((g) => g !== ''),
+        votes: registro.votes ?? null,
+        note: registro.note === '' ? null : registro.note,
+        rawReplacedGear: [registro.gear1, registro.gear2].filter((g) => g !== ''),
+      },
     };
   }
 

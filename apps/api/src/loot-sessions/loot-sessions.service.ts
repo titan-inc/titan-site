@@ -653,8 +653,8 @@ function montarItem(
     name: doCatalogo?.name ?? null,
     icon: doCatalogo?.icon ?? null,
     equipLoc: doCatalogo?.equipLoc ?? null,
-    looterName: item.looterName === '' ? null : item.looterName,
-    looterRealm: item.looterRealm === '' ? null : item.looterRealm,
+    looterName: item.looter?.name ?? null,
+    looterRealm: item.looter?.realm ?? null,
 
     // A própria, sempre. A alheia só entra em `respostas`, e só depois que a
     // fase de roll fecha.

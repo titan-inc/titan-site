@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { toCharacterKey, toSlug } from '@titan/shared';
 import { BlizzardService } from '../blizzard/blizzard.service';
+import { chaveDe, CharactersRepository, indice } from '../characters/characters.repository';
 import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
 import { GameVersionService } from '../gameversion/gameversion.service';
 import { RaiderIoService, type CharacterProgress } from '../raiderio/raiderio.service';
@@ -44,6 +45,7 @@ export class SnapshotsService {
     private readonly raiderio: RaiderIoService,
     private readonly gameVersion: GameVersionService,
     private readonly repo: SnapshotsRepository,
+    private readonly characters: CharactersRepository,
   ) {
     this.guild = loadGuildConfig();
   }
@@ -114,34 +116,48 @@ export class SnapshotsService {
 
     const mythicPlusOpen = await this.mythicPlusAberto(season.id, progresso);
 
-    const entradas: SnapshotInput[] = time.map((c, i) => {
+    // Uma chamada só para o time inteiro — resolver por linha seriam dezenas
+    // de idas ao banco por rodada. WoWAudit não é o roster: só preenche o que
+    // faltar, nunca sobrescreve a grafia da Blizzard.
+    const identidades = await this.characters.resolverVarios(
+      time.map((c) => ({ name: c.name, realm: c.realm })),
+    );
+
+    const entradas: SnapshotInput[] = time.flatMap((c, i) => {
       const chave = `${toSlug(c.realm)}/${toCharacterKey(c.name)}`;
       const keys = keysPorPersonagem.get(chave);
       const p = progresso[i];
 
-      return {
-        period: season.currentPeriod,
-        seasonId: season.id,
-        nameKey: toCharacterKey(c.name),
-        realmSlug: toSlug(c.realm),
-        name: c.name,
-        // Nulo quando não deu para medir. NUNCA zero: o gráfico tem que
-        // mostrar lacuna, senão vira "a pessoa parou de jogar".
-        //
-        // Item level é o gear de agora e não pertence a season nenhuma, então
-        // continua sendo medido mesmo na pré-season.
-        itemLevel: p?.itemLevel ?? null,
-        // Estes três são da season, e na pré-season o Raider.IO ainda responde
-        // a anterior. Lacuna é a resposta certa: gravar o número da season
-        // velha aqui seria dizer que o time chegou nele nesta season.
-        mythicPlusScore: mythicPlusOpen ? (p?.mythicPlusScore ?? null) : null,
-        keysDone: keys?.count ?? null,
-        highestKey: keys?.highest ?? null,
-        // Acumulado da season, completo. Diferente de `keysDone`, que é a
-        // semana e depende do WoWAudit ter acompanhado.
-        seasonRuns: mythicPlusOpen ? (p?.seasonRuns ?? null) : null,
-        seasonRunsTimed: mythicPlusOpen ? (p?.seasonRunsTimed ?? null) : null,
-      };
+      const characterId = identidades.get(indice(chaveDe({ name: c.name, realm: c.realm })));
+      if (!characterId) {
+        // Não deveria acontecer: todo `time` passou por `resolverVarios` acima.
+        this.logger.warn(`identidade não resolvida para ${c.name}-${c.realm}; foto pulada`);
+        return [];
+      }
+
+      return [
+        {
+          period: season.currentPeriod,
+          seasonId: season.id,
+          characterId,
+          // Nulo quando não deu para medir. NUNCA zero: o gráfico tem que
+          // mostrar lacuna, senão vira "a pessoa parou de jogar".
+          //
+          // Item level é o gear de agora e não pertence a season nenhuma, então
+          // continua sendo medido mesmo na pré-season.
+          itemLevel: p?.itemLevel ?? null,
+          // Estes três são da season, e na pré-season o Raider.IO ainda responde
+          // a anterior. Lacuna é a resposta certa: gravar o número da season
+          // velha aqui seria dizer que o time chegou nele nesta season.
+          mythicPlusScore: mythicPlusOpen ? (p?.mythicPlusScore ?? null) : null,
+          keysDone: keys?.count ?? null,
+          highestKey: keys?.highest ?? null,
+          // Acumulado da season, completo. Diferente de `keysDone`, que é a
+          // semana e depende do WoWAudit ter acompanhado.
+          seasonRuns: mythicPlusOpen ? (p?.seasonRuns ?? null) : null,
+          seasonRunsTimed: mythicPlusOpen ? (p?.seasonRunsTimed ?? null) : null,
+        },
+      ];
     });
 
     const recorded = await this.repo.saveSnapshots(entradas);
@@ -231,15 +247,20 @@ export class SnapshotsService {
         // Semana sem registro não vira linha. Gravar zero ali inventaria "não
         // fez nada" para quem a ferramenta nem observava — e afundaria a média
         // do time no relatório.
-        const comDados = keys
-          .filter((k): k is typeof k & { count: number } => k.count !== null)
-          .map((k) => ({
-            nameKey: k.nameKey,
-            realmSlug: k.realmSlug,
-            name: k.name,
-            keysDone: k.count,
-            highestKey: k.highest,
-          }));
+        const comRegistro = keys.filter((k): k is typeof k & { count: number } => k.count !== null);
+
+        // Uma chamada só para a semana inteira.
+        const identidades = await this.characters.resolverVarios(
+          comRegistro.map((k) => ({ name: k.name, realm: k.realmSlug })),
+        );
+
+        const comDados = comRegistro.flatMap((k) => {
+          const characterId = identidades.get(
+            indice(chaveDe({ name: k.name, realm: k.realmSlug })),
+          );
+          if (!characterId) return [];
+          return [{ characterId, keysDone: k.count, highestKey: k.highest }];
+        });
 
         entries += await this.repo.saveWeeklyKeys(period, season.id, comDados);
         periods++;

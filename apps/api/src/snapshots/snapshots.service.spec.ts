@@ -1,9 +1,18 @@
 import type { BlizzardService, CurrentSeason } from '../blizzard/blizzard.service';
+import {
+  chaveDe,
+  indice,
+  type CharactersRepository,
+  type PersonagemDaFonte,
+} from '../characters/characters.repository';
 import type { GameVersionService } from '../gameversion/gameversion.service';
 import type { RaiderIoService } from '../raiderio/raiderio.service';
 import type { TeamCharacter, WowAuditService } from '../wowaudit/wowaudit.service';
 import type { SnapshotInput, SnapshotsRepository } from './snapshots.repository';
 import { SnapshotsService } from './snapshots.service';
+
+/** Id determinístico a partir da chave, só para o teste comparar. */
+const idDoPersonagem = (p: PersonagemDaFonte): string => `char:${indice(chaveDe(p))}`;
 
 // O serviço lê a config da guilda no construtor, e ela falha alto quando está
 // ausente — de propósito, porque guilda errada dá roster vazio em vez de erro.
@@ -41,6 +50,11 @@ describe('SnapshotsService', () => {
     findSeasonByRaiderioSlug: jest.fn(),
     setRaiderioSlug: jest.fn(),
   };
+  const characters = {
+    resolverVarios: jest.fn((personagens: PersonagemDaFonte[]) =>
+      Promise.resolve(new Map(personagens.map((p) => [indice(chaveDe(p)), idDoPersonagem(p)]))),
+    ),
+  };
 
   let service: SnapshotsService;
 
@@ -75,6 +89,7 @@ describe('SnapshotsService', () => {
       raiderio as unknown as RaiderIoService,
       gameVersion as unknown as GameVersionService,
       repo as unknown as SnapshotsRepository,
+      characters as unknown as CharactersRepository,
     );
   });
 
@@ -92,8 +107,7 @@ describe('SnapshotsService', () => {
       expect.objectContaining({
         period: 1074,
         seasonId: 17,
-        nameKey: 'fulano',
-        realmSlug: 'azralon',
+        characterId: idDoPersonagem({ name: 'Fulano', realm: 'Azralon' }),
         itemLevel: 293.06,
         keysDone: 3,
         highestKey: 10,
@@ -115,8 +129,11 @@ describe('SnapshotsService', () => {
 
     await service.takeSnapshot();
 
-    expect(gravados().find((g) => g.nameKey === 'shrëwd')?.keysDone).toBe(5);
-    expect(gravados().find((g) => g.nameKey === 'shrèwd')?.keysDone).toBeNull();
+    const idShrewd = idDoPersonagem({ name: 'Shrëwd', realm: 'Azralon' });
+    const idShrevd = idDoPersonagem({ name: 'Shrèwd', realm: 'Azralon' });
+
+    expect(gravados().find((g) => g.characterId === idShrewd)?.keysDone).toBe(5);
+    expect(gravados().find((g) => g.characterId === idShrevd)?.keysDone).toBeNull();
   });
 
   it('item level ausente vira null, NUNCA zero', async () => {

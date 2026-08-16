@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CharactersModule } from '../characters/characters.module';
 import { LootCouncilService } from './loot-council.service';
 import { LootSessionsController } from './loot-sessions.controller';
 import { LootSessionsRepository } from './loot-sessions.repository';
@@ -16,7 +17,7 @@ import { LootSessionsService } from './loot-sessions.service';
  * `AuthModule` entra pelos guards: leitura por membro, escrita por oficial.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, CharactersModule],
   controllers: [LootSessionsController],
   providers: [LootSessionsService, LootCouncilService, LootSessionsRepository],
   exports: [LootSessionsService, LootCouncilService],

@@ -3,8 +3,6 @@ import {
   isPresent,
   signupStatusSchema,
   toAttendanceState,
-  toCharacterKey,
-  toRealmMatchKey,
   type AttendanceEntry,
   type AttendanceReport,
   type MyAttendance,
@@ -19,8 +17,7 @@ const NOITES = 60;
 /** Uma linha de presença como sai do banco. */
 interface LinhaDoBanco {
   id: string;
-  name: string;
-  realm: string;
+  character: { name: string; realm: string };
   signup: string | null;
   raided: boolean | null;
   firstPull: number | null;
@@ -67,17 +64,10 @@ export class AttendanceReportService {
   /**
    * O histórico da própria pessoa, somando os personagens dela.
    *
-   * @param chars personagens da conta no roster (nome + realm de cada um)
+   * @param characterIds identidades dos personagens da conta no roster
    */
-  async getMine(chars: Array<{ name: string; realmSlug: string }>): Promise<MyAttendance> {
-    const chaves = chars.map((c) => ({
-      nameKey: toCharacterKey(c.name),
-      // O histórico é gravado com a chave frouxa de realm; `realmSlug` do
-      // roster vem de `toSlug()`. A conversão é idempotente sobre o slug.
-      realmKey: toRealmMatchKey(c.realmSlug),
-    }));
-
-    const linhas = await this.repo.listForCharacters(chaves, NOITES);
+  async getMine(characterIds: string[]): Promise<MyAttendance> {
+    const linhas = await this.repo.listForCharacters(characterIds, NOITES);
 
     const nights = linhas.map((l) => ({
       ...this.info(l.raidNight),
@@ -134,8 +124,8 @@ export class AttendanceReportService {
 
     return {
       id: a.id,
-      name: a.name,
-      realm: a.realm,
+      name: a.character.name,
+      realm: a.character.realm,
       signup,
       raided: a.raided,
       // Derivado no shared, nunca aqui: o job e a tela têm que responder a

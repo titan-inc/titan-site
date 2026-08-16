@@ -23,6 +23,19 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
  * A guilda inteira do usuário está no banco, mas a UI mostra um. Escolher o de
  * maior rank evita apresentar um alt de bank como se fosse o main.
  */
+/** O personagem, achatado do jeito que o resto do serviço espera. */
+function paraRef(personagem: { rank: number; character: { name: string; realm: string } }): {
+  name: string;
+  realmSlug: string;
+  rank: number;
+} {
+  return {
+    name: personagem.character.name,
+    realmSlug: personagem.character.realm,
+    rank: personagem.rank,
+  };
+}
+
 function pickRepresentative(
   characters: readonly { name: string; realmSlug: string; rank: number }[],
 ): SessionUser['matchedCharacter'] {
@@ -96,7 +109,6 @@ export class AuthService {
       const hit = rosterByKey.get(`${char.realmSlug}/${char.nameKey}`);
       if (hit) {
         matched.push({
-          nameKey: char.nameKey,
           realmSlug: char.realmSlug,
           name: hit.name,
           rank: hit.rank,
@@ -171,7 +183,10 @@ export class AuthService {
 
     // Duas fontes independentes, basta uma — Regra 4. Separadas porque
     // respondem perguntas diferentes e uma pode mudar sem a outra.
-    const porGrant = isOfficerByGrants(user.characters, grants);
+    const porGrant = isOfficerByGrants(
+      user.characters.map((c) => c.characterId),
+      grants,
+    );
     const porRank = isOfficerByRank(user.guildRank, this.guild.officerRankMax);
 
     return {
@@ -185,13 +200,17 @@ export class AuthService {
       ),
       // O personagem de rank mais alto representa a pessoa na UI. Empate cai
       // no primeiro, e tanto faz: são o mesmo rank.
-      matchedCharacter: pickRepresentative(user.characters),
+      matchedCharacter: pickRepresentative(user.characters.map(paraRef)),
       characterCount: user.characters.length,
       // Do melhor rank para o pior — rank 0 é o mais alto. É a ordem que o
       // select de entrar na sessão quer, com o representante em cima.
       characters: [...user.characters]
         .sort((a, b) => a.rank - b.rank)
-        .map((c) => ({ name: c.name, realm: c.realmSlug, region: this.guild.region })),
+        .map((c) => ({
+          name: c.character.name,
+          realm: c.character.realm,
+          region: this.guild.region,
+        })),
       verifiedAt: user.verifiedAt?.toISOString() ?? null,
     };
   }
