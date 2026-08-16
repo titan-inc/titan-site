@@ -4,6 +4,7 @@ import { BlizzardModule } from '../blizzard/blizzard.module';
 import { WarcraftLogsModule } from '../warcraftlogs/warcraftlogs.module';
 import { LootCatalogController } from './loot-catalog.controller';
 import { LootCatalogGeneratorService } from './loot-catalog-generator.service';
+import { LootCatalogPasteGeneratorService } from './loot-catalog-paste-generator.service';
 import { LootCatalogRepository } from './loot-catalog.repository';
 import { LootCatalogService } from './loot-catalog.service';
 
@@ -29,7 +30,17 @@ import { LootCatalogService } from './loot-catalog.service';
   // `AuthModule` entra pelo `MemberGuard` do controller de leitura.
   imports: [WarcraftLogsModule, BlizzardModule, AuthModule],
   controllers: [LootCatalogController],
-  providers: [LootCatalogService, LootCatalogRepository, LootCatalogGeneratorService],
-  exports: [LootCatalogService, LootCatalogRepository, LootCatalogGeneratorService],
+  providers: [
+    LootCatalogService,
+    LootCatalogRepository,
+    LootCatalogGeneratorService,
+    LootCatalogPasteGeneratorService,
+  ],
+  exports: [
+    LootCatalogService,
+    LootCatalogRepository,
+    LootCatalogGeneratorService,
+    LootCatalogPasteGeneratorService,
+  ],
 })
 export class LootCatalogModule {}

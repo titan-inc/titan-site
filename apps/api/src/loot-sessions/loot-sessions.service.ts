@@ -139,6 +139,14 @@ export class LootSessionsService {
   }
 
   /**
+   * Garante que a sessão existe — usado pelo endpoint de aviso de mudança
+   * (TIT-68), que não tem detalhe nenhum para buscar, só um stream para abrir.
+   */
+  async exigirQueExista(id: string): Promise<void> {
+    await this.exigirSessao(id);
+  }
+
+  /**
    * As respostas de todo mundo — **e só depois que a fase de roll fecha**.
    *
    * A consulta é feita ou não conforme a fase; o serviço não devolve a lista

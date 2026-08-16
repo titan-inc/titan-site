@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { CardDeResposta } from './card-de-resposta';
 import { EntrarNaSessao } from './entrar-na-sessao';
 import { QuadroDeRespostas } from './quadro-de-respostas';
+import { useAvisoDeMudanca } from './usar-aviso-de-mudanca';
 
 /**
  * A metade de baixo da janela: a sessão como todo mundo a vê.
@@ -37,10 +38,14 @@ export function SessaoAoVivo({
    * Depois de qualquer escrita, recarrega os Server Components.
    *
    * `refresh()` mantém o estado local — o card aberto continua aberto — e
-   * traz o payload novo, que é o que decide o que aparece. Sem realtime ainda:
-   * é a TIT-68 que resolve.
+   * traz o payload novo, que é o que decide o que aparece.
    */
   const recarregar = () => router.refresh();
+
+  // A tela reage sozinha: o servidor avisa "a sessão mudou" (SSE), e aqui só
+  // se chama o mesmo `recarregar` que já roda depois de qualquer escrita
+  // local — TIT-68.
+  useAvisoDeMudanca(sessao.id, recarregar);
 
   return (
     <div className="flex flex-col gap-5">

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { CharactersRepository } from '../characters/characters.repository';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { LootSessionChangeBus } from './loot-session-change-bus';
 import { LootSessionsRepository } from './loot-sessions.repository';
 
 /**
@@ -35,9 +36,14 @@ function montar() {
     $transaction: (fn: (client: Prisma.TransactionClient) => Promise<number>) => fn(tx),
   } as unknown as PrismaService;
 
-  const repo = new LootSessionsRepository(prisma, {} as unknown as CharactersRepository);
+  const avisos: string[] = [];
+  const changes = {
+    avisar: (sessionId: string) => avisos.push(sessionId),
+  } as unknown as LootSessionChangeBus;
 
-  return { repo, updates, eventos, tx };
+  const repo = new LootSessionsRepository(prisma, {} as unknown as CharactersRepository, changes);
+
+  return { repo, updates, eventos, avisos, tx };
 }
 
 const ATOR = { userId: 'u1', battletag: 'Fulano#1234' };
@@ -66,5 +72,20 @@ describe('LootSessionsRepository.encerrarComHistorico', () => {
     // que status e histórico commitam juntos, e não em transações separadas.
     expect(recebidos).toEqual([tx]);
     expect(gravadas).toBe(2);
+  });
+
+  it('avisa DEPOIS que a transação comitou — TIT-68', async () => {
+    const ordem: string[] = [];
+    const { repo, avisos } = montar();
+
+    await repo.encerrarComHistorico('s1', 'deliberando', ATOR, () => {
+      // Se o aviso saísse de dentro da transação, apareceria ANTES daqui.
+      ordem.push('gravou');
+      return Promise.resolve(1);
+    });
+    ordem.push(...avisos.map(() => 'avisou'));
+
+    expect(ordem).toEqual(['gravou', 'avisou']);
+    expect(avisos).toEqual(['s1']);
   });
 });

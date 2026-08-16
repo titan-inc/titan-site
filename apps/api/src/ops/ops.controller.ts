@@ -21,8 +21,13 @@ import { AttendanceService, type SyncResult } from '../attendance/attendance.ser
 import { BlizzardService } from '../blizzard/blizzard.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
+import { LootCatalogPasteGeneratorService } from '../loot-catalog/loot-catalog-paste-generator.service';
 import { LootCatalogService } from '../loot-catalog/loot-catalog.service';
 import { RcImportService, type RcImportResult } from '../loot-lines/rc-import.service';
+import {
+  LootSessionDummiesService,
+  type ResultadoRodarDummies,
+} from '../loot-sessions/loot-session-dummies.service';
 import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
@@ -65,6 +70,16 @@ function parseJanela(dias?: string, all?: string): Date | undefined {
 }
 
 /**
+ * `undefined` quando ausente ou não numérico — o clamp e o default vivem no
+ * `LootSessionDummiesService`, não aqui. Parâmetro de conveniência de
+ * ferramenta de dev, então cai no default em vez de recusar (diferente do
+ * `GUILD_OFFICER_RANK_MAX`, que é config de boot).
+ */
+function parseQuantidade(raw?: string): number | undefined {
+  return raw && /^\d+$/.test(raw) ? Number(raw) : undefined;
+}
+
+/**
  * Operações administrativas contra a app JÁ RODANDO — nunca sobe instância
  * própria.
  *
@@ -92,6 +107,8 @@ export class OpsController {
     private readonly raidProgress: RaidProgressService,
     private readonly rcImport: RcImportService,
     private readonly lootSessions: LootSessionsService,
+    private readonly pasteGenerator: LootCatalogPasteGeneratorService,
+    private readonly dummies: LootSessionDummiesService,
     private readonly ops: OpsService,
   ) {}
 
@@ -239,5 +256,34 @@ export class OpsController {
   @Post('loot-sessions/:id/regerar-historico')
   async regerarHistoricoDaSessao(@Param('id') id: string): Promise<{ linhas: number }> {
     return { linhas: await this.lootSessions.regerarHistorico(id) };
+  }
+
+  /**
+   * Ferramenta de teste do realtime — TIT-68. Sorteia um boss REAL do
+   * catálogo (com ao menos 3 drops cadastrados numa dificuldade) e devolve a
+   * colagem pronta para colar em "Iniciar sessão" — não cria a sessão
+   * sozinha, só poupa montar uma colagem válida à mão.
+   */
+  @Get('loot-sessions/gerar-colagem')
+  async gerarColagemDeSessao(): Promise<{ paste: string }> {
+    return { paste: await this.pasteGenerator.gerarColagemAleatoria() };
+  }
+
+  /**
+   * Ferramenta de teste do realtime — TIT-68. Sobe N jogadores 100%
+   * sintéticos (`Dummy1..DummyN`, nunca personagem real) que entram na
+   * sessão e, a cada ~2s, respondem/comentam/editam em `aberta`, ou reagem a
+   * um `reabrirResposta` do loot master em `deliberando`. Para sozinha
+   * quando a sessão encerra, ou depois de 10min (kill switch).
+   *
+   * Fire-and-forget: devolve na hora, o loop roda em segundo plano.
+   * `?quantidade=` é opcional (padrão 6, clamp 2–10).
+   */
+  @Post('loot-sessions/:id/rodar-dummies')
+  async rodarDummiesNaSessao(
+    @Param('id') id: string,
+    @Query('quantidade') quantidade?: string,
+  ): Promise<ResultadoRodarDummies> {
+    return this.dummies.rodar(id, parseQuantidade(quantidade));
   }
 }

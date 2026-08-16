@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_LootSessMudou1
+createdAt: 2026-08-16T18:00:00.000000
+updatedAt: 2026-08-16T18:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_LootSessions1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'MemberGuard. SSE (text/event-stream) — TIT-68. Avisa "a sessão mudou", nunca dado: o primeiro evento (ola) traz o jitterMs, e depois vem um "mudou" a cada mudança, throttled no servidor. O Yaak mostra a conexão como streaming; feche manualmente, ela some sozinha depois de ~15min.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Aviso de mudança (SSE)'
+sortPriority: 1500
+url: ${[ base_url ]}/internal/loot-sessions/:id/mudancas
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
