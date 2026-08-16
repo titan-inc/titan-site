@@ -846,6 +846,13 @@ enum LootLineSource {
 /// **Só entra loot distribuído pelo conselho.** Bonus roll e personal loot vão
 /// direto para o jogador e são propriedade exclusiva dele — não houve decisão a
 /// registrar. Em 445 registros, os 151 desse tipo nunca receberam um único voto.
+///
+/// **A tabela é o registro da decisão do NOSSO conselho, e o import se adapta a
+/// ela — não o contrário.** Até a TIT-130 era o inverso: a `LootLine` tinha o
+/// formato do export do RCLootCouncil, com cinco colunas de bruto picado
+/// (`rawInstance`, `rawBoss`, `rawResponse`, `rawResponseId`, `rawReplacedGear`).
+/// Isso vira uma coluna só, `rawImportedLine`, e nenhuma leitura da aplicação
+/// passa por ela — ver o comentário ali embaixo.
 model LootLine {
   id String @id @default(cuid())
 
@@ -853,15 +860,42 @@ model LootLine {
 
   /// Id da linha na fonte. No RCLootCouncil é `servertime-índice`.
   ///
-  /// É o que faz reimportar o mesmo arquivo não duplicar: único nos 445 do export
-  /// real. Nulo para sessão ao vivo, que nasce aqui e não tem id de fora.
-  externalId String?
+  /// **NOT NULL desde a TIT-130.** É o que dá trava de duplicata: reimportar o
+  /// mesmo arquivo atualiza em vez de duplicar (único nos 445 do export real), e
+  /// a sessão ao vivo (TIT-69) vai gerar o seu a partir do `LootSessionItem.id`
+  /// — há um award por item, então o id do item é a chave natural da entrega. É
+  /// o que torna o encerramento idempotente.
+  externalId String
+
+  /// O caminho de volta para quem pediu, quem votou e quem decidiu.
+  ///
+  /// `Restrict`: sessão com linha de histórico gravada não se apaga por baixo do
+  /// award. Nulo é import — a `LootLine` de import não nasceu de sessão nenhuma.
+  ///
+  /// **"Quem pediu e não levou" fica na `LootSession`, não aqui.** A `LootLine` é
+  /// uma linha = uma peça entregue; quem pediu, quem votou e quem ficou em
+  /// silêncio permanecem na sessão e no `LootSessionEvent`, que é append-only e
+  /// reconstrói a sessão inteira — o que a Regra 7 pede de um registro. Não é
+  /// lacuna: é o dado morando onde já está completo, em vez de espremido numa
+  /// tabela cuja unidade é outra.
+  sessionId String?
+  session   LootSession? @relation(fields: [sessionId], references: [id], onDelete: Restrict)
 
   /// Quando o item foi entregue.
   ///
-  /// Vem do `servertime` (epoch), nunca de `date` + `time`: aqueles dois são
-  /// texto no fuso de quem exportou, e o epoch não tem ambiguidade.
+  /// No import vem do `servertime` (epoch), nunca de `date` + `time`: aqueles
+  /// dois são texto no fuso de quem exportou, e o epoch não tem ambiguidade.
   awardedAt DateTime
+
+  /// Quem entregou. Sem FK para `User` — mesmo precedente de
+  /// `LootSession.createdByUserId`/`createdByBattletag` e
+  /// `OfficerGrant.grantedBy`: registro não se apaga por exclusão de conta, e o
+  /// battletag deixa a auditoria legível sem join.
+  ///
+  /// Os dois nulos juntos, e só no import: a sessão ao vivo sempre sabe quem
+  /// awardou.
+  awardedByUserId    String?
+  awardedByBattletag String?
 
   /// A season em que a entrega ACONTECEU, derivada do `awardedAt`.
   ///
@@ -894,6 +928,10 @@ model LootLine {
   ///
   /// Aponta para a identidade, e não para o roster, porque histórico tem que
   /// sobreviver a quem saiu da guilda — TIT-54.
+  ///
+  /// Sempre um personagem, inclusive quando a peça foi para o banco: ali o
+  /// vencedor é quem guardou, e o que marca o destino é o `responseKind`. Sem
+  /// caso especial — mesma escolha do `LootSessionAward.winnerCharacterId`.
   winnerCharacterId String
   winner            Character @relation("VencedorDaLinha", fields: [winnerCharacterId], references: [id])
 
@@ -918,21 +956,15 @@ model LootLine {
   itemId     Int
   itemString String
 
-  /// De onde foi lootado, **como a fonte disse**.
-  ///
-  /// Guardado sempre, mesmo quando resolve, porque é o único caminho de volta. E
-  /// resolve pouco: nos 294 registros de conselho o `instance` aparece em 11
-  /// grafias, incluindo `A Torre do Caos` (The Voidspire em ptBR) e `A Fenda
-  /// Onírica` (The Dreamrift), porque o rótulo vem do cliente de quem era loot
-  /// master. 56 registros têm boss `Unknown` ou `Desconhecido`.
-  rawInstance String
-  rawBoss     String
-
-  /// O boss do catálogo, **quando dá para resolver**.
+  /// O boss do catálogo, **quando dá para resolver**. E só ele — desde a
+  /// TIT-130 não há mais `rawInstance`/`rawBoss` na linha: raid e tier já vêm
+  /// daqui pelo catálogo, e a grafia bruta que a fonte escreveu mora inteira em
+  /// `rawImportedLine`.
   ///
   /// Nulável e sem obrigação: 22% dos registros de raid não casam, por nome
   /// traduzido ou por boss desconhecido. FK obrigatório aqui recusaria histórico
-  /// legítimo.
+  /// legítimo, e quem consome trata nulo como lacuna — nunca preenche com o
+  /// `Unknown`/`Desconhecido` que a fonte escreveu (56 dos 77 casos históricos).
   encounterId String?
   encounter   LootCatalogEncounter? @relation(fields: [encounterId], references: [id])
 
@@ -961,32 +993,59 @@ model LootLine {
   responseOptionSlug String
   responseOption     LootResponseOption @relation(fields: [responseOptionSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
 
-  /// O que a fonte escreveu, antes de traduzir.
+  /// O `kind` da resposta, **congelado no momento da entrega** — nunca o `kind`
+  /// atual da opção (que a TIT-64 torna editável).
   ///
-  /// Os dois juntos são a chave do tradutor, e nenhum serve sozinho: o rótulo
-  /// varia de caixa e idioma, e o `responseID` é posicional — o `2` é `Big` num
-  /// raid e `Banking` noutro. Guardados para o dia em que alguém questionar uma
-  /// tradução, ou em que o mapeamento mudar e for preciso reprocessar.
-  rawResponse   String?
-  rawResponseId String?
+  /// Sem isto não há como distinguir peça entregue a quem a pediu de peça que o
+  /// loot master mandou para o banco, e as duas ficam indistinguíveis
+  /// exatamente na consulta central da Regra 7 (`[winnerCharacterId, awardedAt]`
+  /// abaixo): quem carrega o banco da guilda acumularia histórico de peças que
+  /// nunca usou, e lideraria o ranking de quem mais recebeu loot nas agregações
+  /// futuras (TIT-60/TIT-61). Não dá para resolver por join — o join sabe o
+  /// `kind` de HOJE, e a linha precisa saber o de quando a decisão foi tomada.
+  ///
+  /// Nunca nulo.
+  responseKind LootResponseKind
 
   /// Votos do conselho. Zero é resultado legítimo; nulo é fonte que não tem o
   /// conceito.
   votes Int?
 
-  /// Anotação de quem registrou, livre.
-  note String?
-
-  /// O que a peça substituiu, como a fonte disse (`gear1`/`gear2` do export).
+  /// A nota de quem pediu a peça.
   ///
-  /// Texto localizado e sem consumidor hoje. Guardado porque é **irrecuperável**:
-  /// não existe fonte que diga depois o que a pessoa tinha equipado em março.
-  rawReplacedGear String[]
+  /// Renomeado de `note` na TIT-130: com a `councilNote` ao lado, `note` sozinho
+  /// não dizia de quem era. O conteúdo do import é sempre do jogador — o addon
+  /// do RCLootCouncil não oferece campo de nota ao loot master.
+  playerNote String?
+
+  /// A justificativa do conselho sobre a decisão. Nasce com a sessão ao vivo —
+  /// não existia no import, porque o RCLootCouncil não tem o conceito.
+  ///
+  /// Vira histórico junto com a entrega, e histórico de loot é aberto a toda a
+  /// área interna — decisão do conselho é auditável (Regra 7). Não é bilhete
+  /// privado.
+  councilNote String?
+
+  /// O registro de origem **inteiro**, como veio — substitui os cinco campos de
+  /// bruto picado que a linha tinha até a TIT-130.
+  ///
+  /// `rawBoss` era defendido como "a única origem quando o catálogo não casa",
+  /// mas 56 dos 77 registros sem boss resolvido tinham `rawBoss` igual a
+  /// `Unknown` ou `Desconhecido` — não é informação preservada, é o texto
+  /// interno de outra ferramenta exibido com cara de dado nosso. Guardar o
+  /// registro inteiro é estritamente mais: quando alguém mapear os nomes
+  /// traduzidos, ou quisesse revisitar `rawResponse`/`rawReplacedGear`, está tudo
+  /// aqui — e nenhuma leitura da aplicação passa por esta coluna hoje.
+  ///
+  /// Nulo na sessão ao vivo: ela nasce no nosso formato, sem fonte externa a
+  /// preservar.
+  rawImportedLine Json?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  /// Reimportar o mesmo arquivo não duplica.
+  /// Reimportar o mesmo arquivo não duplica, e é a mesma trava que torna o
+  /// encerramento de sessão idempotente (TIT-69).
   @@unique([source, externalId])
   /// "O histórico desta pessoa", que é a consulta central da Regra 7.
   @@index([winnerCharacterId, awardedAt])
@@ -995,6 +1054,7 @@ model LootLine {
   @@index([awardedAt])
   /// Filtro principal da aba de histórico — toda consulta da tela passa por ele.
   @@index([seasonId, awardedAt])
+  @@index([sessionId])
 }
 
 /// Etapa da sessão de loot council. Ver `LOOT_SESSION_STATUS` no shared.
@@ -1082,6 +1142,10 @@ model LootSession {
   items        LootSessionItem[]
   events       LootSessionEvent[]
   participants LootSessionParticipant[]
+
+  /// As linhas de histórico que este encerramento gravou (TIT-69). `Restrict` do
+  /// outro lado: sessão com histórico gravado não se apaga por baixo do award.
+  lootLines LootLine[]
 
   @@index([status, createdAt])
   @@index([encounterId])

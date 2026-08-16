@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import {
+  LOOT_RESPONSE_KINDS,
   splitNomeRealm,
   toCharacterKey,
   toRealmMatchKey,
@@ -77,9 +78,18 @@ export class LootHistoryService {
   async facets(season: number | undefined): Promise<LootHistoryFacets> {
     const where: Prisma.LootLineWhereInput = season === undefined ? {} : { seasonId: season };
 
+    // A faceta de personagem responde "quem recebeu loot", não "quem aparece
+    // numa linha" — ver o comentário em `montarWhere`. Sem isso, quem carrega o
+    // banco da guilda apareceria no seletor com uma contagem que não bate com o
+    // que a lista mostra depois de selecionar.
+    const wherePersonagem: Prisma.LootLineWhereInput = {
+      ...where,
+      responseKind: LOOT_RESPONSE_KINDS.PLAYER,
+    };
+
     const [porSeason, porPersonagem, porBoss, porItem] = await Promise.all([
       this.repo.contarPorSeason(),
-      this.repo.contarPorPersonagem(where),
+      this.repo.contarPorPersonagem(wherePersonagem),
       this.repo.contarPorBoss(where),
       this.repo.contarPorItem(where),
     ]);
@@ -213,10 +223,19 @@ export class LootHistoryService {
 
     // `Nome-Realm` da URL vira identidade aqui. Nome que não existe devolve
     // lista vazia, e não erro: filtro que não casa é resultado vazio.
+    //
+    // Filtrar por personagem é perguntar "o que ESTA PESSOA recebeu", e por
+    // isso soma `responseKind = player`: linha de `loot_master` tem essa
+    // pessoa como `winnerCharacterId` só porque ela guardou a peça no banco,
+    // não porque a pediu. É a mesma consulta que o índice
+    // `[winnerCharacterId, awardedAt]` do schema documenta como "o histórico
+    // desta pessoa" — sem o filtro, quem carrega o banco apareceria com
+    // histórico de peças que nunca usou.
     const chaves = identidadeDoPersonagem(filtros.character);
     if (chaves) {
       const identidade = await this.repo.findCharacterByKeys(chaves.nameKey, chaves.realmKey);
       where.winnerCharacterId = identidade?.id ?? NENHUMA_IDENTIDADE;
+      where.responseKind = LOOT_RESPONSE_KINDS.PLAYER;
     }
 
     const janela = janelaDeDatas(filtros.from, filtros.to, this.guild.timezone);
@@ -374,13 +393,16 @@ function montarEntrada(
 
     boss: {
       encounterId: linha.encounter?.id ?? null,
-      name: linha.encounter?.name ?? linha.rawBoss,
-      raid: linha.encounter?.raid.name ?? linha.rawInstance,
+      // Sem fallback para bruto de outra ferramenta desde a TIT-130: nulo é
+      // lacuna honesta, não `linha.rawBoss` picado por trás.
+      name: linha.encounter?.name ?? null,
+      raid: linha.encounter?.raid.name ?? null,
     },
 
     difficulty: linha.difficulty,
     response: { slug: linha.responseOption.slug, label: linha.responseOption.label },
+    responseKind: linha.responseKind,
     votes: linha.votes,
-    note: linha.note,
+    playerNote: linha.playerNote,
   };
 }

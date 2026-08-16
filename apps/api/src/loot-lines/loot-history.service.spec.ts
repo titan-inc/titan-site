@@ -25,11 +25,10 @@ const linhaDoBanco = (over: Partial<LootHistoryRow> = {}): LootHistoryRow => ({
     class: 'MAGE',
   },
   itemId: 249308,
-  rawBoss: 'Chimaerus, the Undreamt God',
-  rawInstance: 'The Voidspire-Heroic',
   difficulty: RAID_DIFFICULTIES.HEROIC,
   votes: 2,
-  note: null,
+  playerNote: null,
+  responseKind: 'player',
   encounter: { id: 'enc-1', name: 'Chimaerus the Undreamt God', raid: { name: 'The Voidspire' } },
   responseOption: { slug: 'bis', label: 'BiS' },
   ...over,
@@ -130,6 +129,14 @@ describe('LootHistoryService', () => {
 
       expect(repo.findCharacterByKeys).toHaveBeenCalledWith('shrëwd', 'area52');
       expect(whereUsado()).toMatchObject({ winnerCharacterId: 'char-shrewd' });
+    });
+
+    it('personagem filtra só o que ele RECEBEU, não linha de banking em nome dele', async () => {
+      // "Histórico desta pessoa" é responseKind = player. Sem isso, quem
+      // guardou uma peça no banco apareceria como se tivesse recebido.
+      await service.consultar(filtros({ character: 'Fulano-Area52' }));
+
+      expect(whereUsado()).toMatchObject({ responseKind: 'player' });
     });
 
     it('personagem sem realm é ignorado em vez de recusar a consulta', async () => {
@@ -233,26 +240,37 @@ describe('LootHistoryService', () => {
       });
     });
 
-    it('boss não resolvido cai para a grafia da fonte', async () => {
-      // 26% do histórico. Mostrar vazio esconderia a única pista que existe.
+    it('boss não resolvido vira lacuna, sem fallback para bruto de outra ferramenta', async () => {
+      // Desde a TIT-130 não há mais rawBoss/rawInstance na linha: nulo é a
+      // lacuna honesta, e não o texto interno do RCLootCouncil com cara de
+      // dado nosso.
       repo.findHistoryPage.mockResolvedValueOnce({
-        linhas: [linhaDoBanco({ encounter: null, rawBoss: 'Desconhecido' })],
+        linhas: [linhaDoBanco({ encounter: null })],
         total: 1,
       });
 
       const pagina = await service.consultar(filtros());
 
-      expect(pagina.entries[0]?.boss).toEqual({
-        encounterId: null,
-        name: 'Desconhecido',
-        raid: 'The Voidspire-Heroic',
-      });
+      expect(pagina.entries[0]?.boss).toEqual({ encounterId: null, name: null, raid: null });
     });
 
     it('a resposta traz slug e label juntos', async () => {
       const pagina = await service.consultar(filtros());
 
       expect(pagina.entries[0]?.response).toEqual({ slug: 'bis', label: 'BiS' });
+    });
+
+    it('o responseKind é o CONGELADO da linha, não o da opção hoje', async () => {
+      // É o que a tela usa para ler "foi para o banco, guardado por X" em vez
+      // de "X levou" numa linha de loot_master.
+      repo.findHistoryPage.mockResolvedValueOnce({
+        linhas: [linhaDoBanco({ responseKind: 'loot_master' })],
+        total: 1,
+      });
+
+      const pagina = await service.consultar(filtros());
+
+      expect(pagina.entries[0]?.responseKind).toBe('loot_master');
     });
   });
 
@@ -383,6 +401,16 @@ describe('LootHistoryService.facets', () => {
       { name: 'Alfa', realm: 'Area52', value: 'Alfa-Area52', total: 19 },
       { name: 'Zulu', realm: 'Azralon', value: 'Zulu-Azralon', total: 4 },
     ]);
+  });
+
+  it('a faceta de personagem conta só o que foi RECEBIDO, não banking', async () => {
+    // Mesma régua do filtro por personagem: sem isto, um banker apareceria no
+    // seletor com contagem que não bate com o que a lista mostra ao clicar.
+    await service.facets(17);
+
+    expect(repo.contarPorPersonagem).toHaveBeenCalledWith(
+      expect.objectContaining({ seasonId: 17, responseKind: 'player' }),
+    );
   });
 
   it('boss sem rótulo no catálogo não vira opção', async () => {

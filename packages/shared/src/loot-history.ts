@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { lootCharacterSchema } from './loot-line.js';
+import { lootResponseKindSchema } from './loot-response.js';
 import { raidDifficultyLevelSchema } from './wow.js';
 
 /** Teto de página. Existe para uma query solta não varrer o histórico inteiro. */
@@ -74,14 +75,16 @@ export const lootHistoryItemSchema = z.object({
  * De onde a peça saiu.
  *
  * `encounterId` nulo é "não deu para identificar" — 26% do histórico importado,
- * por nome traduzido ou boss `Unknown`. Nesse caso `name` e `raid` caem para a
- * grafia da fonte, que é localizada e traz o sufixo de dificuldade colado
- * (`A Torre do Caos-Normal`). É feio e é honesto: é o que a fonte disse.
+ * por nome traduzido ou boss `Unknown`. Desde a TIT-130 não há fallback para
+ * texto de outra ferramenta: `name` e `raid` ficam nulos junto, e a tela mostra
+ * a lacuna. Não é regressão — o `rawBoss`/`rawInstance` que preenchiam isto
+ * antes eram, em 56 de 77 casos, o próprio `Unknown`/`Desconhecido` da fonte com
+ * cara de dado nosso. O bruto original continua acessível em `rawImportedLine`.
  */
 export const lootHistoryBossSchema = z.object({
   encounterId: z.string().nullable(),
-  name: z.string(),
-  raid: z.string(),
+  name: z.string().nullable(),
+  raid: z.string().nullable(),
 });
 
 /** Uma entrega, pronta para a tela. */
@@ -107,9 +110,19 @@ export const lootHistoryEntrySchema = z.object({
    */
   response: z.object({ slug: z.string(), label: z.string() }),
 
+  /**
+   * O `kind` congelado no momento da entrega — nunca o kind atual da opção.
+   *
+   * É o que a tela usa para não ler linha de `loot_master` como "X levou": uma
+   * entrega de banco é "foi para o banco, guardado por X", não um recebimento.
+   */
+  responseKind: lootResponseKindSchema,
+
   /** Zero é resultado; nulo é fonte que não tem o conceito de voto. */
   votes: z.number().int().nonnegative().nullable(),
-  note: z.string().nullable(),
+
+  /** A nota de quem pediu a peça. Ver `LootLine.playerNote`. */
+  playerNote: z.string().nullable(),
 });
 export type LootHistoryEntry = z.infer<typeof lootHistoryEntrySchema>;
 
