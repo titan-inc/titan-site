@@ -302,3 +302,29 @@ fique órfã.
 **Idempotente**: o teste é o hífen (cuid nunca tem, uuid sempre tem), então
 rodar de novo depois de corrigido não acha mais nenhum id fora do padrão e
 devolve `corrigidos: 0`.
+
+## Regerar o histórico de uma sessão de loot council (TIT-69)
+
+O encerramento de uma sessão (`POST /internal/loot-sessions/:id/status` com
+`status: "encerrada"`) já grava as linhas de histórico (`LootLine`, com
+`source: "live_session"`) na MESMA transação que muda o status — ver o
+comentário de `LootSessionsRepository.encerrarComHistorico`. Esta rota é a
+rede de segurança para quando isso não bastar: sessão que ficou encerrada sem
+histórico (dado de antes desta atomicidade, ou intervenção manual no banco).
+
+Sem corpo — o único parâmetro é o id da sessão, no caminho. Recusa (400)
+sessão que ainda não encerrou: regerar histórico de decisão em andamento não
+faz sentido, porque os awards ainda podem mudar.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/loot-sessions/<id>/regerar-historico" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "linhas": 3 }
+```
+
+**Idempotente**: a chave é `LootSessionItem.id` (`LootLine.externalId`), única
+por peça — rodar de novo atualiza as mesmas linhas em vez de duplicar.
+Segura por construção, roda quantas vezes quiser.

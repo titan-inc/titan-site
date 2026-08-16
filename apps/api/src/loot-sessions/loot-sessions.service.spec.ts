@@ -1,12 +1,17 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import type { LootLinesService } from '../loot-lines/loot-lines.service';
 import { LootSessionsService } from './loot-sessions.service';
 import type { PersonagemDaConta } from './loot-sessions.service';
 import type {
   Ator,
+  AwardParaHistorico,
   ItemDaSessao,
   LootSessionsRepository,
   SessionRow,
 } from './loot-sessions.repository';
+
+/** Sentinela para provar que o client de transação chegou ao chamado certo. */
+const FAKE_TX = { fake: 'tx' };
 
 /**
  * Colagem no formato real. Nomes fictícios — o repo é público.
@@ -135,6 +140,13 @@ describe('LootSessionsService', () => {
       [string, string, string]
     >(() => Promise.resolve([])),
     findAwards: jest.fn<Promise<Array<{ itemId: string }>>, [string]>(() => Promise.resolve([])),
+    findAwardsParaHistorico: jest.fn<Promise<AwardParaHistorico[]>, [string]>(() =>
+      Promise.resolve([]),
+    ),
+    encerrarComHistorico: jest.fn<
+      Promise<number>,
+      [string, string, Ator, (tx: unknown) => Promise<number>]
+    >((_id, _de, _ator, gravarLinhas) => gravarLinhas(FAKE_TX)),
     entrar: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
     findParticipantes: jest.fn<
       Promise<
@@ -180,6 +192,13 @@ describe('LootSessionsService', () => {
     ),
   };
 
+  const lootLines = {
+    gravarDaSessao: jest.fn<
+      Promise<number>,
+      [{ sessionId: string; encounterId: string | null; itens: AwardParaHistorico[] }, unknown?]
+    >(() => Promise.resolve(0)),
+  };
+
   let service: LootSessionsService;
 
   /** Os itens que o serviço mandou gravar na criação. */
@@ -200,6 +219,11 @@ describe('LootSessionsService', () => {
     repo.findEncounterByDungeonId.mockResolvedValue({ id: 'enc-kazzara' });
     repo.itemPertence.mockResolvedValue(true);
     repo.findAwards.mockResolvedValue([]);
+    repo.findAwardsParaHistorico.mockResolvedValue([]);
+    repo.encerrarComHistorico.mockImplementation((_id, _de, _ator, gravarLinhas) =>
+      gravarLinhas(FAKE_TX),
+    );
+    lootLines.gravarDaSessao.mockResolvedValue(0);
     repo.findParticipantes.mockResolvedValue([]);
     repo.registrarSilencio.mockResolvedValue(0);
     repo.findTodasAsRespostas.mockResolvedValue([]);
@@ -209,7 +233,10 @@ describe('LootSessionsService', () => {
       { slug: 'pass', label: 'Pass' },
     ]);
 
-    service = new LootSessionsService(repo as unknown as LootSessionsRepository);
+    service = new LootSessionsService(
+      repo as unknown as LootSessionsRepository,
+      lootLines as unknown as LootLinesService,
+    );
   });
 
   describe('criar da colagem', () => {
@@ -901,13 +928,109 @@ describe('LootSessionsService', () => {
 
       await service.trocarStatus('sess-1', 'encerrada', ATOR);
 
-      expect(repo.trocarStatus).toHaveBeenCalledWith(
+      // Não é o `repo.trocarStatus` genérico — encerrar é a transição atômica
+      // com o histórico, TIT-69.
+      expect(repo.trocarStatus).not.toHaveBeenCalled();
+      expect(repo.encerrarComHistorico).toHaveBeenCalledWith(
         'sess-1',
         'deliberando',
-        'encerrada',
         ATOR,
-        expect.any(Boolean),
+        expect.any(Function),
       );
+    });
+
+    describe('encerrar grava o histórico (TIT-69)', () => {
+      const umAward = (over: Partial<AwardParaHistorico> = {}): AwardParaHistorico => ({
+        externalId: 'item-1',
+        itemId: 202612,
+        itemString: MITICO,
+        looterCharacterId: 'char-fulano',
+        winnerCharacterId: 'char-fulano',
+        responseOptionSlug: 'bis',
+        votes: 3,
+        councilNote: null,
+        playerNote: null,
+        awardedAt: new Date('2026-08-15T02:00:00.000Z'),
+        awardedByUserId: 'user-1',
+        awardedByBattletag: 'Loot#0001',
+        ...over,
+      });
+
+      it('grava as linhas DENTRO da transação que o repositório abriu', async () => {
+        repo.findById.mockResolvedValue(comDuasPecas());
+        repo.findAwards.mockResolvedValue([{ itemId: 'item-1' }, { itemId: 'item-2' }]);
+        repo.findAwardsParaHistorico.mockResolvedValue([umAward()]);
+
+        await service.trocarStatus('sess-1', 'encerrada', ATOR);
+
+        // O `encerrarComHistorico` mockado chama o callback com o FAKE_TX — se
+        // este client não chegar aqui, a gravação não está mais na mesma
+        // transação que o status.
+        expect(lootLines.gravarDaSessao).toHaveBeenCalledWith(
+          { sessionId: 'sess-1', encounterId: 'enc-kazzara', itens: [umAward()] },
+          FAKE_TX,
+        );
+      });
+
+      it('se a gravação das linhas falhar, a transição inteira falha', async () => {
+        // `encerrarComHistorico` real é uma transação: se o callback rejeita, o
+        // `$transaction` inteiro rejeita, e o status NUNCA fica encerrado sem
+        // histórico. O mock espelha esse contrato repassando a rejeição.
+        repo.findById.mockResolvedValue(comDuasPecas());
+        repo.findAwards.mockResolvedValue([{ itemId: 'item-1' }, { itemId: 'item-2' }]);
+        lootLines.gravarDaSessao.mockRejectedValueOnce(new Error('deu ruim no banco'));
+
+        await expect(service.trocarStatus('sess-1', 'encerrada', ATOR)).rejects.toThrow(
+          'deu ruim no banco',
+        );
+      });
+    });
+
+    describe('regerar histórico (rede de segurança, Regra 8)', () => {
+      it('recusa sessão que ainda não encerrou', async () => {
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'deliberando' }));
+
+        await expect(service.regerarHistorico('sess-1')).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+        expect(lootLines.gravarDaSessao).not.toHaveBeenCalled();
+      });
+
+      it('regerar duas vezes manda os MESMOS itens — a idempotência vem do externalId', async () => {
+        const award: AwardParaHistorico = {
+          externalId: 'item-1',
+          itemId: 202612,
+          itemString: MITICO,
+          looterCharacterId: null,
+          winnerCharacterId: 'char-fulano',
+          responseOptionSlug: 'bis',
+          votes: 2,
+          councilNote: null,
+          playerNote: null,
+          awardedAt: new Date('2026-08-15T02:00:00.000Z'),
+          awardedByUserId: 'user-1',
+          awardedByBattletag: 'Loot#0001',
+        };
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'encerrada' }));
+        repo.findAwardsParaHistorico.mockResolvedValue([award]);
+
+        await service.regerarHistorico('sess-1');
+        await service.regerarHistorico('sess-1');
+
+        const [primeira] = lootLines.gravarDaSessao.mock.calls[0]!;
+        const [segunda] = lootLines.gravarDaSessao.mock.calls[1]!;
+        expect(segunda).toEqual(primeira);
+        expect(segunda.itens[0]?.externalId).toBe('item-1');
+      });
+
+      it('sem client de transação — não é uma reabertura, é operação isolada', async () => {
+        repo.findById.mockResolvedValue(sessaoDoBanco({ status: 'encerrada' }));
+
+        await service.regerarHistorico('sess-1');
+
+        expect(lootLines.gravarDaSessao).toHaveBeenCalledWith(expect.anything());
+        expect(lootLines.gravarDaSessao.mock.calls[0]).toHaveLength(1);
+      });
     });
 
     it('fechar a fase de roll congela o silêncio de quem estava na sessão', async () => {

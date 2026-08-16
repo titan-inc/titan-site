@@ -24,6 +24,25 @@ export interface Ator {
   battletag: string;
 }
 
+/**
+ * Um award pronto para virar linha de histórico (TIT-69) — ver
+ * `findAwardsParaHistorico`.
+ */
+export interface AwardParaHistorico {
+  externalId: string;
+  itemId: number;
+  itemString: string;
+  looterCharacterId: string | null;
+  winnerCharacterId: string;
+  responseOptionSlug: string;
+  votes: number;
+  councilNote: string | null;
+  playerNote: string | null;
+  awardedAt: Date;
+  awardedByUserId: string;
+  awardedByBattletag: string;
+}
+
 /** Colunas que a tela da sessão precisa. */
 const sessionSelect = {
   id: true,
@@ -641,6 +660,59 @@ export class LootSessionsRepository {
   }
 
   /**
+   * Os awards da sessão no formato que o histórico (TIT-69) precisa: com o
+   * `itemId`/`itemString`/`looterCharacterId` da PEÇA, e a nota que o
+   * VENCEDOR deixou naquele item — nunca a de outra pessoa que também
+   * respondeu.
+   *
+   * `externalId` já sai pronto aqui: é o `LootSessionAward.itemId`, que é o
+   * `LootSessionItem.id` — a chave estável que torna o encerramento
+   * idempotente (ver `LootLinesRepository.upsertDaSessao`).
+   */
+  async findAwardsParaHistorico(sessionId: string): Promise<AwardParaHistorico[]> {
+    const awards = await this.prisma.lootSessionAward.findMany({
+      where: { item: { sessionId } },
+      select: {
+        itemId: true,
+        winnerCharacterId: true,
+        responseOptionSlug: true,
+        votes: true,
+        note: true,
+        awardedAt: true,
+        awardedByUserId: true,
+        awardedByBattletag: true,
+        item: { select: { itemId: true, itemString: true, looterCharacterId: true } },
+      },
+    });
+    if (awards.length === 0) return [];
+
+    // A nota do vencedor no item, e só dele — dois candidatos podem ter
+    // notas diferentes na mesma peça, e só a de quem levou vira histórico.
+    const respostasDosVencedores = await this.prisma.lootSessionResponse.findMany({
+      where: { OR: awards.map((a) => ({ itemId: a.itemId, characterId: a.winnerCharacterId })) },
+      select: { itemId: true, characterId: true, note: true },
+    });
+    const notaPorPar = new Map(
+      respostasDosVencedores.map((r) => [`${r.itemId}|${r.characterId}`, r.note]),
+    );
+
+    return awards.map((a) => ({
+      externalId: a.itemId,
+      itemId: a.item.itemId,
+      itemString: a.item.itemString,
+      looterCharacterId: a.item.looterCharacterId,
+      winnerCharacterId: a.winnerCharacterId,
+      responseOptionSlug: a.responseOptionSlug,
+      votes: a.votes,
+      councilNote: a.note,
+      playerNote: notaPorPar.get(`${a.itemId}|${a.winnerCharacterId}`) ?? null,
+      awardedAt: a.awardedAt,
+      awardedByUserId: a.awardedByUserId,
+      awardedByBattletag: a.awardedByBattletag,
+    }));
+  }
+
+  /**
    * Entrega a peça.
    *
    * `create`, e não `upsert`: o `@@unique` em `itemId` é a trava de
@@ -805,6 +877,48 @@ export class LootSessionsRepository {
       }),
       this.registrarEvento(sessionId, 'status_alterado', ator, { de, para }),
     ]);
+  }
+
+  /**
+   * Encerra a sessão E grava o histórico, na MESMA transação — TIT-69.
+   *
+   * `encerrada` é terminal (`TRANSICOES[ENCERRADA] = []` no shared): se o
+   * status commitasse e a gravação das linhas falhasse depois, a sessão
+   * ficaria encerrada sem histórico e sem caminho de volta. As duas escritas
+   * têm que ser uma.
+   *
+   * `gravarLinhas` é chamado DENTRO da transação, com o client dela — quem o
+   * fornece é o `LootSessionsService`, chamando `LootLinesService.gravarDaSessao`.
+   * Este método nunca importa nada de `loot-lines`: só abre a transação, faz
+   * a própria escrita (status + evento) e repassa o client para um callback
+   * opaco. Quem executa a query em `LootLine` continua sendo só o
+   * `LootLinesRepository` — cada tabela com um dono só (Regra 3), mesmo com o
+   * client atravessando módulo.
+   *
+   * Sem `marcarAbertura`: encerrar nunca é a primeira transição da sessão, e
+   * `openedAt` já está carimbado desde `aberta`.
+   */
+  async encerrarComHistorico(
+    sessionId: string,
+    de: LootSessionStatus,
+    ator: Ator,
+    gravarLinhas: (tx: Prisma.TransactionClient) => Promise<number>,
+  ): Promise<number> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.lootSession.update({ where: { id: sessionId }, data: { status: 'encerrada' } });
+
+      await tx.lootSessionEvent.create({
+        data: {
+          sessionId,
+          type: 'status_alterado',
+          actorUserId: ator.userId,
+          actorBattletag: ator.battletag,
+          payload: { de, para: 'encerrada' },
+        },
+      });
+
+      return gravarLinhas(tx);
+    });
   }
 
   /**

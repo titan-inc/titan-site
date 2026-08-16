@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_kzFTPikfUX
+createdAt: 2026-08-16T13:01:22.065311900
+updatedAt: 2026-08-16T13:01:22.065315500
+workspaceId: wk_8LmjjnEbam
+folderId: fl_FknhcmhGXn
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'TIT-69, Regra 8. Rede de segurança: o encerramento já grava status + histórico na mesma transação; isto regera as LootLine de uma sessão já encerrada. Idempotente pelo LootSessionItem.id — roda quantas vezes quiser.'
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+method: POST
+name: Regerar histórico da sessão
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/ops/loot-sessions/:id/regerar-historico
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

@@ -4,6 +4,7 @@ import { CharactersModule } from '../characters/characters.module';
 import { LootHistoryController } from './loot-history.controller';
 import { LootHistoryService } from './loot-history.service';
 import { LootLinesRepository } from './loot-lines.repository';
+import { LootLinesService } from './loot-lines.service';
 import { RcImportService } from './rc-import.service';
 
 /**
@@ -11,9 +12,11 @@ import { RcImportService } from './rc-import.service';
  *
  * **Leitura e escrita entram por portas diferentes**, e é de propósito.
  *
- * A escrita de hoje é importar um arquivo: operação de bastidor, que vive em
- * `/internal/ops/loot-import-rc` sob `OpsTokenGuard` — automação/CLI, ator
- * diferente do modelo de permissão da Regra 4, pela Regra 8.
+ * A escrita de hoje tem duas fontes: importar um arquivo (operação de
+ * bastidor, `/internal/ops/loot-import-rc` sob `OpsTokenGuard`, pela Regra 8)
+ * e o encerramento de uma sessão ao vivo (TIT-69) — `LootLinesService`, que
+ * `loot-sessions` chama exportado daqui, passando o client da própria
+ * transação para as duas escritas commitarem juntas.
  *
  * A leitura é o explorador, com `MemberGuard`: sessão de Battle.net, qualquer
  * pessoa da área interna. Mesmo arranjo do `LootCatalogModule`.
@@ -25,7 +28,7 @@ import { RcImportService } from './rc-import.service';
 @Module({
   imports: [AuthModule, CharactersModule],
   controllers: [LootHistoryController],
-  providers: [RcImportService, LootHistoryService, LootLinesRepository],
-  exports: [RcImportService],
+  providers: [RcImportService, LootHistoryService, LootLinesService, LootLinesRepository],
+  exports: [RcImportService, LootLinesService],
 })
 export class LootLinesModule {}
