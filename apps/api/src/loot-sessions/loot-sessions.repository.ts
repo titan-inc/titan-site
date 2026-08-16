@@ -897,6 +897,13 @@ export class LootSessionsRepository {
    *
    * Sem `marcarAbertura`: encerrar nunca é a primeira transição da sessão, e
    * `openedAt` já está carimbado desde `aberta`.
+   *
+   * `closedAt` é carimbado AQUI, e só aqui: depois da TIT-69 esta é a única
+   * porta para `encerrada` — o serviço desvia antes de chegar no
+   * `trocarStatus` genérico. É a projeção do evento de encerramento na tabela,
+   * como `openedAt` é a da abertura. A coluna existia desde a migration
+   * original e nunca era escrita, o que é pior que não existir: query lendo
+   * sempre nulo não dá erro nenhum (TIT-133).
    */
   async encerrarComHistorico(
     sessionId: string,
@@ -905,7 +912,10 @@ export class LootSessionsRepository {
     gravarLinhas: (tx: Prisma.TransactionClient) => Promise<number>,
   ): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
-      await tx.lootSession.update({ where: { id: sessionId }, data: { status: 'encerrada' } });
+      await tx.lootSession.update({
+        where: { id: sessionId },
+        data: { status: 'encerrada', closedAt: new Date() },
+      });
 
       await tx.lootSessionEvent.create({
         data: {
