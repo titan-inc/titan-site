@@ -147,13 +147,21 @@ export class CharactersRepository {
   /**
    * A identidade já existente, para quem já tem as duas chaves prontas em vez
    * de nome+realm crus. Não cria — mesmo contrato do `buscar()`.
+   *
+   * O `where` é montado com as DUAS chaves explícitas, nunca `chave` direto:
+   * o parâmetro é tipado com só `nameKey`/`realmKey`, mas TS não barra quem
+   * passa uma variável mais rica (ex.: o `personagem` de `LootSessionsRepository`,
+   * que também carrega `name`/`realm`) — não há excess-property-check em
+   * variável repassada, só em literal. O Prisma, esse sim, valida em runtime e
+   * rejeita chave extra em `where` composto (`Unknown argument`). Bug real,
+   * visto em produção local ao entrar numa sessão de loot.
    */
   async buscarPorChave(chave: {
     nameKey: string;
     realmKey: string;
   }): Promise<CharacterView | null> {
     return this.prisma.character.findUnique({
-      where: { nameKey_realmKey: chave },
+      where: { nameKey_realmKey: { nameKey: chave.nameKey, realmKey: chave.realmKey } },
       select: characterSelect,
     });
   }

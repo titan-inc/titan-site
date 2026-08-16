@@ -1,8 +1,8 @@
 type: http_request
 model: http_request
 id: rq_rodarDummy1
-createdAt: 2026-08-16T18:00:00.000000
-updatedAt: 2026-08-16T18:00:00.000000
+createdAt: 2026-08-16T18:00:00
+updatedAt: 2026-08-16T19:15:33.153129100
 workspaceId: wk_8LmjjnEbam
 folderId: fl_FknhcmhGXn
 authentication: {}
@@ -23,7 +23,15 @@ urlParameters:
 - enabled: false
   name: quantidade
   value: '6'
-  id: null
+  id: EpY4SxHZCT
+- enabled: true
+  name: :id
+  value: cmsw6og6n000ti0pgwp553zhk
+  id: path-placeholder:0
+- enabled: true
+  name: ''
+  value: ''
+  id: gjzGMX7y0m
 settingSendCookies:
   enabled: false
   value: true
