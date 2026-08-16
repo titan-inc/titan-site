@@ -328,3 +328,60 @@ curl -X POST "http://localhost:3001/internal/ops/loot-sessions/<id>/regerar-hist
 **Idempotente**: a chave é `LootSessionItem.id` (`LootLine.externalId`), única
 por peça — rodar de novo atualiza as mesmas linhas em vez de duplicar.
 Segura por construção, roda quantas vezes quiser.
+
+## Gerar uma colagem de teste (TIT-68)
+
+Ferramenta de teste do realtime da sessão ao vivo — não é fluxo de produção.
+Sorteia um boss REAL do catálogo (com ao menos 3 drops cadastrados numa
+dificuldade) e devolve o texto pronto para colar em "Iniciar sessão" na
+área interna. Não cria a sessão sozinha, só poupa montar uma colagem válida
+à mão.
+
+```bash
+curl "http://localhost:3001/internal/ops/loot-sessions/gerar-colagem" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "paste": "TILC/1\tencounter=3176\tencounterName=...\n..." }
+```
+
+400 se o catálogo não tiver nenhum boss com pelo menos 3 itens cadastrados
+numa dificuldade — gere/carregue o catálogo antes (`catalog-generate` /
+`catalog-load`, acima).
+
+## Simular jogadores numa sessão de loot (TIT-68)
+
+Ferramenta de teste do realtime — não é fluxo de produção. Sobe N
+personagens 100% sintéticos (`Dummy1..DummyN`, nunca um personagem real —
+ver o comentário de `LootSessionDummiesService`), entra com eles na sessão
+e, a cada ~2s, faz 1–2 ações dependendo da fase atual:
+
+- **`aberta`**: um dummy responde a uma peça (escolhe opção, às vezes com
+  nota). Responder de novo na mesma peça É a edição — não é caminho à parte.
+- **`deliberando`**: só reage se o loot master reabriu a resposta de um
+  dummy (`resposta-do-conselho`/reabrir); sem isso, fica ocioso no ciclo.
+- **`encerrada`**: para sozinha.
+
+Kill switch de 10 minutos a partir do INÍCIO da simulação (não da criação
+da sessão) — o que vier primeiro entre isso e a sessão encerrar.
+
+Fire-and-forget: a rota devolve na hora, o loop roda em segundo plano
+dentro do próprio processo da api (Regra 8 — nada de `NestFactory`).
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/loot-sessions/<id>/rodar-dummies?quantidade=6" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{
+  "dummies": [{ "name": "Dummy1", "realm": "TestDummy" }, ...],
+  "killSwitchAt": "2026-08-16T19:11:01.158Z"
+}
+```
+
+`?quantidade=` é opcional (padrão 6, clamp 2–10). 400 se a sessão já
+encerrou; 409 se já existe uma simulação rodando para aquela sessão — uma
+por vez, chame de novo depois que a anterior parar (kill switch, sessão
+encerrada, ou a api reiniciar — o estado é em memória).

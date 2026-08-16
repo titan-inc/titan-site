@@ -3,8 +3,13 @@ import type { CatalogFile } from '@titan/shared';
 import type { AttendanceService } from '../attendance/attendance.service';
 import type { BlizzardService } from '../blizzard/blizzard.service';
 import type { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
+import type { LootCatalogPasteGeneratorService } from '../loot-catalog/loot-catalog-paste-generator.service';
 import type { LootCatalogService } from '../loot-catalog/loot-catalog.service';
 import type { RcImportService } from '../loot-lines/rc-import.service';
+import type {
+  LootSessionDummiesService,
+  ResultadoRodarDummies,
+} from '../loot-sessions/loot-session-dummies.service';
 import type { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
@@ -58,6 +63,14 @@ describe('OpsController', () => {
   const lootSessions = {
     regerarHistorico: jest.fn<Promise<number>, [string]>(() => Promise.resolve(0)),
   };
+  const pasteGenerator = {
+    gerarColagemAleatoria: jest.fn(() => Promise.resolve('TILC/1\t...')),
+  };
+  const dummies = {
+    rodar: jest.fn<Promise<ResultadoRodarDummies>, [string, number | undefined]>(() =>
+      Promise.resolve({ dummies: [{ name: 'Dummy1', realm: 'TestDummy' }], killSwitchAt: 'x' }),
+    ),
+  };
 
   let controller: OpsController;
 
@@ -72,6 +85,8 @@ describe('OpsController', () => {
       raidProgress as unknown as RaidProgressService,
       rcImport as unknown as RcImportService,
       lootSessions as unknown as LootSessionsService,
+      pasteGenerator as unknown as LootCatalogPasteGeneratorService,
+      dummies as unknown as LootSessionDummiesService,
       ops as unknown as OpsService,
     );
   });
@@ -195,5 +210,30 @@ describe('OpsController', () => {
 
     expect(lootSessions.regerarHistorico).toHaveBeenCalledWith('sess-1');
     expect(resultado).toEqual({ linhas: 3 });
+  });
+
+  it('gerar-colagem devolve a colagem do gerador', async () => {
+    pasteGenerator.gerarColagemAleatoria.mockResolvedValueOnce('TILC/1\tencounter=1');
+
+    const resultado = await controller.gerarColagemDeSessao();
+
+    expect(resultado).toEqual({ paste: 'TILC/1\tencounter=1' });
+  });
+
+  describe('rodar-dummies', () => {
+    it('sem ?quantidade passa undefined — o default é do service', async () => {
+      await controller.rodarDummiesNaSessao('sess-1');
+      expect(dummies.rodar).toHaveBeenCalledWith('sess-1', undefined);
+    });
+
+    it('com ?quantidade numérica repassa o número', async () => {
+      await controller.rodarDummiesNaSessao('sess-1', '4');
+      expect(dummies.rodar).toHaveBeenCalledWith('sess-1', 4);
+    });
+
+    it('?quantidade não numérica ignora e passa undefined', async () => {
+      await controller.rodarDummiesNaSessao('sess-1', 'oito');
+      expect(dummies.rodar).toHaveBeenCalledWith('sess-1', undefined);
+    });
   });
 });
