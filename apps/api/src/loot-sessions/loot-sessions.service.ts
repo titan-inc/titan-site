@@ -147,6 +147,14 @@ export class LootSessionsService {
   }
 
   /**
+   * `itemId` + `itemString` de toda peça de toda sessão — para o relatório de
+   * bonus desconhecidos (TIT-82).
+   */
+  listarItensParaRelatorioDeBonus(): Promise<Array<{ itemId: number; itemString: string }>> {
+    return this.repo.findAllItemStrings();
+  }
+
+  /**
    * As respostas de todo mundo — **e só depois que a fase de roll fecha**.
    *
    * A consulta é feita ou não conforme a fase; o serviço não devolve a lista

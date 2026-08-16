@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  bonusDictionaryFileSchema,
   catalogFileSchema,
   parseJournalDump,
   rcExportSchema,
@@ -31,6 +32,11 @@ import {
 import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
+import {
+  WowBonusReportService,
+  type RelatorioDeDesconhecidos,
+} from '../wow-bonus/wow-bonus-report.service';
+import { WowBonusService, type ResultadoDaCargaDeBonus } from '../wow-bonus/wow-bonus.service';
 import { OpsTokenGuard } from './ops-token.guard';
 import {
   OpsService,
@@ -51,6 +57,10 @@ const catalogGenerateBodySchema = z.object({
 const catalogLoadBodySchema = z.object({
   catalog: catalogFileSchema,
   semConferencia: z.boolean().optional(),
+});
+
+const bonusLoadBodySchema = z.object({
+  dictionary: bonusDictionaryFileSchema,
 });
 
 function parseCharacters(raw?: string): string[] {
@@ -110,6 +120,8 @@ export class OpsController {
     private readonly pasteGenerator: LootCatalogPasteGeneratorService,
     private readonly dummies: LootSessionDummiesService,
     private readonly ops: OpsService,
+    private readonly wowBonus: WowBonusService,
+    private readonly wowBonusReport: WowBonusReportService,
   ) {}
 
   /** Era `pnpm --filter api probe:snapshot [--backfill]`. */
@@ -226,6 +238,33 @@ export class OpsController {
   @Get('oauth-check')
   async oauthCheck(@Query('characters') characters?: string): Promise<OauthCheckResult> {
     return this.ops.checkOauth(parseCharacters(characters));
+  }
+
+  /**
+   * Carrega o dicionário de bonus IDs — TIT-82. Sem script antigo equivalente.
+   *
+   * O arquivo vai no corpo, mesmo padrão do `catalog-load`: a app nunca fala
+   * com o wago.tools, o arquivo é obtido e curado à mão (ver `docs/ops.md`), e
+   * esta rota só grava o que já foi decidido.
+   *
+   * Idempotente por `bonusId`: rodar de novo com um arquivo corrigido
+   * atualiza as mesmas linhas.
+   */
+  @Post('bonus-load')
+  async bonusLoad(
+    @Body(new ZodValidationPipe(bonusLoadBodySchema))
+    body: z.infer<typeof bonusLoadBodySchema>,
+  ): Promise<ResultadoDaCargaDeBonus> {
+    return this.wowBonus.carregarArquivo(body.dictionary);
+  }
+
+  /**
+   * "O que ainda não conhecemos" — TIT-82. Sem corpo, sem parâmetro: varre o
+   * histórico e as sessões já gravados, ordenado por frequência.
+   */
+  @Get('bonus-unknown-report')
+  async bonusUnknownReport(): Promise<RelatorioDeDesconhecidos> {
+    return this.wowBonusReport.gerar();
   }
 
   /**
