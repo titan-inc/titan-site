@@ -1,16 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import type { OfficerGrant } from '@prisma/client';
+import type { Character, OfficerGrant } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreateGrantInput {
-  /** Identidade via toCharacterKey() — COM acento. Ver Regra 6. */
-  nameKey: string;
-  /** Realm via toSlug(). */
-  realmSlug: string;
-  /** Nome e realm como a Blizzard exibe. */
-  name: string;
-  realm: string;
+  /** Identidade já resolvida — quem resolve é o `CharactersRepository`. */
+  characterId: string;
   grantedBy: string;
+}
+
+export type OfficerGrantWithCharacter = OfficerGrant & { character: Character };
+
+/** Identidade de quem já logou, nos dois formatos que o módulo precisa. */
+export interface KnownCharacter {
+  characterId: string;
+  nameKey: string;
+  realmKey: string;
 }
 
 /**
@@ -21,8 +25,11 @@ export class OfficersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Mais novo primeiro: a lista é curta e a leitura útil é "quem entrou agora". */
-  async findAll(): Promise<OfficerGrant[]> {
-    return this.prisma.officerGrant.findMany({ orderBy: { grantedAt: 'desc' } });
+  async findAll(): Promise<OfficerGrantWithCharacter[]> {
+    return this.prisma.officerGrant.findMany({
+      orderBy: { grantedAt: 'desc' },
+      include: { character: true },
+    });
   }
 
   /**
@@ -33,19 +40,20 @@ export class OfficersRepository {
    * `grantedBy`/`grantedAt` passa a ser o da última concessão, que é a
    * informação mais útil.
    */
-  async upsert(input: CreateGrantInput): Promise<OfficerGrant> {
-    const { nameKey, realmSlug, ...rest } = input;
+  async upsert(input: CreateGrantInput): Promise<OfficerGrantWithCharacter> {
+    const { characterId, ...rest } = input;
 
     return this.prisma.officerGrant.upsert({
-      where: { realmSlug_nameKey: { realmSlug, nameKey } },
-      create: { nameKey, realmSlug, ...rest },
+      where: { characterId },
+      create: { characterId, ...rest },
       update: { ...rest, grantedAt: new Date() },
+      include: { character: true },
     });
   }
 
   /** Null quando não existe — o controller traduz para 404. */
-  async findById(id: string): Promise<OfficerGrant | null> {
-    return this.prisma.officerGrant.findUnique({ where: { id } });
+  async findById(id: string): Promise<OfficerGrantWithCharacter | null> {
+    return this.prisma.officerGrant.findUnique({ where: { id }, include: { character: true } });
   }
 
   async delete(id: string): Promise<void> {
@@ -57,16 +65,23 @@ export class OfficersRepository {
   }
 
   /**
-   * Personagens de contas que já logaram, para dizer quais grants estão
-   * vinculados a alguém de verdade.
+   * Identidades de contas que já logaram, para dizer quais grants — e quais
+   * oficiais automáticos — estão vinculados a alguém de verdade.
    *
-   * Só o par de identidade: nome de exibição e rank vêm do roster, e battletag
-   * é dado pessoal que não tem por que sair daqui.
+   * `GuildCharacter` só existe depois do primeiro login (Regra 4), então esta
+   * lista É a definição de "conta real por trás". Vem nos dois formatos:
+   * `characterId` para casar direto com um grant, `nameKey`/`realmKey` para
+   * casar com um membro do roster vivo, que ainda não tem id nenhum.
    */
-  async findKnownCharacterKeys(): Promise<Array<{ nameKey: string; realmSlug: string }>> {
-    return this.prisma.guildCharacter.findMany({
-      select: { nameKey: true, realmSlug: true },
-      distinct: ['realmSlug', 'nameKey'],
+  async findKnownCharacters(): Promise<KnownCharacter[]> {
+    const linhas = await this.prisma.guildCharacter.findMany({
+      select: { characterId: true, character: { select: { nameKey: true, realmKey: true } } },
     });
+
+    return linhas.map((l) => ({
+      characterId: l.characterId,
+      nameKey: l.character.nameKey,
+      realmKey: l.character.realmKey,
+    }));
   }
 }

@@ -38,7 +38,7 @@ export class AttendanceController {
     // Populado pelo MemberGuard: a conta com TODOS os personagens no roster.
     // Uma pessoa raida em mais de um char, e o histórico dela é a soma.
     const account = (req as Request & { account: UserWithCharacters }).account;
-    return this.report.getMine(account.characters);
+    return this.report.getMine(account.characters.map((c) => c.characterId));
   }
 
   /**

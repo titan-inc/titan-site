@@ -1,4 +1,4 @@
-import type { GuildCharacter } from '@prisma/client';
+import type { Character, GuildCharacter } from '@prisma/client';
 import type { BlizzardService } from '../blizzard/blizzard.service';
 import type { AuthRepository, UserWithCharacters } from './auth.repository';
 import { AuthService } from './auth.service';
@@ -15,9 +15,27 @@ process.env.GUILD_REALM ??= 'Azralon';
 process.env.GUILD_RANK_ACCESS_MAX ??= '4';
 process.env.GUILD_OFFICER_RANK_MAX ??= '2';
 
-// Nomes fictícios — CLAUDE.md proíbe nome real de membro em fixture.
-const char = (nameKey: string, rank: number): GuildCharacter =>
-  ({ nameKey, realmSlug: 'azralon', name: nameKey, rank }) as GuildCharacter;
+// Nomes fictícios — CLAUDE.md proíbe nome real de membro em fixture. O nome
+// dobra de id da identidade: depois da TIT-132 é por `characterId` que
+// `isOfficerByGrants` compara, não mais por (nameKey, realmSlug).
+const char = (id: string, rank: number): GuildCharacter & { character: Character } => ({
+  id: `gc-${id}`,
+  userId: 'u1',
+  characterId: id,
+  rank,
+  createdAt: new Date('2026-08-10T12:00:00Z'),
+  updatedAt: new Date('2026-08-10T12:00:00Z'),
+  character: {
+    id,
+    nameKey: id,
+    realmKey: 'azralon',
+    name: id,
+    realm: 'Azralon',
+    class: null,
+    createdAt: new Date('2026-08-10T12:00:00Z'),
+    updatedAt: new Date('2026-08-10T12:00:00Z'),
+  },
+});
 
 const user = (over: Partial<UserWithCharacters> = {}): UserWithCharacters =>
   ({
@@ -48,13 +66,13 @@ describe('AuthService.toSessionUser', () => {
 
     it('só grant: fora do corte de oficial, mas concedido', async () => {
       // O raid leader em rank 4. É o caso que justifica a lista manual existir.
-      repo.findOfficerGrants.mockResolvedValue([{ nameKey: 'rl', realmSlug: 'azralon' }]);
+      repo.findOfficerGrants.mockResolvedValue(['rl']);
       const r = await service.toSessionUser(user({ guildRank: 4, characters: [char('rl', 4)] }));
       expect(r.isOfficer).toBe(true);
     });
 
     it('as duas ao mesmo tempo', async () => {
-      repo.findOfficerGrants.mockResolvedValue([{ nameKey: 'chefe', realmSlug: 'azralon' }]);
+      repo.findOfficerGrants.mockResolvedValue(['chefe']);
       const r = await service.toSessionUser(user({ guildRank: 1, characters: [char('chefe', 1)] }));
       expect(r.isOfficer).toBe(true);
     });
@@ -77,7 +95,7 @@ describe('AuthService.toSessionUser', () => {
 
   it('grant sozinho não dá área interna a quem está fora do corte de acesso', async () => {
     // isOfficer verdadeiro com hasInternalAccess falso: isActingOfficer barra.
-    repo.findOfficerGrants.mockResolvedValue([{ nameKey: 'social', realmSlug: 'azralon' }]);
+    repo.findOfficerGrants.mockResolvedValue(['social']);
     const r = await service.toSessionUser(user({ guildRank: 7, characters: [char('social', 7)] }));
     expect(r.isOfficer).toBe(true);
     expect(r.hasInternalAccess).toBe(false);
@@ -85,7 +103,7 @@ describe('AuthService.toSessionUser', () => {
 
   it('não-membro não é oficial nem com grant', async () => {
     // Sair da guilda derruba tudo, mesmo que ninguém revogue a concessão.
-    repo.findOfficerGrants.mockResolvedValue([{ nameKey: 'exmembro', realmSlug: 'azralon' }]);
+    repo.findOfficerGrants.mockResolvedValue(['exmembro']);
     const r = await service.toSessionUser(
       user({ membership: 'not_member', guildRank: null, characters: [] }),
     );

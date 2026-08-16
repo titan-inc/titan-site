@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { LootLineSource, RaidDifficultyLevel } from '@titan/shared';
 import type { Prisma } from '@prisma/client';
+import { characterSelect } from '../characters/characters.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SeasonInicio } from './season-da-entrega';
 
@@ -244,11 +245,7 @@ export class LootLinesRepository {
 const historySelect = {
   id: true,
   awardedAt: true,
-  winnerNameKey: true,
-  winnerRealmKey: true,
-  winnerName: true,
-  winnerRealm: true,
-  winnerClass: true,
+  winner: { select: { ...characterSelect, class: true } },
   itemId: true,
   rawBoss: true,
   rawInstance: true,

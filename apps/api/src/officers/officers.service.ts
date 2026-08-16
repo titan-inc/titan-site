@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import {
   isOfficerByRank,
-  toCharacterKey,
   toSlug,
   type CreateOfficerGrant,
   type OfficerByRank,
@@ -15,13 +14,9 @@ import {
   type OfficerList,
 } from '@titan/shared';
 import { BlizzardService, type RosterMember } from '../blizzard/blizzard.service';
+import { chaveDe, CharactersRepository, indice } from '../characters/characters.repository';
 import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
 import { OfficersRepository } from './officers.repository';
-
-/** Identidade normalizada nos dois lados antes de comparar — Regra 6. */
-function chaveDe(ref: { nameKey: string; realmSlug: string }): string {
-  return `${toSlug(ref.realmSlug)}/${toCharacterKey(ref.nameKey)}`;
-}
 
 /**
  * Quem é oficial — Regra 4.
@@ -38,6 +33,7 @@ export class OfficersService {
   constructor(
     private readonly repo: OfficersRepository,
     private readonly blizzard: BlizzardService,
+    private readonly characters: CharactersRepository,
   ) {
     this.guild = loadGuildConfig();
   }
@@ -52,28 +48,33 @@ export class OfficersService {
   async list(): Promise<OfficerList> {
     const [grants, conhecidos] = await Promise.all([
       this.repo.findAll(),
-      this.repo.findKnownCharacterKeys(),
+      this.repo.findKnownCharacters(),
     ]);
 
     const membros = await this.rosterMembros();
-    const porChave = new Map((membros ?? []).map((m) => [chaveDe(m), m]));
-    const vinculados = new Set(conhecidos.map(chaveDe));
+    // Identidade do roster vivo, na mesma chave que `Character` guarda —
+    // Regra 6: `nameKey` mantém acento, `realmKey` é a chave frouxa.
+    const porChave = new Map(
+      (membros ?? []).map((m) => [indice(chaveDe({ name: m.name, realm: m.realmSlug })), m]),
+    );
+    const idsConhecidos = new Set(conhecidos.map((c) => c.characterId));
+    const chavesConhecidas = new Set(conhecidos.map((c) => indice(c)));
 
     return {
       officerRankMax: this.guild.officerRankMax,
       rosterOk: membros !== null,
 
       grants: grants.map((g): OfficerGrant => {
-        const chave = chaveDe(g);
+        const chave = indice({ nameKey: g.character.nameKey, realmKey: g.character.realmKey });
 
         return {
           id: g.id,
-          name: g.name,
-          realm: g.realm,
-          nameKey: g.nameKey,
-          realmSlug: g.realmSlug,
+          name: g.character.name,
+          realm: g.character.realm,
+          nameKey: g.character.nameKey,
+          realmSlug: toSlug(g.character.realm),
           rank: porChave.get(chave)?.rank ?? null,
-          linked: vinculados.has(chave),
+          linked: idsConhecidos.has(g.characterId),
           grantedBy: g.grantedBy,
           grantedAt: g.grantedAt.toISOString(),
         };
@@ -91,7 +92,7 @@ export class OfficersService {
           nameKey: m.nameKey,
           realmSlug: m.realmSlug,
           rank: m.rank,
-          linked: vinculados.has(chaveDe(m)),
+          linked: chavesConhecidas.has(indice(chaveDe({ name: m.name, realm: m.realmSlug }))),
         })),
     };
   }
@@ -148,13 +149,12 @@ export class OfficersService {
       );
     }
 
-    await this.repo.upsert({
-      nameKey: alvo.nameKey,
-      realmSlug: alvo.realmSlug,
+    // A Blizzard vence a grafia: `alvo` veio do roster agora mesmo.
+    const characterId = await this.characters.resolverDoRoster({
       name: alvo.name,
       realm: alvo.realmSlug,
-      grantedBy,
     });
+    await this.repo.upsert({ characterId, grantedBy });
 
     this.logger.log(`Oficial concedido a ${alvo.name}-${alvo.realmSlug} por ${grantedBy}`);
 
@@ -197,7 +197,9 @@ export class OfficersService {
     }
 
     await this.repo.delete(id);
-    this.logger.log(`Oficial revogado de ${grant.name}-${grant.realmSlug} por ${revokedBy}`);
+    this.logger.log(
+      `Oficial revogado de ${grant.character.name}-${grant.character.realm} por ${revokedBy}`,
+    );
 
     return this.list();
   }

@@ -1,7 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import { LOOT_RESPONSES } from '@titan/shared';
+import {
+  chaveDe,
+  indice,
+  type CharactersRepository,
+  type PersonagemDaFonte,
+} from '../characters/characters.repository';
 import type { LootLinesRepository, LootLineUpsert } from './loot-lines.repository';
 import { RcImportService } from './rc-import.service';
+
+/** Id determinístico a partir da chave, só para o teste comparar. */
+const idDoPersonagem = (p: PersonagemDaFonte): string => `char:${indice(chaveDe(p))}`;
 
 /**
  * Um registro do export. Nomes fictícios de propósito: o export real tem gente
@@ -42,6 +51,12 @@ describe('RcImportService', () => {
     countBySource: jest.fn(() => Promise.resolve(0)),
   };
 
+  const characters = {
+    resolverVarios: jest.fn((personagens: PersonagemDaFonte[]) =>
+      Promise.resolve(new Map(personagens.map((p) => [indice(chaveDe(p)), idDoPersonagem(p)]))),
+    ),
+  };
+
   let service: RcImportService;
 
   /** As linhas que o serviço mandou gravar. */
@@ -66,7 +81,10 @@ describe('RcImportService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new RcImportService(repo as unknown as LootLinesRepository);
+    service = new RcImportService(
+      repo as unknown as LootLinesRepository,
+      characters as unknown as CharactersRepository,
+    );
   });
 
   describe('o que entra e o que não entra', () => {
@@ -189,21 +207,27 @@ describe('RcImportService', () => {
   });
 
   describe('identidade do personagem', () => {
-    it('o realm vira chave frouxa, para casar com o roster', async () => {
-      // A fonte escreve `Area52` e o roster guarda `area-52`. Com toSlug() nos
-      // dois lados o histórico da pessoa apareceria partido em dois.
+    it('repassa nome e realm da fonte, sem normalizar', async () => {
+      // Quem normaliza agora é o CharactersRepository (toCharacterKey mantém
+      // acento, toRealmMatchKey tira separador — Regra 6). Aqui só confere que
+      // o import não mexe na grafia antes de mandar resolver a identidade.
       await service.importar([registro({ player: 'Fulano-Area52' })]);
 
-      expect(linha().winnerRealmKey).toBe('area52');
-      expect(linha().winnerRealm).toBe('Area52');
+      expect(characters.resolverVarios).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ name: 'Fulano', realm: 'Area52' })]),
+      );
+      expect(linha().winnerCharacterId).toBe(idDoPersonagem({ name: 'Fulano', realm: 'Area52' }));
     });
 
-    it('o nome mantém acento na identidade', async () => {
-      // Shrëwd, Shrêwd e Shrèwd são pessoas diferentes, com ranks diferentes.
+    it('não mexe no acento do nome ao repassar', async () => {
+      // Shrëwd, Shrêwd e Shrèwd são pessoas diferentes, com ranks diferentes —
+      // quem preserva isso é o toCharacterKey() do CharactersRepository.
       await service.importar([registro({ player: 'Shrëwd-Azralon' })]);
 
-      expect(linha().winnerNameKey).toBe('shrëwd');
-      expect(linha().winnerName).toBe('Shrëwd');
+      expect(characters.resolverVarios).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ name: 'Shrëwd', realm: 'Azralon' })]),
+      );
+      expect(linha().winnerCharacterId).toBe(idDoPersonagem({ name: 'Shrëwd', realm: 'Azralon' }));
     });
 
     it('recusa registro sem realm em vez de gravar meia identidade', async () => {

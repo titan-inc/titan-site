@@ -24,10 +24,11 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
  * maior rank evita apresentar um alt de bank como se fosse o main.
  */
 /** O personagem, achatado do jeito que o resto do serviço espera. */
-function paraRef(personagem: {
+function paraRef(personagem: { rank: number; character: { name: string; realm: string } }): {
+  name: string;
+  realmSlug: string;
   rank: number;
-  character: { name: string; realm: string };
-}): { name: string; realmSlug: string; rank: number } {
+} {
   return {
     name: personagem.character.name,
     realmSlug: personagem.character.realm,
@@ -108,7 +109,6 @@ export class AuthService {
       const hit = rosterByKey.get(`${char.realmSlug}/${char.nameKey}`);
       if (hit) {
         matched.push({
-          nameKey: char.nameKey,
           realmSlug: char.realmSlug,
           name: hit.name,
           rank: hit.rank,

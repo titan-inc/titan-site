@@ -143,13 +143,54 @@ export class CharactersRepository {
       select: characterSelect,
     });
   }
+
+  /**
+   * A identidade já existente, para quem já tem as duas chaves prontas em vez
+   * de nome+realm crus. Não cria — mesmo contrato do `buscar()`.
+   */
+  async buscarPorChave(chave: {
+    nameKey: string;
+    realmKey: string;
+  }): Promise<CharacterView | null> {
+    return this.prisma.character.findUnique({
+      where: { nameKey_realmKey: chave },
+      select: characterSelect,
+    });
+  }
+
+  /**
+   * Ids de identidade fora do padrão `cuid()` — TIT-132, backfill de 16/08.
+   *
+   * `cuid()` é `@default` avaliado em JS, não existe no Postgres, então as 69
+   * identidades criadas pelo backfill (que rodou em SQL puro) saíram em uuid.
+   * O teste é o hífen: cuid nunca tem, uuid sempre tem — não precisa adivinhar
+   * formato.
+   */
+  async findIdsForaDoPadrao(): Promise<string[]> {
+    const linhas = await this.prisma.character.findMany({
+      where: { id: { contains: '-' } },
+      select: { id: true },
+    });
+    return linhas.map((l) => l.id);
+  }
+
+  /**
+   * Troca o id de uma identidade.
+   *
+   * Os 11 FKs que apontam para `Character.id` são `ON UPDATE CASCADE`
+   * (conferido no `pg_constraint`), então este `UPDATE` propaga sozinho para
+   * as tabelas filhas — nada a derrubar ou recriar antes.
+   */
+  async renomearId(idAntigo: string, idNovo: string): Promise<void> {
+    await this.prisma.character.update({ where: { id: idAntigo }, data: { id: idNovo } });
+  }
 }
 
 /** As duas chaves da Regra 6. Nunca uma só, nunca a função trocada. */
-export function chaveDe(personagem: {
-  name: string;
-  realm: string;
-}): { nameKey: string; realmKey: string } {
+export function chaveDe(personagem: { name: string; realm: string }): {
+  nameKey: string;
+  realmKey: string;
+} {
   return {
     nameKey: toCharacterKey(personagem.name),
     realmKey: toRealmMatchKey(personagem.realm),

@@ -16,11 +16,14 @@ import type { CatalogItemRow, LootHistoryRow, LootLinesRepository } from './loot
 const linhaDoBanco = (over: Partial<LootHistoryRow> = {}): LootHistoryRow => ({
   id: 'ckline',
   awardedAt: new Date('2026-03-19T23:12:00.000Z'),
-  winnerNameKey: 'fulano',
-  winnerRealmKey: 'area52',
-  winnerName: 'Fulano',
-  winnerRealm: 'Area52',
-  winnerClass: 'MAGE',
+  winner: {
+    id: 'char-fulano',
+    nameKey: 'fulano',
+    realmKey: 'area52',
+    name: 'Fulano',
+    realm: 'Area52',
+    class: 'MAGE',
+  },
   itemId: 249308,
   rawBoss: 'Chimaerus, the Undreamt God',
   rawInstance: 'The Voidspire-Heroic',
@@ -53,6 +56,9 @@ describe('LootHistoryService', () => {
     >(() => Promise.resolve({ linhas: [linhaDoBanco()], total: 1 })),
     findItems: jest.fn<Promise<CatalogItemRow[]>, [number[]]>(() => Promise.resolve([item()])),
     findItemIdsBySlot: jest.fn<Promise<number[]>, [string]>(() => Promise.resolve([249308])),
+    findCharacterByKeys: jest.fn<Promise<{ id: string } | null>, [string, string]>(() =>
+      Promise.resolve({ id: 'char-shrewd' }),
+    ),
 
     contarPorSeason: jest.fn(() =>
       Promise.resolve([
@@ -119,9 +125,11 @@ describe('LootHistoryService', () => {
     it('personagem vira a identidade normalizada, não a string crua', async () => {
       // `Area52` da fonte precisa casar com `area-52` do roster: o realm vai
       // pela chave frouxa. O nome mantém acento, que é o que distingue pessoas.
+      // `Nome-Realm` na URL vira identidade aqui — quem resolve é o repositório.
       await service.consultar(filtros({ character: 'Shrëwd-Area52' }));
 
-      expect(whereUsado()).toMatchObject({ winnerNameKey: 'shrëwd', winnerRealmKey: 'area52' });
+      expect(repo.findCharacterByKeys).toHaveBeenCalledWith('shrëwd', 'area52');
+      expect(whereUsado()).toMatchObject({ winnerCharacterId: 'char-shrewd' });
     });
 
     it('personagem sem realm é ignorado em vez de recusar a consulta', async () => {
@@ -297,20 +305,17 @@ describe('LootHistoryService.facets', () => {
     ),
     contarPorPersonagem: jest.fn(() =>
       Promise.resolve([
-        {
-          winnerNameKey: 'zulu',
-          winnerRealmKey: 'azralon',
-          winnerName: 'Zulu',
-          winnerRealm: 'Azralon',
-          _count: 4,
-        },
-        {
-          winnerNameKey: 'alfa',
-          winnerRealmKey: 'area52',
-          winnerName: 'Alfa',
-          winnerRealm: 'Area52',
-          _count: 19,
-        },
+        { winnerCharacterId: 'char-zulu', _count: 4 },
+        { winnerCharacterId: 'char-alfa', _count: 19 },
+      ]),
+    ),
+    findCharacterNames: jest.fn<
+      Promise<Array<{ id: string; name: string; realm: string }>>,
+      [string[]]
+    >(() =>
+      Promise.resolve([
+        { id: 'char-zulu', name: 'Zulu', realm: 'Azralon' },
+        { id: 'char-alfa', name: 'Alfa', realm: 'Area52' },
       ]),
     ),
     contarPorBoss: jest.fn(() =>

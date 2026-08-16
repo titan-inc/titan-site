@@ -1,13 +1,23 @@
+import { toCharacterKey, toRealmMatchKey } from '@titan/shared';
 import type { TeamCharacter, WowAuditService } from '../wowaudit/wowaudit.service';
 import { ProgressService } from './progress.service';
 import type { SnapshotsRepository } from './snapshots.repository';
 
-/** Uma linha como o repository devolve. Dados fictícios — ver CLAUDE.md. */
-const linha = (nome: string, period: number, itemLevel: number | null, realmSlug = 'azralon') => ({
+/**
+ * Uma linha como o repository devolve. Dados fictícios — ver CLAUDE.md.
+ *
+ * `characterId` é determinístico a partir de nome+realm, só para o teste
+ * comparar a mesma pessoa entre semanas.
+ */
+const linha = (nome: string, period: number, itemLevel: number | null, realm = 'Azralon') => ({
   period,
-  nameKey: nome.toLowerCase(),
-  realmSlug,
-  name: nome,
+  characterId: `char:${toCharacterKey(nome)}|${toRealmMatchKey(realm)}`,
+  character: {
+    name: nome,
+    realm,
+    nameKey: toCharacterKey(nome),
+    realmKey: toRealmMatchKey(realm),
+  },
   itemLevel,
   keysDone: null,
   highestKey: null,

@@ -355,12 +355,12 @@ function montarEntrada(
     awardedAt: linha.awardedAt.toISOString(),
 
     winner: {
-      name: linha.winnerName,
-      realm: linha.winnerRealm,
-      nameKey: linha.winnerNameKey,
-      realmKey: linha.winnerRealmKey,
+      name: linha.winner.name,
+      realm: linha.winner.realm,
+      nameKey: linha.winner.nameKey,
+      realmKey: linha.winner.realmKey,
     },
-    winnerClass: linha.winnerClass,
+    winnerClass: linha.winner.class,
 
     item: {
       itemId: linha.itemId,
