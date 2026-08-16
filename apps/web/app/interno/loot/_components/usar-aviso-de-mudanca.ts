@@ -26,7 +26,7 @@ export function useAvisoDeMudanca(sessionId: string, aoMudar: () => void): void 
 
   useEffect(() => {
     let jitterMs = 0;
-    let cancelado = false;
+    const pendentes = new Set<ReturnType<typeof setTimeout>>();
 
     // withCredentials: sem isso o cookie de sessão não atravessa, e o
     // MemberGuard recusa a conexão — mesma exigência do fetch com
@@ -36,21 +36,29 @@ export function useAvisoDeMudanca(sessionId: string, aoMudar: () => void): void 
     });
 
     origem.addEventListener('ola', (evento) => {
-      const dados = JSON.parse((evento as MessageEvent).data) as { jitterMs: number };
-      jitterMs = dados.jitterMs;
+      try {
+        const dados = JSON.parse((evento as MessageEvent).data) as { jitterMs: number };
+        jitterMs = dados.jitterMs;
+      } catch {
+        // Saudação corrompida: fica em 0 (reação imediata) em vez de deixar
+        // a exceção matar este listener — é config de espalhamento, não algo
+        // que deva travar a tela reagindo.
+      }
     });
 
     // Evento sem `type` (o aviso de mudança em si) cai aqui.
     origem.onmessage = () => {
       const atraso = Math.random() * jitterMs;
-      setTimeout(() => {
-        if (!cancelado) aoMudarRef.current();
+      const id = setTimeout(() => {
+        pendentes.delete(id);
+        aoMudarRef.current();
       }, atraso);
+      pendentes.add(id);
     };
 
     return () => {
-      cancelado = true;
       origem.close();
+      for (const id of pendentes) clearTimeout(id);
     };
   }, [sessionId]);
 }

@@ -14,6 +14,16 @@ function coletarAvisos(bus: LootSessionChangeBus, sessionId: string) {
   return { avisos, sub };
 }
 
+/**
+ * O `Map` de canais é privado de propósito — não há razão de negócio para
+ * expô-lo. Mas "não deixa nada pendurado" só é uma afirmação verificável
+ * olhando pra dentro dele, e é exatamente o que um teste anterior prometia
+ * no nome e não checava na asserção.
+ */
+function tamanhoDoMapaDeCanais(bus: LootSessionChangeBus): number {
+  return (bus as unknown as { canais: Map<string, unknown> }).canais.size;
+}
+
 describe('LootSessionChangeBus', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -142,9 +152,21 @@ describe('LootSessionChangeBus', () => {
     segunda.sub.unsubscribe();
   });
 
-  it('sem ninguém ouvindo, avisar() não lança e não deixa nada pendurado', () => {
+  it('sem ninguém ouvindo, avisar() é no-op e não deixa entrada pendurada no Map', () => {
+    // É o caminho NORMAL, não borda: criar() chama avisar() no instante em
+    // que a sessão nasce, antes de qualquer cliente poder estar conectado.
     const bus = new LootSessionChangeBus();
+
     expect(() => bus.avisar('sess-sem-ouvinte')).not.toThrow();
+    expect(tamanhoDoMapaDeCanais(bus)).toBe(0);
+  });
+
+  it('avisar() em muitas sessões sem ouvinte nenhum não acumula no Map', () => {
+    const bus = new LootSessionChangeBus();
+
+    for (let i = 0; i < 50; i++) bus.avisar(`sess-${i}`);
+
+    expect(tamanhoDoMapaDeCanais(bus)).toBe(0);
   });
 
   it('depois que o último assinante sai, o estado de throttle reseta', () => {
@@ -165,20 +187,74 @@ describe('LootSessionChangeBus', () => {
     segunda.sub.unsubscribe();
   });
 
-  it('a conexão termina sozinha depois de ~15 minutos — vida útil limitada', () => {
-    const bus = new LootSessionChangeBus();
-    let completou = false;
-    const sub: Subscription = bus.abrirStream('sess-1').subscribe({
-      complete: () => (completou = true),
+  describe('vida útil da conexão — ~15 minutos, com jitter de ±15%', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
     });
 
-    jest.advanceTimersByTime(15 * 60 * 1000 - 1);
-    expect(completou).toBe(false);
+    it('termina sozinha no pior caso do jitter (-15%)', () => {
+      jest.spyOn(Math, 'random').mockReturnValue(0);
+      const bus = new LootSessionChangeBus();
+      let completou = false;
+      const sub: Subscription = bus.abrirStream('sess-1').subscribe({
+        complete: () => (completou = true),
+      });
 
-    jest.advanceTimersByTime(1);
-    expect(completou).toBe(true);
+      const menorVida = 15 * 60 * 1000 * 0.85;
+      jest.advanceTimersByTime(menorVida - 1);
+      expect(completou).toBe(false);
 
-    sub.unsubscribe();
+      jest.advanceTimersByTime(1);
+      expect(completou).toBe(true);
+
+      sub.unsubscribe();
+    });
+
+    it('termina sozinha no maior caso do jitter (+15%)', () => {
+      jest.spyOn(Math, 'random').mockReturnValue(1);
+      const bus = new LootSessionChangeBus();
+      let completou = false;
+      const sub: Subscription = bus.abrirStream('sess-1').subscribe({
+        complete: () => (completou = true),
+      });
+
+      const maiorVida = 15 * 60 * 1000 * 1.15;
+      jest.advanceTimersByTime(maiorVida - 1);
+      expect(completou).toBe(false);
+
+      jest.advanceTimersByTime(1);
+      expect(completou).toBe(true);
+
+      sub.unsubscribe();
+    });
+
+    it('espalha a vida útil entre DUAS conexões da mesma sessão — reconexão não sincroniza', () => {
+      // Sem isto, ~25 raiders que abrem a tela no mesmo par de minutos teriam
+      // conexões expirando e reconectando juntas a cada STREAM_LIFETIME_MS —
+      // o mesmo pico sincronizado que motivou o jitter do router.refresh().
+      const sorteios = [0, 1];
+      let i = 0;
+      jest.spyOn(Math, 'random').mockImplementation(() => sorteios[i++ % sorteios.length] ?? 0);
+
+      const bus = new LootSessionChangeBus();
+      let primeiraCompletou = false;
+      let segundaCompletou = false;
+      const primeira = bus.abrirStream('sess-1').subscribe({
+        complete: () => (primeiraCompletou = true),
+      });
+      const segunda = bus.abrirStream('sess-1').subscribe({
+        complete: () => (segundaCompletou = true),
+      });
+
+      // A menor vida útil possível (-15%, sorteada pela primeira conexão) já
+      // passou; a maior (+15%, da segunda) ainda não.
+      jest.advanceTimersByTime(15 * 60 * 1000 * 0.85);
+      expect(primeiraCompletou).toBe(true);
+      expect(segundaCompletou).toBe(false);
+
+      primeira.unsubscribe();
+      segunda.unsubscribe();
+    });
   });
 
   it('manda um heartbeat a cada ~30s, sem payload — não deve acordar onmessage', () => {

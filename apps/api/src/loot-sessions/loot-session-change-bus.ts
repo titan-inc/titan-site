@@ -41,6 +41,21 @@ const HEARTBEAT: MessageEvent = { type: 'heartbeat', data: '' };
  */
 const STREAM_LIFETIME_MS = 15 * 60 * 1000;
 
+/**
+ * A vida útil de UMA conexão, com jitter (±15%) resolvido na hora que ela
+ * abre — sem isto, ~25 raiders que abrem a tela no mesmo par de minutos
+ * (todo mundo depois do boss cair) teriam conexões expirando juntas e
+ * reconectando juntas a cada `STREAM_LIFETIME_MS`: o mesmo pico sincronizado
+ * que motivou o jitter do `router.refresh()`, só que na vida útil do stream
+ * em vez do refetch.
+ *
+ * Por CONEXÃO, não por sessão: cada `EventSource` resolve o seu, então nem
+ * duas abas da MESMA pessoa expiram juntas.
+ */
+function vidaUtilComJitter(): number {
+  return STREAM_LIFETIME_MS * (0.85 + Math.random() * 0.3);
+}
+
 /** Uma sessão, e mais nada — nenhum payload. */
 const AVISO: MessageEvent = { data: 'mudou' };
 
@@ -88,13 +103,23 @@ export class LootSessionChangeBus {
   /**
    * Alguma coisa desta sessão mudou.
    *
+   * SEM CRIAR canal: se ninguém está com o stream aberto, é no-op — dica sem
+   * destinatário não tem por que existir. `criar()` avisa no instante em que
+   * a sessão nasce, antes de qualquer cliente poder estar conectado, e o
+   * mesmo vale para qualquer escrita feita enquanto ninguém tem a tela
+   * aberta; se isto criasse o canal, TODA sessão deixaria uma entrada
+   * permanente no `Map`, porque o `finalize()` que libera só dispara depois
+   * de alguém ter assinado. Quem conectar depois de qualquer forma renderiza
+   * o estado atual pelo server component — `abrirStream()` é quem cria o
+   * canal, na hora que alguém de fato assina.
+   *
    * Chamar SEMPRE depois que a escrita comitou — nunca de dentro da
    * transação. Publicado antes, quem receber o aviso rebusca e lê o estado
    * velho, e não vem segundo aviso: fica desatualizado para sempre.
    * Publicado depois, o pior caso é um refetch à toa.
    */
   avisar(sessionId: string): void {
-    this.canalDe(sessionId).entrada.next();
+    this.canais.get(sessionId)?.entrada.next();
   }
 
   /**
@@ -110,7 +135,7 @@ export class LootSessionChangeBus {
 
     const mudou = this.canalDe(sessionId).saida.pipe(map((): MessageEvent => AVISO));
 
-    return merge(saudacao, heartbeat, mudou).pipe(takeUntil(timer(STREAM_LIFETIME_MS)));
+    return merge(saudacao, heartbeat, mudou).pipe(takeUntil(timer(vidaUtilComJitter())));
   }
 
   private canalDe(sessionId: string): CanalDaSessao {
