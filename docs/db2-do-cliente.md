@@ -114,6 +114,23 @@ formato e um job nosso quebra em produção.
 | `ContentTuning`           | teto de nível em alguns caminhos                          |
 | `ItemBonusListLevelDelta` | lista de bonus → delta de ilvl (caminho antigo)           |
 
+### Para armadura e dano de arma
+
+| tabela                                      | papel                                                             |
+| ------------------------------------------- | ----------------------------------------------------------------- |
+| `ItemArmorTotal`                            | armadura base por ilvl, uma coluna por material                   |
+| `ItemArmorQuality`                          | modificador por qualidade                                         |
+| `ArmorLocation`                             | modificador por slot — **use as 4 colunas de material, não a 5ª** |
+| `ItemArmorShield`                           | escudo, tabela separada                                           |
+| `ItemDamageOneHand` / `TwoHand` / `*Caster` | dps por ilvl e qualidade                                          |
+
+### Para o track de upgrade
+
+| tabela                    | papel                                                             |
+| ------------------------- | ----------------------------------------------------------------- |
+| `ItemBonusListGroupEntry` | `SequenceValue` (o rank), o grupo, e o `Flags` que define o total |
+| `ItemBonusListGroup`      | o grupo. **Não tem o nome da track**                              |
+
 ### Para o descritor de dificuldade ("Mythic", "Mythic+", "Heroic")
 
 | tabela                | papel                                            |
@@ -433,48 +450,131 @@ separou foi uma fonte independente.
 Corolário prático: **fixture de item real detecta fórmula errada, não fórmula
 certa-por-acaso.** Ela continua obrigatória, mas não é suficiente sozinha.
 
-## A fixture: as sete peças que a fórmula reproduz
+## Armadura
+
+```
+armadura = floor( ItemArmorTotal[ilvl][material] × ItemArmorQuality[ilvl][qual]
+                  × ArmorLocation[slot][material] + 0,5 )
+```
+
+`material` vem do `Item.SubclassID` — 1 Cloth, 2 Leather, 3 Mail, 4 Plate. Item
+cujo subclass é `Misc` (0) ou maior que Plate **não tem armadura innata**: o anel
+devolve zero, e o tooltip dele de fato não tem a linha.
+
+Escudo tem tabela própria (`ItemArmorShield`) e não passa por aqui.
+
+### A quinta coluna do `ArmorLocation` NÃO entra
+
+O `ArmorLocation` tem quatro colunas de material **mais** uma `Modifier`, e elas
+discordam em alguns slots. Ombro é o caso: `0,11` nas quatro, `0,13` na quinta.
+
+Testado nos seis ranks de um ombro de placa: **`Platemodifier` (0,11) acerta os
+seis, `Modifier` (0,13) erra os seis**. O acessor do SimC — `value(subclass − 1)`,
+só as quatro primeiras — está certo, e a quinta coluna é outra coisa.
+
+## Arma
+
+```
+dps   = ItemDamage{OneHand|TwoHand}[ilvl].Quality[qual]
+speed = ItemSparse.ItemDelay / 1000
+min   = floor( dps × speed × (1 − DmgVariance/2) )
+max   = floor( dps × speed × (1 + DmgVariance/2) + 0,5 )
+```
+
+O `speed` e o `dps` do tooltip não são calculados: são o `ItemDelay` e o valor da
+tabela, direto. As variantes `*Caster` existem para arma de caster.
+
+## O track de upgrade: rank e total sim, nome não
+
+`Upgrade Level: Adventurer 1/6` tem três informações, e só duas estão no dado.
+
+```
+entrada = ItemBonusListGroupEntry onde ItemBonusListID = <bonus do itemString>
+
+rank  = entrada.SequenceValue
+grupo = entrada.ItemBonusListGroupID
+total = quantas entradas do grupo têm o MESMO Flags
+```
+
+Verificado em três grupos (612, 614, 616): cada um tem **6 entradas com
+`flags=2`** e mais 2–3 com `flags=3`, e o tooltip mostra `/6`. O que as de
+`flags=3` são, não sei.
+
+E o **`Type 34`** do bônus, que não existe no enum do SimC, tem como primeiro
+valor o `ItemBonusListGroupID` — confirmado nos três. O segundo valor continua
+desconhecido; a hipótese de ser o id da entrada **foi testada e falhou**.
+
+### O nome da track não existe em db2 alcançável pelo item
+
+Cinco caminhos independentes, todos negativos:
+
+| tentativa                                                                 | resultado                                                                     |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `ItemBonusListGroup.SequenceSpellID` → `SpellName`                        | **"Upgrading"** nos três grupos. Genérico                                     |
+| `ItemBonusSequenceSpell`                                                  | nenhuma linha para os grupos 612, 614, 616                                    |
+| `ItemNameDescription`                                                     | `Adventurer`/`Veteran`/`Champion` existem, mas **nada no item os referencia** |
+| segundo valor do `Type 34`                                                | aponta para entrada de outro grupo                                            |
+| **addon [ItemUpgradeTip](https://github.com/belazor-wow/ItemUpgradeTip)** | **raspa o texto do tooltip** — com a API completa do cliente na mão           |
+
+O último é o decisivo. O `Tooltip.lua` deles monta um padrão a partir do
+`ITEM_UPGRADE_TOOLTIP_FORMAT_STRING` — GlobalString do cliente, `"Upgrade Level:
+%s %d/%d"` — e extrai o nome do texto renderizado. Um addon com acesso total
+recorre a parsing de string porque **não há dado a consultar**.
+
+**A saída é um mapa curado `grupo → nome`**, seis linhas, fixas dentro da
+expansão, cada uma descoberta observando um item da track (614 = Adventurer,
+616 = Champion). Sem mapeamento, exibir só `1/6` — que já responde "essa peça
+ainda sobe?".
+
+Descartado: pedir ao addon que mande a linha do tooltip. Funcionaria, e traz de
+volta a doença do `rawBoss` — texto no idioma do cliente de quem era loot
+master, que a TIT-130 acabou de remover do modelo.
+
+## A fixture: as peças que a fórmula reproduz
 
 Critério de aceite da TIT-136. Cada linha é `itemString` + os números exatos que
-o tooltip mostrou.
+o tooltip mostrou. **55 valores em 13 espécimes.**
 
-| peça                             | item   | ilvl | stats conferidos                      |
-| -------------------------------- | ------ | ---- | ------------------------------------- |
-| Relentless Rider's Chain (cinto) | 249967 | 289  | Str 93, Sta 1745, Mastery 88, Crit 35 |
-| Platinum Star Band (anel)        | 193708 | 289  | Sta 1309, Crit 199, Mastery 104       |
-| Wallcliber's Hatchet (1H)        | 204279 | 82   | Agi 9, Sta 16, Haste 12, Vers 6       |
-| Blazebinder's Hoof (trinket) r1  | 193762 | 292  | Haste 119                             |
-| Blazebinder's Hoof r2            | 193762 | 295  | Haste 121                             |
-| Pendant of Malefic Fury r1       | 251142 | 292  | Sta 1353, Haste 97, Mastery 212       |
-| Pendant of Malefic Fury r2       | 251142 | 295  | Sta 1402, Haste 100, Mastery 217      |
+| peça                             | item   | ilvl             | conferido                                                                |
+| -------------------------------- | ------ | ---------------- | ------------------------------------------------------------------------ |
+| Relentless Rider's Chain (cinto) | 249967 | 289              | Str 93, Sta 1745, Mastery 88, Crit 35, armadura 183                      |
+| idem, outro rank                 | 249967 | 298              | armadura 193                                                             |
+| Platinum Star Band (anel)        | 193708 | 289              | Sta 1309, Crit 199, Mastery 104, sem armadura                            |
+| Wallcliber's Hatchet (1H)        | 204279 | 82               | Agi 9, Sta 16, Haste 12, Vers 6, 17–36 dano, speed 2,60, 10,2 dps        |
+| Blazebinder's Hoof (trinket)     | 193762 | 292 e 295        | Haste 119 e 121                                                          |
+| Pendant of Malefic Fury (colar)  | 251142 | 292 e 295        | Sta 1353/1402, Haste 97/100, Mastery 212/217                             |
+| **Steelbark Shoulderguards**     | 256998 | 266→282, 6 ranks | Str, Sta, Crit, Mastery e armadura nos **seis** — 24 stats e 6 armaduras |
 
 Cobre os quatro tipos de multiplicador (armadura, joia, trinket, arma), três
-classes de orçamento (1, 2, 3), dois ranks do mesmo item, e um item pós-squish
-de expansão antiga.
+classes de orçamento (1, 2, 3), primário fixo e flexível, uma track inteira, e
+um item pós-squish de expansão antiga.
 
 **Falta na fixture**: peça com socket nativo (`StatPercentageOfSocket` não-zero)
-— nenhuma das sete tem, então o `penalty` nunca foi exercitado com valor
-diferente de zero.
+— nenhuma tem, então o `penalty` nunca foi exercitado com valor diferente de
+zero. E peça com terciário.
 
 ## Placar: o que dá para montar hoje
 
-| elemento                              | status                                                   |
-| ------------------------------------- | -------------------------------------------------------- |
-| item level (item moderno)             | ✅ fórmula completa, 4/4                                 |
-| primário, stamina, secundários        | ✅ 19/19 stats em 7 peças                                |
-| descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                   |
-| `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                |
-| terciários                            | ⚠️ mecanismo conhecido, **nenhum espécime** ainda        |
-| socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 nas 7 peças        |
-| on use / proc                         | ⚠️ texto, `$d` e `$u` sim; escala por `ScalingClass` não |
-| dano de arma, armadura                | 🔧 tabelas extraídas, fórmula não transcrita             |
-| flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                 |
-| item level (era antiga)               | ❌ ver abaixo                                            |
-| track de upgrade (Champion x/y)       | ❌ não investigado                                       |
+| elemento                              | status                                                      |
+| ------------------------------------- | ----------------------------------------------------------- |
+| item level (item moderno)             | ✅ fórmula completa, 4/4                                    |
+| primário, stamina, secundários        | ✅ **43 stats** em 13 espécimes                             |
+| **armadura**                          | ✅ **8/8**, e a quinta coluna do `ArmorLocation` descartada |
+| **dano, speed, dps**                  | ✅ 4/4                                                      |
+| descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                      |
+| `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                   |
+| **track: rank e total**               | ✅ 3 grupos                                                 |
+| flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                    |
+| **track: nome**                       | ⛔ **não existe em dado** — mapa curado de 6 linhas         |
+| terciários                            | ⚠️ mecanismo conhecido, **nenhum espécime** ainda           |
+| socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças     |
+| on use / proc                         | ⚠️ texto, `$d` e `$u` sim; escala por `ScalingClass` não    |
+| item level (era antiga)               | ❌ ver abaixo                                               |
 
 ## O que ainda está aberto
 
-- **peça com socket nativo**, para exercitar o `penalty` de verdade
+- **peça com socket nativo**, para exercitar o `penalty` de verdade, e **peça com
+  terciário**, que nunca apareceu — as duas são coleta, não pesquisa
 - **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1, e a
   tabela geral de escala por `ScalingClass` não foi identificada
 - **item level de era antiga**: o machado de Dragonflight usa `Type 1`
@@ -482,6 +582,33 @@ diferente de zero.
   Falta o passo de squish. O SimC tem `ITEM_BONUS_SQUISH_CURVE`,
   `POST_SQUISH_ITEM_LEVEL` e uma constante `SQUISH_CURVE_MIDNIGHT`; nenhum foi
   investigado
+
+## Consultar outro projeto funciona — inclusive quando a resposta é "não existe"
+
+Duas vezes, de formas diferentes:
+
+| projeto                                                         | o que deu                                                    |
+| --------------------------------------------------------------- | ------------------------------------------------------------ |
+| [SimulationCraft](https://github.com/simulationcraft/simc)      | a fórmula de stat inteira, depois de eu reconstruí-la errada |
+| [ItemUpgradeTip](https://github.com/belazor-wow/ItemUpgradeTip) | a **certeza** de que o nome da track não está em dado nenhum |
+
+O segundo é o mais fácil de subestimar: **resultado negativo de fonte confiável
+vale tanto quanto positivo**, porque encerra a busca. Sem ele a tendência é
+continuar extraindo tabelas na esperança.
+
+### O `dbfile` do SimC lista o que eles TENTAM extrair
+
+Não o que existe no build atual. Três arquivos sugeridos a partir dele —
+`ItemUpgrade`, `RulesetItemUpgrade`, `RulesetRaidLootUpgrade` — falharam no
+`wow.export` com
+
+```
+Failed to open CASC file: fileDataID does not exist in root
+```
+
+Foram removidos do cliente há expansões, e o SimC os mantém na lista por
+histórico. **A lista serve para descobrir nome e tipo de um arquivo; não é prova
+de que ele existe.**
 
 ## A disciplina, que não é zelo
 
