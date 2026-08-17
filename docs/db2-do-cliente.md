@@ -106,12 +106,19 @@ formato e um job nosso quebra em produção.
 
 ### Para resolver o item level
 
-| tabela                                          | papel                                                                       |
-| ----------------------------------------------- | --------------------------------------------------------------------------- |
-| `ItemBonusListLevelDelta`                       | lista de bonus → delta de ilvl                                              |
-| `ItemLevelSelector`, `ItemLevelSelectorQuality` | quando o ilvl vem de seletor                                                |
-| `CurvePoint`, `ContentTuning`                   | escalonamento                                                               |
-| `ItemScalingConfig`                             | `ItemOffsetCurveID`, `ItemLevel`, `ItemSquishEraID` — ainda não investigada |
+| tabela                    | papel                                                     |
+| ------------------------- | --------------------------------------------------------- |
+| `ItemScalingConfig`       | `ItemLevel`, `ItemOffsetCurveID`, `ItemSquishEraID`       |
+| `ItemOffsetCurve`         | `CurveID` + `Offset` — o par que transforma o valor acima |
+| `CurvePoint`              | os pontos da curva, interpolados                          |
+| `ContentTuning`           | teto de nível em alguns caminhos                          |
+| `ItemBonusListLevelDelta` | lista de bonus → delta de ilvl (caminho antigo)           |
+
+### Para o descritor de dificuldade ("Mythic", "Mythic+", "Heroic")
+
+| tabela                | papel                                            |
+| --------------------- | ------------------------------------------------ |
+| `ItemNameDescription` | o texto e a cor, apontado pelo `Type 4` do bônus |
 
 ### Para o texto de efeito (trinket, "Use:", "Equip:")
 
@@ -262,17 +269,70 @@ valor = round( cru )
 > categoria, e que stamina tinha uma constante 7,402. Ver "O erro que se
 > cancelava" adiante.
 
-### O `Type` do `ItemBonus`
+### O `Type` do `ItemBonus` — o enum completo
 
-| Type  | é                   | evidência                                                            |
-| ----- | ------------------- | -------------------------------------------------------------------- |
-| **1** | delta de item level | faixa −900 a 900, idêntica à do `ItemBonusListLevelDelta`            |
-| **2** | acrescenta stat     | bonus 40 → `63,3000`; 41 → `62,3000`; 42 → `61,3000`; 43 → `64,3000` |
-| **3** | qualidade           | `4` = épico                                                          |
-| **6** | socket              | `1,7,0,0` — um socket, tipo 7                                        |
+Não precisa ser decodificado à mão: está nomeado no `engine/dbc/data_enums.hh`
+do SimC, em `enum item_bonus_type`.
 
-Isso **valida cruzado** os ids de stat terciário contra o que a TIT-82 já sabia
-por outro caminho: **63=Avoidance, 62=Leech, 61=Speed, 64=Indestructible**.
+| Type | nome                    | Type | nome                     |
+| ---- | ----------------------- | ---- | ------------------------ |
+| 1    | `ILEVEL`                | 25   | `MOD_ITEM_STAT`          |
+| 2    | `MOD` (acrescenta stat) | 36   | `ILEVEL_IN_PVP`          |
+| 3    | `QUALITY`               | 42   | `SET_ILEVEL_2`           |
+| 4    | **`DESC`**              | 48   | `SQUISH_CURVE`           |
+| 5    | `SUFFIX`                | 49   | **`SCALE_CONFIG`**       |
+| 6    | `SOCKET`                | 50   | `APPLY_BONUS`            |
+| 8    | `REQ_LEVEL`             | 51   | `SCALE_CONFIG_2`         |
+| 11   | `SCALING`               | 52   | `CRAFTING_QUALITY`       |
+| 13   | `SCALING_2`             | 53   | `POST_SQUISH_ITEM_LEVEL` |
+| 14   | `SET_ILEVEL`            | 17   | `ADD_RANK`               |
+| 23   | `ADD_ITEM_EFFECT`       |      |                          |
+
+Os quatro que tinham sido decodificados à mão (1, 2, 3, 6) estão certos. E há um
+comentário no fonte que confirma uma medição nossa: **`QUALITY` "seems unused as
+of Midnight"** — coerente com `Epic` = `Superior` = `Good` em 1300 de 1300
+linhas do `RandPropPoints`.
+
+O `Type 2` **valida cruzado** os ids de stat terciário: bonus 40 → `63,3000`;
+41 → `62,3000`; 42 → `61,3000`; 43 → `64,3000`, ou seja **63=Avoidance,
+62=Leech, 61=Speed, 64=Indestructible**.
+
+### O item level dos itens modernos
+
+`Type 49` (`SCALE_CONFIG`) é a resposta, e o caminho é:
+
+```
+ItemScalingConfig[ valor_do_bonus ]
+  → ItemOffsetCurve[ ItemOffsetCurveID ]  →  { CurveID, Offset }
+
+ilvl = round( curve_point_value( CurveID, ItemScalingConfig.ItemLevel ) ) + Offset
+```
+
+Verificado em quatro configs, todas exatas: 289, 292, 295, 298.
+
+Nos espécimes analisados a curva é a **identidade** — `CurveID` 88583 tem dois
+pontos, `(0,0)` e `(1300,1300)`, e `Offset` 0 —, então o `ItemScalingConfig.ItemLevel`
+já é o valor final. **Isso não autoriza pular a curva:** outras entradas do
+`ItemOffsetCurve` têm offsets de −6 a +6, e a transformação existe para ser
+aplicada.
+
+> Uma versão anterior deste documento afirmava que o `Type 49` "não é o item
+> level" porque os valores 310 e 311 diferiam de 1 enquanto o ilvl exibido
+> diferia de 3, e porque esses ids não existiam no `ItemLevelSelector`. Estava
+> certo sobre o `ItemLevelSelector` e **errado sobre o resto**: 310 e 311 são
+> ids de `ItemScalingConfig`, e as linhas de lá trazem `ItemLevel` 292 e 295.
+
+### O descritor de dificuldade
+
+`Type 4` (`DESC`) aponta para o `ItemNameDescription`, que traz o texto e a cor:
+
+| id    | texto       | conferido contra |
+| ----- | ----------- | ---------------- |
+| 14095 | **Mythic+** | cinto e anel     |
+| 13145 | **Mythic**  | colares, trinket |
+| 2015  | **Heroic**  | machado          |
+
+Três de três.
 
 ### O custo de socket, e a distinção que o `itemString` não faz
 
@@ -396,16 +456,32 @@ de expansão antiga.
 — nenhuma das sete tem, então o `penalty` nunca foi exercitado com valor
 diferente de zero.
 
+## Placar: o que dá para montar hoje
+
+| elemento                              | status                                                   |
+| ------------------------------------- | -------------------------------------------------------- |
+| item level (item moderno)             | ✅ fórmula completa, 4/4                                 |
+| primário, stamina, secundários        | ✅ 19/19 stats em 7 peças                                |
+| descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                   |
+| `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                |
+| terciários                            | ⚠️ mecanismo conhecido, **nenhum espécime** ainda        |
+| socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 nas 7 peças        |
+| on use / proc                         | ⚠️ texto, `$d` e `$u` sim; escala por `ScalingClass` não |
+| dano de arma, armadura                | 🔧 tabelas extraídas, fórmula não transcrita             |
+| flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                 |
+| item level (era antiga)               | ❌ ver abaixo                                            |
+| track de upgrade (Champion x/y)       | ❌ não investigado                                       |
+
 ## O que ainda está aberto
 
 - **peça com socket nativo**, para exercitar o `penalty` de verdade
-- **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1
-- **o item level**: não sai do `Type 49`. Nos colares ele vale 310 e 311
-  (diferença de 1) enquanto o ilvl exibido difere de 3, e esses ids **não
-  existem** no `ItemLevelSelector`. `ItemScalingConfig`, `ItemSquishEraID`,
-  `PlayerLevelToItemLevelCurveID` e `ItemLevelOffsetCurveID` ainda não foram
-  investigados — e o SimC deve ter isso resolvido também, vale procurar lá
-  antes de medir
+- **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1, e a
+  tabela geral de escala por `ScalingClass` não foi identificada
+- **item level de era antiga**: o machado de Dragonflight usa `Type 1`
+  (`ILEVEL`, +13) sobre a base 415, o que dá 428 — e o tooltip mostra **82**.
+  Falta o passo de squish. O SimC tem `ITEM_BONUS_SQUISH_CURVE`,
+  `POST_SQUISH_ITEM_LEVEL` e uma constante `SQUISH_CURVE_MIDNIGHT`; nenhum foi
+  investigado
 
 ## A disciplina, que não é zelo
 
