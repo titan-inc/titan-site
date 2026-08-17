@@ -70,19 +70,33 @@ formato e um job nosso quebra em produção.
 
 ### Para resolver o item level
 
-| tabela                                          | papel                          |
-| ----------------------------------------------- | ------------------------------ |
-| `ItemBonusListLevelDelta`                       | lista de bonus → delta de ilvl |
-| `ItemLevelSelector`, `ItemLevelSelectorQuality` | quando o ilvl vem de seletor   |
-| `CurvePoint`, `ContentTuning`                   | escalonamento                  |
+| tabela                                          | papel                                                                       |
+| ----------------------------------------------- | --------------------------------------------------------------------------- |
+| `ItemBonusListLevelDelta`                       | lista de bonus → delta de ilvl                                              |
+| `ItemLevelSelector`, `ItemLevelSelectorQuality` | quando o ilvl vem de seletor                                                |
+| `CurvePoint`, `ContentTuning`                   | escalonamento                                                               |
+| `ItemScalingConfig`                             | `ItemOffsetCurveID`, `ItemLevel`, `ItemSquishEraID` — ainda não investigada |
+
+### Para o texto de efeito (trinket, "Use:", "Equip:")
+
+| tabela                        | papel                                                                 |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `ItemXItemEffect`             | liga item → efeito. **O `ItemEffect` sozinho não tem coluna de item** |
+| `ItemEffect`                  | `SpellID`, `TriggerType`, cooldown                                    |
+| `Spell`                       | `Description_lang` — o texto, com placeholders                        |
+| `SpellEffect`                 | `Coefficient`, `ScalingClass` — de onde saem os números               |
+| `SpellMisc` + `SpellDuration` | o `$d` (duração)                                                      |
+| `SpellAuraOptions`            | o `$u` (`CumulativeAura`, máximo de stacks)                           |
 
 ### Fora do escopo atual, mas já extraídas
 
 `ItemArmorTotal`, `ItemArmorQuality`, `ItemArmorShield` (armadura);
 `ItemDamageOneHand`, `ItemDamageTwoHand` e as variantes `*Caster` (dano de
-arma); `Item` (class/subclass, que o nosso catálogo já tem).
+arma); `Item` (class/subclass, que o nosso catálogo já tem); `SpellScaling` e
+`ExpectedStat` — esta última é indexada por **nível de personagem**, não por
+item level, então provavelmente não é o que a escala de efeito precisa.
 
-Cada uma dessas abre uma issue própria — têm fórmula e conjunto de tabelas
+Armadura e dano de arma abrem issue própria — têm fórmula e conjunto de tabelas
 próprios.
 
 ## O tamanho não é obstáculo, desde que o filtro seja o certo
@@ -229,18 +243,78 @@ custa. Só que os dois viram bonus `Type 6` idêntico (`1,7,0,0`), então **o
 `itemString` sozinho não distingue** — quem distingue é o `StatPercentageOfSocket`
 do item base.
 
+### O texto de efeito: template, e nenhum valor guardado
+
+A cadeia é `ItemXItemEffect` → `ItemEffect` → `Spell`, e o texto vem com
+placeholders:
+
+```
+"Bind with the blaze for $d, giving your attacks a high chance to increase
+ your Strength by $s1, stacking up to $u times. ... dealing up to $s2 Fire
+ damage ..."
+```
+
+**Não existe valor base para exibir.** No trinket analisado o
+`SpellEffect.EffectBasePointsF` é **zero** nos dois efeitos; o que está guardado
+é `Coefficient` — `0,4333` e `309,69`. Mostrar esses números seria pior que
+omiti-los: o segundo tem cara de dano e não é dano.
+
+Cada placeholder resolve assim:
+
+| placeholder  | de onde                                                                   |
+| ------------ | ------------------------------------------------------------------------- |
+| `$d`         | `SpellMisc.DurationIndex` → `SpellDuration.Duration` (20000ms = "20 sec") |
+| `$u`         | `SpellAuraOptions.CumulativeAura` (6)                                     |
+| `$s1`, `$s2` | `Coefficient` × escala(`ScalingClass`, item level)                        |
+
+### `ScalingClass −1` escala pelo orçamento do item
+
+Medido no trinket, contra os dois ranks:
+
+|                 | derivado do tooltip | `RandPropPoints.EpicF[0]` |
+| --------------- | ------------------- | ------------------------- |
+| Strength rank 1 | 242,34              | **242,44** (ilvl 292)     |
+| Strength rank 2 | 249,27              | **249,31** (ilvl 295)     |
+
+Erro menor que o arredondamento do inteiro exibido, em dois pontos
+independentes.
+
+**Isto dá um jeito de LER o item level real de uma peça** — útil para a TIT-82,
+e foi como se descobriu que o trinket estava em 292/295, e não em 290/292 como o
+orçamento de stat sugeria.
+
+> **Correção de estimativa.** Uma versão anterior deste documento e da TIT-136
+> tratavam efeito de trinket como o pedaço mais caro de todos. Não é: é uma
+> consulta e uma multiplicação. O custo real está em identificar a tabela de
+> escala por `ScalingClass`.
+
+### O deslocamento do track de upgrade
+
+O orçamento de stat **não** usa o item level da peça quando ela está num track:
+
+| peça                  | item level real | orçamento corresponde a |
+| --------------------- | --------------- | ----------------------- |
+| trinket rank 1        | 292             | ilvl **290**            |
+| trinket rank 2        | 295             | ilvl **292**            |
+| colar rank 2          | 295             | ilvl **292**            |
+| **cinto** (sem track) | 289             | ilvl **289**            |
+
+As três peças com "Upgrade Level: Champion X/6" ficam ~3 abaixo; a peça sem
+track fica em zero. É o que explica o déficit dos colares, que antes parecia
+ruído.
+
 ## O que ainda está aberto
 
-- **o déficit do colar** — no mesmo rank de track, um colar exige orçamento 177
-  e um trinket exige 178, e 177 não existe em índice nenhum. **Não é socket**
-  (o `StatPercentageOfSocket` do colar é zero)
+- **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1: os
+  dois ranks dariam ilvl 295 e ~298,5, um passo de 3,5 contra os 3 do Strength
+- **a regra exata do deslocamento de track** — o padrão de ~3 está medido em
+  três peças, mas o colar rank 1 exige orçamento 177, que não existe em índice
+  nenhum
 - **a regra do primário por categoria** e o **multiplicador de stamina**
 - **o mapeamento completo `InventoryType` → índice** — medidos só 6, 12 e 13
 - **o item level**: não sai do `Type 49`. Nos colares ele vale 310 e 311
   (diferença de 1) enquanto o ilvl exibido difere de 3, e esses ids **não
-  existem** no `ItemLevelSelector`. Há sinal de que o ilvl final depende do
-  item e não só do bônus — com o **mesmo** bônus de track, trinket e colar
-  exigem orçamentos de ilvls diferentes, e as bases diferem. `ItemSquishEraID`,
+  existem** no `ItemLevelSelector`. `ItemScalingConfig`, `ItemSquishEraID`,
   `PlayerLevelToItemLevelCurveID` e `ItemLevelOffsetCurveID` ainda não foram
   investigados
 
@@ -251,6 +325,8 @@ do item base.
 - **duas peças do mesmo slot com stamina em ilvls diferentes** — o multiplicador
 - peças em slots ainda não testados (anel, capa, luvas), **sem track de upgrade
   e sem mecânica de season**
+- para o `ScalingClass −8`: um segundo item com efeito de dano, para separar o
+  que é da classe de escala do que é daquele trinket
 
 ## A disciplina, que não é zelo
 
