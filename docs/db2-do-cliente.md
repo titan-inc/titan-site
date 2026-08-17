@@ -50,6 +50,42 @@ formas de obtê-los:
 
 Usamos o `wow.export`. Sai em SQL ou CSV.
 
+### Duas abas diferentes: `Data` e `Text`
+
+Os `.db2` ficam na aba **`Data`**. Mas parte do que a fórmula precisa **não é
+db2**: são **GameTables**, arquivos de texto separado por tab, e ficam na aba
+**`Text`**.
+
+São eles: `CombatRatingsMultByILvl`, `StaminaMultByILvl` e
+`ItemSocketCostPerLevel`. Procurar por esses nomes na aba `Data` não encontra
+nada — foi exatamente o que aconteceu na primeira tentativa.
+
+Formato: uma linha por item level, com cabeçalho.
+
+```
+Item Level	Armor Multiplier	Weapon Multiplier	Trinket Multiplier	Jewelry Multiplier
+1	1.5	1.5	1.5	1.5
+```
+
+## A fonte que encurta tudo: o SimulationCraft
+
+O [simc](https://github.com/simulationcraft/simc) implementa este cálculo há
+anos, validado contra o jogo inteiro em vez de contra um punhado de peças.
+
+Dois lugares valem mais que qualquer medição nossa:
+
+| onde                          | o quê                                                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `engine/dbc/sc_item_data.cpp` | `random_suffix_type` (índice por slot), `scaled_stat` (a fórmula inteira), `item_combat_rating_type` (qual multiplicador) |
+| `casc_extract/dbfile`         | **a lista literal** de db2 e GameTables que eles extraem do cliente                                                       |
+
+O `dbfile` é o jeito certo de descobrir o nome e o **tipo** de um arquivo — foi
+ele que revelou que os três multiplicadores são GameTables e não db2.
+
+**Consultar o SimC antes de medir**, não depois. Medir serve para confirmar que
+entendemos o que copiamos; foi assim que as sete peças da fixture viraram
+verificação em vez de fonte.
+
 ## Regra que vale para os dois lados
 
 **A app nunca fala com o wago.tools nem lê `.db2`.** O arquivo é obtido à mão,
@@ -175,51 +211,56 @@ A análise abaixo é do build **12.1.0 69299 (Aug 12 2026)**.
 Sem isso, uma divergência de número daqui a dois meses é indistinguível entre
 bug nosso e mudança de patch — e essa é a dúvida que mais custa tempo.
 
-## O que já foi medido
+## A fórmula
 
-Contra quatro peças reais, com os números do tooltip anotados. **Não é dedução:
-cada linha abaixo foi reproduzida.**
-
-### A fórmula do stat secundário
+**Reproduz 19 de 19 stats em 7 peças reais**, sem nenhuma constante ajustada à
+mão.
 
 ```
-valor = round( RandPropPoints.Epic[classeDeSlot] × ItemSparse.StatPercentEditor[i] / 10000 )
+idx     = random_suffix_type( itemClass, itemSubclass, inventoryType )
+budget  = RandPropPoints[ilvl].Epic[idx]
+penalty = round_banqueiro( StatPercentageOfSocket[i] × ItemSocketCostPerLevel[ilvl] )
+
+cru = StatPercentEditor[i] × budget × 0,0001 − penalty
+
+se combat rating:  cru ×= CombatRatingsMultByILvl[ilvl][tipo]
+senão se stamina:  cru ×= StaminaMultByILvl[ilvl][tipo]
+
+valor = round( cru )
 ```
 
-Três decisões que a implementação ingênua erra:
+**Primário não recebe multiplicador nenhum** — não é combat rating.
 
-|                     |                                                                       |
-| ------------------- | --------------------------------------------------------------------- |
-| coluna do orçamento | **`Epic` (INT)**, nunca `EpicF`                                       |
-| arredondamento      | **`round`**, nunca truncamento                                        |
-| qualidade           | **ignorar** — `Epic` = `Superior` = `Good` em **1300 de 1300** linhas |
+### `idx` — a classe de orçamento, por classe e slot
 
-A combinação importa: com `EpicF` + truncamento, o Strength de um cinto errava
-por 1 e o Crit acertava. Com `Epic` INT + `round`, os três stats fecham.
+| item                                            | idx   |
+| ----------------------------------------------- | ----- |
+| arma de duas mãos (e arco, arma de fogo, besta) | **0** |
+| cabeça, peito, pernas, robe                     | **0** |
+| ombro, cintura, pés, mãos, **trinket**          | **1** |
+| **pescoço, dedo, capa, pulso**                  | **2** |
+| arma de uma mão, offhand, item de mão, escudo   | **3** |
 
-Verificado em cinto (`InventoryType` 6), trinket (12) e machado de uma mão (13)
-— os três com secundários no **índice 1** do orçamento.
+### `tipo` — o multiplicador, por slot
 
-As 5 classes de orçamento têm multiplicadores **1.0 / 0.75 / 0.5625 / 0.5 / 0.5**.
+| slot             | coluna  |
+| ---------------- | ------- |
+| pescoço, dedo    | Jewelry |
+| trinket          | Trinket |
+| qualquer arma    | Weapon  |
+| resto (armadura) | Armor   |
 
-### Primário e stamina NÃO seguem essa regra
+### Duas coisas menores, ambas confirmadas
 
-O achado que mais muda escopo. Num machado 1H no ilvl 82:
+|                |                                                                                                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| arredondamento | **`round`**, nunca truncamento                                                                                                                                                                             |
+| qualidade      | **irrelevante na prática** — `Epic` = `Superior` = `Good` em **1300 de 1300** linhas. O SimC escolhe a coluna por qualidade (épico/lendário → `p_epic`, raro → `p_rare`), e neste build as três são iguais |
 
-| stat               | fecha no índice                          |
-| ------------------ | ---------------------------------------- |
-| Haste, Versatility | **1**                                    |
-| Agility            | **3**                                    |
-| Stamina            | **nenhum** — fica entre o índice 2 e o 1 |
-
-Num cinto, o Strength fechava no índice 1 **junto** com os secundários.
-
-Ou seja: **a regra do primário depende da categoria do item** (arma × armadura),
-e stamina tem regra própria em ambos — medida em ~12,5× num cinto e ~9,7× em
-colares. O `RandPropPoints` tem `DamageReplaceStat`/`DamageSecondary`, que
-existem para arma e provavelmente são a chave desse caso.
-
-**São pelo menos três fórmulas, não uma.**
+> **Esta seção substitui uma versão errada.** A anterior afirmava que quatro
+> slots diferentes usavam todos o índice 1, que o primário mudava de regra por
+> categoria, e que stamina tinha uma constante 7,402. Ver "O erro que se
+> cancelava" adiante.
 
 ### O `Type` do `ItemBonus`
 
@@ -235,13 +276,25 @@ por outro caminho: **63=Avoidance, 62=Leech, 61=Speed, 64=Indestructible**.
 
 ### O custo de socket, e a distinção que o `itemString` não faz
 
-Está em `ItemSparse.StatPercentageOfSocket`, não-zero em **12.260 itens** — os
-que **nascem** com socket. Formato de percentual por stat.
+`StatPercentageOfSocket` é **por stat**, não-zero em **12.260 itens** — os que
+**nascem** com socket. O desconto é
+
+```
+penalty = round_banqueiro( StatPercentageOfSocket[i] × ItemSocketCostPerLevel[ilvl] )
+```
+
+subtraído **antes** dos multiplicadores.
 
 Socket **nativo** custa orçamento; socket **adicionado** por consumível não
-custa. Só que os dois viram bonus `Type 6` idêntico (`1,7,0,0`), então **o
-`itemString` sozinho não distingue** — quem distingue é o `StatPercentageOfSocket`
-do item base.
+custa. Os dois viram bonus `Type 6` idêntico (`1,7,0,0`), então **o `itemString`
+sozinho não distingue** — quem distingue é o `StatPercentageOfSocket` do item
+base, que é zero para quem não nasce com socket.
+
+> Uma versão anterior afirmava que o socket custava "3 pontos de orçamento",
+> medidos comparando um anel com um cinto. **Era artefato**: o anel é índice 2
+> com multiplicador de joia, e eu o estava calculando no índice 1 sem
+> multiplicador. Nas sete peças analisadas o penalty real é **zero** — nenhuma
+> nasce com socket.
 
 ### O texto de efeito: template, e nenhum valor guardado
 
@@ -288,45 +341,71 @@ orçamento de stat sugeria.
 > consulta e uma multiplicação. O custo real está em identificar a tabela de
 > escala por `ScalingClass`.
 
-### O deslocamento do track de upgrade
+## O erro que se cancelava
 
-O orçamento de stat **não** usa o item level da peça quando ela está num track:
+Antes de encontrar o SimC, a fórmula tinha sido reconstruída ajustando **um item
+por vez**: para cada peça, procurar qual índice de orçamento fazia os números
+fecharem.
 
-| peça                  | item level real | orçamento corresponde a |
-| --------------------- | --------------- | ----------------------- |
-| trinket rank 1        | 292             | ilvl **290**            |
-| trinket rank 2        | 295             | ilvl **292**            |
-| colar rank 2          | 295             | ilvl **292**            |
-| **cinto** (sem track) | 289             | ilvl **289**            |
+Isso produziu quatro afirmações erradas, todas registradas como "medidas":
 
-As três peças com "Upgrade Level: Champion X/6" ficam ~3 abaixo; a peça sem
-track fica em zero. É o que explica o déficit dos colares, que antes parecia
-ruído.
+| afirmado                                   | real                                                |
+| ------------------------------------------ | --------------------------------------------------- |
+| dedo e pescoço → índice 1                  | índice **2**                                        |
+| arma de uma mão → índice 1                 | índice **3**                                        |
+| socket custa 3 pontos de orçamento         | penalty de tabela, **zero** nestas peças            |
+| constante de stamina 7,402                 | multiplicador de tabela, ~12,51 no ilvl 289         |
+| "primário muda de regra por categoria"     | primário **não tem** multiplicador; era só o índice |
+| track de upgrade desloca o orçamento em ~3 | **não existe** — era o índice errado                |
+
+**Nenhuma delas era chute.** Cada uma fechava contra peças reais, com números
+exatos, e tinha explicação plausível.
+
+O motivo é que **dois erros se cancelavam**: índice baixo demais e multiplicador
+ausente puxavam em direções opostas. Item a item, sempre existia um índice que
+"fechava" — e quando dois itens discordavam, a diferença foi atribuída a socket
+e a track de upgrade, que eram as variáveis visíveis, em vez de à fórmula.
+
+É a versão sofisticada do que este documento já pregava: **número certo por
+motivo errado é indistinguível de número certo**. Sete peças não bastaram; o que
+separou foi uma fonte independente.
+
+Corolário prático: **fixture de item real detecta fórmula errada, não fórmula
+certa-por-acaso.** Ela continua obrigatória, mas não é suficiente sozinha.
+
+## A fixture: as sete peças que a fórmula reproduz
+
+Critério de aceite da TIT-136. Cada linha é `itemString` + os números exatos que
+o tooltip mostrou.
+
+| peça                             | item   | ilvl | stats conferidos                      |
+| -------------------------------- | ------ | ---- | ------------------------------------- |
+| Relentless Rider's Chain (cinto) | 249967 | 289  | Str 93, Sta 1745, Mastery 88, Crit 35 |
+| Platinum Star Band (anel)        | 193708 | 289  | Sta 1309, Crit 199, Mastery 104       |
+| Wallcliber's Hatchet (1H)        | 204279 | 82   | Agi 9, Sta 16, Haste 12, Vers 6       |
+| Blazebinder's Hoof (trinket) r1  | 193762 | 292  | Haste 119                             |
+| Blazebinder's Hoof r2            | 193762 | 295  | Haste 121                             |
+| Pendant of Malefic Fury r1       | 251142 | 292  | Sta 1353, Haste 97, Mastery 212       |
+| Pendant of Malefic Fury r2       | 251142 | 295  | Sta 1402, Haste 100, Mastery 217      |
+
+Cobre os quatro tipos de multiplicador (armadura, joia, trinket, arma), três
+classes de orçamento (1, 2, 3), dois ranks do mesmo item, e um item pós-squish
+de expansão antiga.
+
+**Falta na fixture**: peça com socket nativo (`StatPercentageOfSocket` não-zero)
+— nenhuma das sete tem, então o `penalty` nunca foi exercitado com valor
+diferente de zero.
 
 ## O que ainda está aberto
 
-- **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1: os
-  dois ranks dariam ilvl 295 e ~298,5, um passo de 3,5 contra os 3 do Strength
-- **a regra exata do deslocamento de track** — o padrão de ~3 está medido em
-  três peças, mas o colar rank 1 exige orçamento 177, que não existe em índice
-  nenhum
-- **a regra do primário por categoria** e o **multiplicador de stamina**
-- **o mapeamento completo `InventoryType` → índice** — medidos só 6, 12 e 13
+- **peça com socket nativo**, para exercitar o `penalty` de verdade
+- **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1
 - **o item level**: não sai do `Type 49`. Nos colares ele vale 310 e 311
   (diferença de 1) enquanto o ilvl exibido difere de 3, e esses ids **não
   existem** no `ItemLevelSelector`. `ItemScalingConfig`, `ItemSquishEraID`,
   `PlayerLevelToItemLevelCurveID` e `ItemLevelOffsetCurveID` ainda não foram
-  investigados
-
-### O que fecharia cada uma
-
-- **o mesmo item com e sem socket nativo** — isola o custo sem confundir com
-  slot ou track
-- **duas peças do mesmo slot com stamina em ilvls diferentes** — o multiplicador
-- peças em slots ainda não testados (anel, capa, luvas), **sem track de upgrade
-  e sem mecânica de season**
-- para o `ScalingClass −8`: um segundo item com efeito de dano, para separar o
-  que é da classe de escala do que é daquele trinket
+  investigados — e o SimC deve ter isso resolvido também, vale procurar lá
+  antes de medir
 
 ## A disciplina, que não é zelo
 
@@ -339,7 +418,7 @@ Os blocos de bonus são regulares de um jeito tentador: as dificuldades sobem de
 a mesma família da armadilha do `responseID` posicional do RCLootCouncil:
 funciona até a season em que não funciona, e falha sem erro.
 
-### A fixture de item real é o único detector
+### A fixture de item real é necessária — e não é suficiente
 
 Um dos espécimes analisados — um cinto mítico com `Sporefused: Myth` — tinha
 **primário e stamina seguindo o ilvl exibido e secundários seguindo ~4 abaixo**.
@@ -357,10 +436,21 @@ Daí a regra: **stat que não dá para calcular com confiança volta `null`, e a
 tela mostra a lacuna.** Nunca um valor aproximado, nunca o do item base quando o
 modificador não foi entendido.
 
+**Mas fixture sozinha não basta**, e este documento tem a prova: sete peças
+reais fecharam com uma fórmula errada, porque dois erros se cancelavam (ver "O
+erro que se cancelava"). Fixture detecta fórmula **errada**; não detecta fórmula
+**certa por acaso**.
+
+O que separa os dois casos é uma fonte independente — no nosso caso o SimC. A
+ordem certa é: **implementação vem da fonte, fixture confirma que entendemos o
+que copiamos.** O inverso — deduzir da fixture — é o que produziu os quatro
+erros registrados aqui.
+
 ## O procedimento a cada patch
 
 1. `/run print(GetBuildInfo())` — anota o build
-2. extrai as tabelas com o `wow.export`
+2. extrai as tabelas com o `wow.export` — os db2 na aba `Data`, os três
+   GameTables de multiplicador na aba `Text`
 3. carrega no SQLite local
 4. exporta os `itemId` do catálogo pela rota de ops
 5. roda a query de extração, filtrando por eles
