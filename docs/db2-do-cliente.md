@@ -126,10 +126,12 @@ formato e um job nosso quebra em produção.
 
 ### Para o track de upgrade
 
-| tabela                    | papel                                                             |
-| ------------------------- | ----------------------------------------------------------------- |
-| `ItemBonusListGroupEntry` | `SequenceValue` (o rank), o grupo, e o `Flags` que define o total |
-| `ItemBonusListGroup`      | o grupo. **Não tem o nome da track**                              |
+| tabela                    | papel                                                                  |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `ItemBonusListGroupEntry` | `SequenceValue` (o rank), o grupo, e o `Flags` que define o total      |
+| **`SharedString`**        | **o nome da track**, apontado pelo 2º valor do `Type 34`               |
+| `ItemBonusListGroup`      | o grupo. O `ItemGroupIlvlScalingID` distingue season atual da anterior |
+| `GlobalStrings`           | o formato `ITEM_UPGRADE_TOOLTIP_FORMAT_STRING` — útil de referência    |
 
 ### Para o descritor de dificuldade ("Mythic", "Mythic+", "Heroic")
 
@@ -484,51 +486,83 @@ max   = floor( dps × speed × (1 + DmgVariance/2) + 0,5 )
 O `speed` e o `dps` do tooltip não são calculados: são o `ItemDelay` e o valor da
 tabela, direto. As variantes `*Caster` existem para arma de caster.
 
-## O track de upgrade: rank e total sim, nome não
+## O track de upgrade — resolvido, inteiro
 
-`Upgrade Level: Adventurer 1/6` tem três informações, e só duas estão no dado.
+`Upgrade Level: Adventurer 1/6`, sem curadoria e localizável.
 
 ```
-entrada = ItemBonusListGroupEntry onde ItemBonusListID = <bonus do itemString>
+Type 34 do bônus = ( ItemBonusListGroupID , SharedString.ID )
 
+nome  = SharedString[ segundo valor ].String_lang
+entrada = ItemBonusListGroupEntry onde ItemBonusListID = <bonus do itemString>
 rank  = entrada.SequenceValue
-grupo = entrada.ItemBonusListGroupID
 total = quantas entradas do grupo têm o MESMO Flags
 ```
 
-Verificado em três grupos (612, 614, 616): cada um tem **6 entradas com
-`flags=2`** e mais 2–3 com `flags=3`, e o tooltip mostra `/6`. O que as de
-`flags=3` são, não sei.
+O `Type 34` **não existe no enum do SimC** — eles ignoram, porque não precisam do
+tooltip. É achado nosso.
 
-E o **`Type 34`** do bônus, que não existe no enum do SimC, tem como primeiro
-valor o `ItemBonusListGroupID` — confirmado nos três. O segundo valor continua
-desconhecido; a hipótese de ser o id da entrada **foi testada e falhou**.
+### O `SharedString` é onde os nomes moram
 
-### O nome da track não existe em db2 alcançável pelo item
+| id  | nome       |
+| --- | ---------- |
+| 970 | Explorer   |
+| 971 | Adventurer |
+| 972 | Veteran    |
+| 973 | Champion   |
+| 974 | Hero       |
+| 978 | Myth       |
 
-Cinco caminhos independentes, todos negativos:
+E casa com os três espécimes:
 
-| tentativa                                                                 | resultado                                                                     |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `ItemBonusListGroup.SequenceSpellID` → `SpellName`                        | **"Upgrading"** nos três grupos. Genérico                                     |
-| `ItemBonusSequenceSpell`                                                  | nenhuma linha para os grupos 612, 614, 616                                    |
-| `ItemNameDescription`                                                     | `Adventurer`/`Veteran`/`Champion` existem, mas **nada no item os referencia** |
-| segundo valor do `Type 34`                                                | aponta para entrada de outro grupo                                            |
-| **addon [ItemUpgradeTip](https://github.com/belazor-wow/ItemUpgradeTip)** | **raspa o texto do tooltip** — com a API completa do cliente na mão           |
+| peça         | `Type 34` | track no tooltip |
+| ------------ | --------- | ---------------- |
+| ombro        | `614,971` | **Adventurer** ✓ |
+| colar        | `616,973` | **Champion** ✓   |
+| cinto e anel | `612,978` | **Myth** ✓       |
 
-O último é o decisivo. O `Tooltip.lua` deles monta um padrão a partir do
-`ITEM_UPGRADE_TOOLTIP_FORMAT_STRING` — GlobalString do cliente, `"Upgrade Level:
-%s %d/%d"` — e extrai o nome do texto renderizado. Um addon com acesso total
-recorre a parsing de string porque **não há dado a consultar**.
+O rank e o total foram verificados em três grupos: cada um tem **6 entradas com
+`flags=2`** mais 2–3 com `flags=3`, e o tooltip mostra `/6`. O que as de
+`flags=3` são, continua desconhecido.
 
-**A saída é um mapa curado `grupo → nome`**, seis linhas, fixas dentro da
-expansão, cada uma descoberta observando um item da track (614 = Adventurer,
-616 = Champion). Sem mapeamento, exibir só `1/6` — que já responde "essa peça
-ainda sobe?".
+`Adventurer` aparece duas vezes no `SharedString` (971 e 990), o que sugere um
+conjunto por expansão.
 
-Descartado: pedir ao addon que mande a linha do tooltip. Funcionaria, e traz de
-volta a doença do `rawBoss` — texto no idioma do cliente de quem era loot
-master, que a TIT-130 acabou de remover do modelo.
+### Quando a linha aparece
+
+Peça de season passada **perde a linha**, mesmo com o `Type 34` intacto — o cinto
+e o anel apontam para `612,978` e não exibem nada. Quem decide é o **grupo**, não
+o item: o `ItemGroupIlvlScalingID` é 11 no grupo 612 e 12 nos grupos 614 e 616.
+
+### Isto reverteu uma conclusão anterior, e o erro de método importa mais
+
+Uma versão anterior desta seção afirmava que **o nome não existia em db2
+alcançável pelo item**, com uma tabela de "cinco caminhos independentes, todos
+negativos", e tratava como decisivo o fato de o addon
+[ItemUpgradeTip](https://github.com/belazor-wow/ItemUpgradeTip) raspar o texto do
+tooltip.
+
+Estava errado. E o dado que faltava **estava em mãos desde o começo**: o segundo
+valor do `Type 34`. Ele foi testado contra **uma** tabela
+(`ItemBonusListGroupEntry`), falhou, e foi arquivado como "desconhecido" em vez
+de continuar sendo pergunta.
+
+Dois erros de raciocínio, que valem mais registrados que a solução:
+
+**Ausência de prova tratada como prova de ausência.** Nenhum dos cinco caminhos
+testava o campo que importava, então o "cinco" dava à conclusão um peso que ela
+não tinha. Cinco buscas no lugar errado não somam evidência.
+
+**E o argumento do addon estava invertido.** Que um addon raspe tooltip mostra
+que **aquele caminho é mais conveniente para ele** — o cliente já renderizou a
+string, pronta e traduzida. Não mostra que o dado não existe.
+
+> **Regra que sai daqui: campo não decodificado é pergunta aberta, não detalhe.**
+> Enquanto houver um número sem significado no caminho, a busca não terminou.
+
+É o espelho do erro da seção "O erro que se cancelava": lá, coincidência foi
+tratada como prova; aqui, ausência foi tratada como prova. Os dois vêm de querer
+fechar a questão.
 
 ## A fixture: as peças que a fórmula reproduz
 
@@ -555,21 +589,20 @@ zero. E peça com terciário.
 
 ## Placar: o que dá para montar hoje
 
-| elemento                              | status                                                      |
-| ------------------------------------- | ----------------------------------------------------------- |
-| item level (item moderno)             | ✅ fórmula completa, 4/4                                    |
-| primário, stamina, secundários        | ✅ **43 stats** em 13 espécimes                             |
-| **armadura**                          | ✅ **8/8**, e a quinta coluna do `ArmorLocation` descartada |
-| **dano, speed, dps**                  | ✅ 4/4                                                      |
-| descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                      |
-| `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                   |
-| **track: rank e total**               | ✅ 3 grupos                                                 |
-| flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                    |
-| **track: nome**                       | ⛔ **não existe em dado** — mapa curado de 6 linhas         |
-| terciários                            | ⚠️ mecanismo conhecido, **nenhum espécime** ainda           |
-| socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças     |
-| on use / proc                         | ⚠️ texto, `$d` e `$u` sim; escala por `ScalingClass` não    |
-| item level (era antiga)               | ❌ ver abaixo                                               |
+| elemento                               | status                                                      |
+| -------------------------------------- | ----------------------------------------------------------- |
+| item level (item moderno)              | ✅ fórmula completa, 4/4                                    |
+| primário, stamina, secundários         | ✅ **43 stats** em 13 espécimes                             |
+| **armadura**                           | ✅ **8/8**, e a quinta coluna do `ArmorLocation` descartada |
+| **dano, speed, dps**                   | ✅ 4/4                                                      |
+| descritor (Mythic / Mythic+ / Heroic)  | ✅ 3/3                                                      |
+| `Type` do `ItemBonus`                  | ✅ enum completo, do SimC                                   |
+| **track completo** (nome, rank, total) | ✅ 3 grupos — `Type 34` + `SharedString`                    |
+| flavor text                            | 🔧 é ler o `ItemSparse.Description_lang`                    |
+| terciários                             | ⚠️ mecanismo conhecido, **nenhum espécime** ainda           |
+| socket                                 | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças     |
+| on use / proc                          | ⚠️ texto, `$d` e `$u` sim; escala por `ScalingClass` não    |
+| item level (era antiga)                | ❌ ver abaixo                                               |
 
 ## O que ainda está aberto
 
@@ -583,18 +616,25 @@ zero. E peça com terciário.
   `POST_SQUISH_ITEM_LEVEL` e uma constante `SQUISH_CURVE_MIDNIGHT`; nenhum foi
   investigado
 
-## Consultar outro projeto funciona — inclusive quando a resposta é "não existe"
-
-Duas vezes, de formas diferentes:
+## Consultar outro projeto funciona — mas o que ele NÃO faz não é evidência
 
 | projeto                                                         | o que deu                                                    |
 | --------------------------------------------------------------- | ------------------------------------------------------------ |
 | [SimulationCraft](https://github.com/simulationcraft/simc)      | a fórmula de stat inteira, depois de eu reconstruí-la errada |
-| [ItemUpgradeTip](https://github.com/belazor-wow/ItemUpgradeTip) | a **certeza** de que o nome da track não está em dado nenhum |
+| [ItemUpgradeTip](https://github.com/belazor-wow/ItemUpgradeTip) | o formato `Upgrade Level: %s %d/%d` — e uma conclusão errada |
 
-O segundo é o mais fácil de subestimar: **resultado negativo de fonte confiável
-vale tanto quanto positivo**, porque encerra a busca. Sem ele a tendência é
-continuar extraindo tabelas na esperança.
+O primeiro é o caso de ouro: código de terceiro, validado contra o jogo inteiro,
+substituindo medição nossa.
+
+**O segundo é uma armadilha, e vale saber por quê.** O addon raspa o texto do
+tooltip, e disso eu concluí que o nome da track não existia em dado. Errado: o
+addon raspa porque o cliente **já renderizou a string, pronta e traduzida** —
+para um addon isso é sempre mais barato que percorrer db2. Ele escolheu o caminho
+conveniente, não o único.
+
+> **O que outro projeto faz é evidência; o que ele deixa de fazer não é.** Cada
+> projeto para onde os requisitos dele param — o SimC não precisa do tooltip, o
+> addon não precisa dos db2.
 
 ### O `dbfile` do SimC lista o que eles TENTAM extrair
 
