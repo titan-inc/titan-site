@@ -156,6 +156,14 @@ formato e um job nosso quebra em produção.
 | `SpellMisc` + `SpellDuration` | o `$d` (duração)                                                      |
 | `SpellAuraOptions`            | o `$u` (`CumulativeAura`, máximo de stacks)                           |
 
+### Para item que NÃO é equipamento
+
+| tabela         | papel                                                              |
+| -------------- | ------------------------------------------------------------------ |
+| `ChrClasses`   | nome da classe, para a linha `Classes: …`                          |
+| `ItemClass`    | nome da classe de item (`Housing`, `Miscellaneous`)                |
+| `ItemSubClass` | nome da subclasse — é o que o tooltip mostra (`Decor`, `Cosmetic`) |
+
 ### Fora do escopo atual, mas já extraídas
 
 `ItemArmorTotal`, `ItemArmorQuality`, `ItemArmorShield` (armadura);
@@ -654,6 +662,82 @@ por spec — ou seja, isto deixou de ser pendência de pesquisa e virou
 E mesmo lá vale o que já estava escrito: para set, o que decide voto é _qual_
 efeito, não se o dano é 8% ou 9%.
 
+## Item que não é equipamento: token, decor, cosmético
+
+Boa parte do que cai numa raid **não é peça**. Numa lista real de 32 drops não-equipamento, quatro formatos:
+
+| formato                     | qtd | `ClassID` / `SubClassID`      |
+| --------------------------- | --- | ----------------------------- |
+| **token de set** (`Venom*`) | 20  | 15/0 (`Miscellaneous`/`Junk`) |
+| **decor de casa**           | 8   | **20/0** (`Housing`/`Decor`)  |
+| **cosmético de aparência**  | 2   | 4/5 (`Armor`/`Cosmetic`)      |
+| reagente e companion        | 2   | 5/2 e 15/2                    |
+
+`ClassID 20` é **`Housing`**, novidade da 12.0, e não está em enum nenhum que
+circule por aí — vem do próprio `ItemClass`.
+
+Nada aqui usa orçamento, multiplicador, árvore de bônus ou track. **O modelo é
+outro, e é muito mais simples:**
+
+```
+nome        = ItemSparse.Display_lang
+qualidade   = ItemSparse.OverallQualityID          (cor)
+vínculo     = ItemSparse.Bonding                    (ver a regra do modo sem personagem)
+tipo        = ItemSubClass[ClassID, SubClassID].DisplayName_lang
+classes     = ItemSparse.AllowableClass             (bitmask, ver abaixo)
+nível       = ItemSparse.RequiredLevel
+efeito      = ItemXItemEffect → ItemEffect → Spell.Description_lang
+flavor      = ItemSparse.Description_lang
+```
+
+### `AllowableClass` é bitmask, e nos tokens ela É o tipo de armadura
+
+`-1` significa "todas". Fora isso, bit `n−1` ligado quer dizer `ChrClasses[n]`:
+
+| valor | classes                          | token         |
+| ----- | -------------------------------- | ------------- |
+| 35    | Warrior, Paladin, Death Knight   | `Venomforged` |
+| 3592  | Rogue, Monk, Druid, Demon Hunter | `Venomcured`  |
+| 4164  | Hunter, Shaman, Evoker           | `Venomcast`   |
+| 400   | Priest, Mage, Warlock            | `Venomwoven`  |
+
+Bate um a um com o nome do token. O formato da linha está no `GlobalStrings`:
+`ITEM_CLASSES_ALLOWED = 'Classes: %s'`.
+
+> **Iterar sobre o `ChrClasses`, nunca sobre `1..13` fixo.** A tabela tem **15**
+> linhas neste build — `Adventurer` e `Traveler` ocupam 14 e 15. Hoje nenhuma
+> máscara observada usa esses bits, e é exatamente o tipo de constante que
+> envelhece sem avisar.
+
+E os nomes curtos **não estão no `GlobalStrings`**: lá o `CLASS_WARRIOR` é o
+texto longo de descrição da classe. Quem tem "Warrior" é o `ChrClasses.Name_lang`.
+
+### O `Use:` sai pelo mesmo caminho do trinket
+
+`ItemXItemEffect` → `ItemEffect` → `Spell.Description_lang`, e o `TriggerType`
+decide o rótulo — `0` é "on use" (39.677 linhas), `1` é "on equip" (8.854).
+
+```
+Venomforged Idol → Use: Create a soulbound set hand item appropriate for your class.
+Mural            → Use: Add this Decor to your House Chest.
+Soulcoil Remnant → Right Click to summon and dismiss this companion.   (TriggerType 6)
+```
+
+### Isto ainda NÃO foi verificado contra tooltip real
+
+O mapeamento acima é **derivado da estrutura**, não medido — nenhum dos 32 veio
+com o tooltip transcrito. Pela regra deste documento isso é implementação sem
+fixture, e fica marcado como tal.
+
+Dois pontos concretos em dúvida, os dois de exibição e não de dado:
+
+- **os tokens dão `Junk`** como subclasse (15/0), e é improvável que o tooltip
+  mostre isso — provavelmente a linha some para `Miscellaneous`;
+- no companion, o `Description_lang` e o texto do efeito **dizem quase a mesma
+  coisa**, e a ordem entre eles não foi observada.
+
+Basta um tooltip transcrito de cada formato para fechar.
+
 ## O erro que se cancelava
 
 Antes de encontrar o SimC, a fórmula tinha sido reconstruída ajustando **um item
@@ -1054,6 +1138,7 @@ errada com números plausíveis.
 | **set** (nome, peças, bônus por spec) | ✅ 2 sets, e o modo sem personagem vem do próprio cliente |
 | item level (era antiga)               | ✅ era `Type 50` não expandido, não squish                |
 | flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                  |
+| **item que não é equipamento**        | 🔧 mapeado inteiro, **sem tooltip real para conferir**    |
 | socket (`penalty`)                    | ✅ fórmula do SimC; termo morto acima do ilvl 60          |
 | números dentro do texto de set        | ⏸️ fora do caminho: o padrão é a linha genérica           |
 | `Type 38` do `ItemBonus`              | ⏸️ redundante — repete o `InventoryType` que já temos     |
@@ -1062,7 +1147,11 @@ errada com números plausíveis.
 
 ## O que ainda está aberto
 
-**Nada bloqueia a implementação.** O escudo que faltava chegou, fechou o `Block`
+**Um tooltip transcrito de token, decor e cosmético** — o mapeamento de
+não-equipamento está inteiro, mas nenhum dos 32 veio com o tooltip, então é
+implementação sem fixture. Ver a seção deles.
+
+O resto não bloqueia. O escudo que faltava chegou, fechou o `Block`
 — e revelou a árvore de bônus, que era um buraco que ninguém sabia que existia.
 
 Fica registrado o que ele custaria se não tivesse aparecido: **o popover

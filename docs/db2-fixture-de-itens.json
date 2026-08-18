@@ -671,7 +671,77 @@
     }
   ],
   "aindaFaltaNaFixture": [
-    "Um efeito com ScalingClass 0 — a regra veio do SimC (PLAYER_NONE -> DamageSecondary) e nenhum espécime a exercita.",
-    "Um item cujo itemContext ofereça MAIS DE UM grupo de track sem Type 34 no itemString — seria o caso ambíguo do rank padrão. Nos espécimes, quando a árvore oferece vários grupos o itemString sempre traz o Type 34."
-  ]
+    "Um tooltip TRANSCRITO de token de set, de decor e de cosmético — o mapeamento existe mas nunca foi conferido contra o jogo.",
+    "Um efeito com ScalingClass 0 — a regra veio do SimC (PLAYER_NONE -> DamageSecondary) e nenhum espécime a exercita."
+  ],
+  "naoEquipamento": {
+    "$comment": "Drops de raid que nao sao peca. AINDA SEM TOOLTIP TRANSCRITO — os valores abaixo sao o que a estrutura do db2 preve, nao o que foi observado. Confirmar antes de tratar como fixture.",
+    "itemStringComum": "item:<id>::::::::90:250::3:1:3524:1:28:7359:::::",
+    "notaSobreOBonus": "Os 32 carregam o MESMO bonusID 3524, que e Type 0 (no-op) — o mesmo do escudo Bubblefin. Confirma que 3524 e o bonus vazio padrao, nao anomalia.",
+    "formatos": [
+      {
+        "formato": "token de set",
+        "qtd": 20,
+        "classeDeItem": "15/0 (Miscellaneous/Junk)",
+        "exemplo": {
+          "itemId": 270913,
+          "nome": "Venomforged Idol",
+          "qualidade": "Epic",
+          "previsto": [
+            "Binds when picked up",
+            "Classes: Warrior, Paladin, Death Knight",
+            "Requires Level 90",
+            "Use: Create a soulbound set hand item appropriate for your class."
+          ]
+        },
+        "duvida": "A subclasse e 'Junk'; provavelmente a linha de tipo nao aparece no tooltip."
+      },
+      {
+        "formato": "decor de casa",
+        "qtd": 8,
+        "classeDeItem": "20/0 (Housing/Decor)",
+        "exemplo": {
+          "itemId": 279500,
+          "nome": "\"Rage of the Shackled\" Mural",
+          "qualidade": "Rare",
+          "previsto": ["Binds when picked up", "Decor", "Use: Add this Decor to your House Chest."]
+        }
+      },
+      {
+        "formato": "cosmetico de aparencia",
+        "qtd": 2,
+        "classeDeItem": "4/5 (Armor/Cosmetic)",
+        "exemplo": {
+          "itemId": 275937,
+          "nome": "Hex Lord's Visage",
+          "qualidade": "Rare",
+          "previsto": ["Binds when picked up", "Head    Cosmetic"]
+        }
+      },
+      {
+        "formato": "reagente e companion",
+        "qtd": 2,
+        "classeDeItem": "5/2 e 15/2",
+        "exemplo": {
+          "itemId": 270909,
+          "nome": "Slumbering Coil Curio",
+          "qualidade": "Epic",
+          "previsto": [
+            "Binds when picked up",
+            "Context Token",
+            "Requires Level 90",
+            "\"Find Kirana near the Catalyst in Silvermoon to trade this for powerful class set armor.\""
+          ]
+        },
+        "duvida": "No companion (280305) o Description_lang e o texto do efeito dizem quase a mesma coisa; a ordem nao foi observada."
+      }
+    ],
+    "mascarasDeClasse": {
+      "35": "Warrior, Paladin, Death Knight",
+      "3592": "Rogue, Monk, Druid, Demon Hunter",
+      "4164": "Hunter, Shaman, Evoker",
+      "400": "Priest, Mage, Warlock",
+      "-1": "todas"
+    }
+  }
 }
