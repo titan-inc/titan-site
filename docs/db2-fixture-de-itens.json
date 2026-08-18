@@ -1,0 +1,407 @@
+{
+  "$comment": [
+    "Peças reais observadas no cliente do WoW, com os números EXATOS que o tooltip mostrou.",
+    "É o critério de aceite da TIT-136: se o cálculo não reproduz estes itens exatamente,",
+    "ele está errado — e não 'quase'.",
+    "",
+    "Coletar isto NÃO é trivial: exige ter a peça no jogo, extrair o itemString pelo addon",
+    "e transcrever o tooltip à mão. Por isso está versionado, e não apenas na conversa que",
+    "o produziu.",
+    "",
+    "Processo, fórmulas e método em docs/db2-do-cliente.md.",
+    "Quando a TIT-136 for implementada, este arquivo vira fixture de teste."
+  ],
+  "build": "12.1.0 69299 (Aug 12 2026)",
+  "comentarioBuild": "Sem o build, divergência futura é indistinguível entre bug nosso e mudança de patch.",
+  "itens": [
+    {
+      "nome": "Relentless Rider's Chain",
+      "itemId": 249967,
+      "slot": "Waist",
+      "material": "Plate",
+      "itemString": "item:249967::240900::::::90:250::35:4:6652:13440:12806:13534::::::",
+      "itemLevel": 289,
+      "descritor": "Mythic+",
+      "esperado": {
+        "primario": {
+          "valor": 93,
+          "tipos": ["Strength", "Intellect"]
+        },
+        "stamina": 1745,
+        "crit": 35,
+        "mastery": 88,
+        "armadura": 183
+      },
+      "notas": [
+        "Socket vindo de consumível (bônus 13534) — StatPercentageOfSocket é zero, penalty não se aplica.",
+        "A gema dá +16 Mastery e +7 Haste e NÃO entra nas linhas de stat acima."
+      ],
+      "gema": {
+        "itemString": "item:240900::::::::90:250:::::::::",
+        "efeito": "+16 Mastery & +7 Haste"
+      }
+    },
+    {
+      "nome": "Relentless Rider's Chain (rank superior)",
+      "itemId": 249967,
+      "slot": "Waist",
+      "material": "Plate",
+      "itemString": "item:249967::240900::::::90:250::6:5:6652:13335:13786:3183:13534::::::",
+      "itemLevel": 298,
+      "descritor": "Mythic",
+      "esperado": {
+        "primario": {
+          "valor": 101,
+          "tipos": ["Strength", "Intellect"]
+        },
+        "stamina": 1935,
+        "crit": 37,
+        "mastery": 92,
+        "armadura": 193
+      },
+      "CONTAMINADO": true,
+      "notas": [
+        "Tem 'Sporefused: Myth' — mecânica de season que perturba primário e stamina.",
+        "NÃO usar para calibrar stat. Mantido aqui de propósito: foi o espécime que quase",
+        "produziu uma fórmula errada com números plausíveis.",
+        "Só a armadura é confiável, porque não é afetada.",
+        "Os stats acima SAO os observados no jogo, e estao registrados de proposito: sao o unico dado que existe sobre o efeito do Sporefused. Quem for decodificar essa mecanica um dia comeca por aqui."
+      ]
+    },
+    {
+      "nome": "Pendant of Malefic Fury",
+      "itemId": 251142,
+      "slot": "Neck",
+      "itemString": "item:251142::::::::90:250::23:5:12833:13439:6652:13668:12699:1:28:3025:::::",
+      "itemLevel": 292,
+      "descritor": "Mythic",
+      "track": {
+        "nome": "Champion",
+        "rank": 1,
+        "total": 6
+      },
+      "esperado": {
+        "stamina": 1353,
+        "haste": 97,
+        "mastery": 212
+      },
+      "notas": ["Socket vazio. Joia não tem armadura."]
+    },
+    {
+      "nome": "Pendant of Malefic Fury (rank 2)",
+      "itemId": 251142,
+      "slot": "Neck",
+      "itemString": "item:251142::::::::90:250::23:5:13439:6652:13668:12699:12834:1:28:3025:::::",
+      "itemLevel": 295,
+      "track": {
+        "nome": "Champion",
+        "rank": 2,
+        "total": 6
+      },
+      "esperado": {
+        "stamina": 1402,
+        "haste": 100,
+        "mastery": 217
+      }
+    },
+    {
+      "nome": "Blazebinder's Hoof",
+      "itemId": 193762,
+      "slot": "Trinket",
+      "itemString": "item:193762::::::::90:250::23:4:12833:13439:6652:12699:1:28:3025:::::",
+      "itemLevel": 292,
+      "track": {
+        "nome": "Champion",
+        "rank": 1,
+        "total": 6
+      },
+      "esperado": {
+        "haste": 119,
+        "efeito": {
+          "duracaoSegundos": 20,
+          "maxStacks": 6,
+          "cooldownMinutos": 2,
+          "s1_strength": 105,
+          "s2_danoFogo": 77365,
+          "textoRenderizado": "Use: Bind with the blade for 20 sec, giving your attacks a high chance to increase your Strength by 105, stacking up to 6 times. When your binding is complete, emit a burnout wave, dealing up to 77365 Fire damage split between all nearby enemies, based on the strength of your binding. (2 Min Cooldown)"
+        }
+      },
+      "notas": [
+        "Único espécime com efeito 'Use:'. Exercita ScalingClass −1 (s1) e −8 (s2).",
+        "Trinket usa índice de orçamento 1 e multiplicador do tipo Trinket.",
+        "O texto renderizado e o alvo da substituicao: o template vem de Spell.Description_lang com $s1, $s2, $d e $u."
+      ]
+    },
+    {
+      "nome": "Blazebinder's Hoof (rank 2)",
+      "itemId": 193762,
+      "slot": "Trinket",
+      "itemString": "item:193762::::::::90:250::23:4:13439:6652:12699:12834:1:28:3025:::::",
+      "itemLevel": 295,
+      "track": {
+        "nome": "Champion",
+        "rank": 2,
+        "total": 6
+      },
+      "esperado": {
+        "haste": 121,
+        "efeito": {
+          "s1_strength": 108,
+          "s2_danoFogo": 79753
+        }
+      }
+    },
+    {
+      "nome": "Wallcliber's Incursion Hatchet",
+      "itemId": 204279,
+      "slot": "One-Hand",
+      "material": "Axe",
+      "itemString": "item:204279::::::::90:250::5:5:7980:9330:6652:1485:8767:1:28:2646:::::",
+      "itemLevel": 82,
+      "descritor": "Heroic",
+      "esperado": {
+        "primario": {
+          "valor": 9,
+          "tipos": ["Agility"]
+        },
+        "stamina": 16,
+        "haste": 12,
+        "versatility": 6,
+        "danoMin": 17,
+        "danoMax": 36,
+        "speed": 2.6,
+        "dps": 10.2
+      },
+      "notas": [
+        "Item de Dragonflight pós-squish: base 415 exibida como 82.",
+        "Único espécime de arma, e o único de era antiga.",
+        "O item level dele NÃO é derivável hoje — ver 'o que continua aberto' no doc."
+      ]
+    },
+    {
+      "nome": "Platinum Star Band",
+      "itemId": 193708,
+      "slot": "Finger",
+      "itemString": "item:193708:7967:240983::::::90:250::35:5:13440:6652:13668:12699:12806::::::",
+      "itemLevel": 289,
+      "descritor": "Mythic+",
+      "esperado": {
+        "stamina": 1309,
+        "crit": 199,
+        "mastery": 104,
+        "armadura": 0
+      },
+      "notas": [
+        "Encantado (Eyes of the Eagle) e com gema de +32 primário — nenhum dos dois entra nas linhas acima.",
+        "SubclassID 0 (Misc): anel não tem armadura innata, e o tooltip não tem a linha.",
+        "Track da season passada: o bônus 12806 existe mas a linha de upgrade NÃO aparece."
+      ],
+      "gema": {
+        "itemString": "item:240983::::::::90:250:::::::::",
+        "efeito": "+32 Primary Stat"
+      },
+      "encantamento": {
+        "enchantId": 7967,
+        "nome": "Enchant Ring - Eyes of the Eagle",
+        "nota": "Qualidade nao anotada na coleta (3 ou 5)."
+      }
+    },
+    {
+      "nome": "Steelbark Shoulderguards",
+      "itemId": 256998,
+      "slot": "Shoulder",
+      "material": "Plate",
+      "comentario": "Track inteira de seis ranks. O espécime mais valioso: 24 stats e 6 armaduras de uma vez.",
+      "ranks": [
+        {
+          "itemString": "item:256998::::::::90:250::25:3:12817:6652:13663:1:28:3321:::::",
+          "itemLevel": 266,
+          "track": {
+            "nome": "Adventurer",
+            "rank": 1,
+            "total": 6
+          },
+          "esperado": {
+            "primario": 75,
+            "stamina": 1325,
+            "crit": 52,
+            "mastery": 57,
+            "armadura": 196
+          }
+        },
+        {
+          "itemString": "item:256998::::::::90:250::25:3:6652:13663:12818:1:28:3321:::::",
+          "itemLevel": 269,
+          "track": {
+            "nome": "Adventurer",
+            "rank": 2,
+            "total": 6
+          },
+          "esperado": {
+            "primario": 77,
+            "stamina": 1374,
+            "crit": 53,
+            "mastery": 58,
+            "armadura": 199
+          }
+        },
+        {
+          "itemString": "item:256998::::::::90:250::25:3:6652:13663:12819:1:28:3321:::::",
+          "itemLevel": 272,
+          "track": {
+            "nome": "Adventurer",
+            "rank": 3,
+            "total": 6
+          },
+          "esperado": {
+            "primario": 79,
+            "stamina": 1414,
+            "crit": 54,
+            "mastery": 59,
+            "armadura": 203
+          }
+        },
+        {
+          "itemString": "item:256998::::::::90:250::25:3:6652:13663:12820:1:28:3321:::::",
+          "itemLevel": 276,
+          "track": {
+            "nome": "Adventurer",
+            "rank": 4,
+            "total": 6
+          },
+          "esperado": {
+            "primario": 82,
+            "stamina": 1481,
+            "crit": 55,
+            "mastery": 60,
+            "armadura": 207
+          }
+        },
+        {
+          "itemString": "item:256998::::::::90:250::25:3:6652:13663:12821:1:28:3321:::::",
+          "itemLevel": 279,
+          "track": {
+            "nome": "Adventurer",
+            "rank": 5,
+            "total": 6
+          },
+          "esperado": {
+            "primario": 85,
+            "stamina": 1545,
+            "crit": 56,
+            "mastery": 61,
+            "armadura": 211
+          }
+        },
+        {
+          "itemString": "item:256998::::::::90:250::25:3:6652:13663:12822:1:28:3321:::::",
+          "itemLevel": 282,
+          "track": {
+            "nome": "Adventurer",
+            "rank": 6,
+            "total": 6
+          },
+          "esperado": {
+            "primario": 87,
+            "stamina": 1606,
+            "crit": 57,
+            "mastery": 62,
+            "armadura": 215
+          }
+        }
+      ],
+      "notas": [
+        "Primário flexível tipo 74 (Strength ou Intellect) — o tooltip mostra o Intellect apagado.",
+        "Ombro é o slot que descarta a 5ª coluna do ArmorLocation: as quatro de material (0,11)",
+        "acertam os seis ranks, a coluna Modifier (0,13) erra os seis."
+      ]
+    },
+    {
+      "nome": "Relentless Rider's Crown",
+      "itemId": 249970,
+      "slot": "Head",
+      "material": "Plate",
+      "itemString": "item:249970:7991:240900::::::90:250::35:6:41:13440:13338:13575:12806:13534::::::",
+      "itemLevel": 289,
+      "descritor": "Mythic+",
+      "esperado": {
+        "primario": {
+          "valor": 124,
+          "tipos": ["Strength", "Intellect"]
+        },
+        "stamina": 2326,
+        "haste": 107,
+        "mastery": 57,
+        "leech": 71,
+        "armadura": 244
+      },
+      "set": {
+        "itemSetId": 1978,
+        "nome": "Relentless Rider's Lament",
+        "classe": "Death Knight",
+        "pecas": 5,
+        "bonusPorSpec": ["Blood", "Frost", "Unholy"],
+        "thresholds": [2, 4],
+        "pecasNomes": [
+          "Relentless Rider's Cuirass",
+          "Relentless Rider's Bonegrasps",
+          "Relentless Rider's Crown",
+          "Relentless Rider's Legguards",
+          "Relentless Rider's Dreadthorns"
+        ],
+        "textoObservado": {
+          "$comment": "O jogo mostrou SO os bonus de Blood, a spec de quem coletou. Instanceless mostra os tres.",
+          "contagemExibida": "4/5",
+          "linhas": [
+            "Set: Your Blood Boil deals 8% increased damage and generates 3 Runic Power.",
+            "Set: Death Strike deals 8% increased damage has an 10% chance to grant a charge of Blood Boil."
+          ]
+        }
+      },
+      "notas": [
+        "Único espécime com TERCIÁRIO numérico (Leech, bônus 41).",
+        "Único espécime de item de SET.",
+        "Encantado e com gema — nenhum dos dois entra nas linhas de stat."
+      ],
+      "encantamento": {
+        "enchantId": 7991,
+        "nome": "Enchant Helm - Empowered Blessing of Speed",
+        "nota": "Qualidade nao anotada na coleta (3 ou 5)."
+      },
+      "gema": {
+        "itemString": "item:240900::::::::90:250:::::::::"
+      }
+    },
+    {
+      "nome": "Radiant Clutchtender's Jerkin",
+      "itemId": 249322,
+      "slot": "Chest",
+      "material": "Leather",
+      "itemString": "item:249322::::::::90:250::6:4:43:13577:13335:12804::::::",
+      "itemLevel": 282,
+      "descritor": "Mythic",
+      "esperado": {
+        "primario": {
+          "valor": 116,
+          "tipos": ["Agility", "Intellect"]
+        },
+        "stamina": 2142,
+        "crit": 109,
+        "mastery": 50,
+        "indestructible": true,
+        "armadura": 141
+      },
+      "notas": [
+        "Terciário INDESTRUCTIBLE (bônus 43): o cálculo produz 68, e o jogo mostra só a palavra.",
+        "Renderizar o número seria certo pelo dado e errado pela tela.",
+        "Primário flexível tipo 73 (Agility ou Intellect)."
+      ]
+    }
+  ],
+  "aindaFaltaNaFixture": [
+    "Peça com socket NATIVO (StatPercentageOfSocket não-zero) — o penalty nunca rodou com valor diferente de zero.",
+    "Terciários Avoidance (bônus 40) e Speed (42) — só Leech e Indestructible foram observados.",
+    "Arma de duas mãos, escudo e offhand — só há uma arma de uma mão.",
+    "Item de era antiga cujo item level seja derivável — o machado é o único, e o squish não foi resolvido."
+  ]
+}
