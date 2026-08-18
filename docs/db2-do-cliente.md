@@ -439,10 +439,13 @@ valor sai da mesma fórmula dos secundários.
 
 | bônus | stat                | verificado                                      |
 | ----- | ------------------- | ----------------------------------------------- |
-| 40    | Avoidance (63)      | —                                               |
+| 40    | Avoidance (63)      | **49**, numa luva de couro no ilvl 276          |
 | 41    | Leech (62)          | **71**, num elmo de placa no ilvl 289           |
-| 42    | Speed (61)          | —                                               |
+| 42    | Speed (61)          | **66**, num peito de placa no ilvl 276          |
 | 43    | Indestructible (64) | calcula **68**, e o tooltip mostra só a palavra |
+
+**Os quatro estão verificados**, e os três que viram número seguem a fórmula dos
+secundários sem exceção nenhuma.
 
 > **`Indestructible` é flag na tela, mesmo tendo valor no dado.** Renderizar o
 > número seria certo pelo dado e errado pela tela.
@@ -466,6 +469,20 @@ renderização não tem personagem, ela mostra todos:
 +124 (Strength or Intellect)
 ```
 
+### A linha apagada do tooltip não é dado separado
+
+O jogo renderiza o primário flexível como **duas linhas**, a da spec de quem olha
+em branco e a outra apagada:
+
+```
++82 Agility
++82 Intelect        ← apagada
+```
+
+São a mesma entrada. Uma luva de `Type 73` tem **uma** alocação (5259) e nenhuma
+outra entrada de primário — as duas linhas saem dela. Ler o tooltip como se
+fossem dois stats produziria uma peça com Agility e Intellect ao mesmo tempo.
+
 ## Item de set
 
 ```
@@ -479,22 +496,53 @@ ItemSparse.ItemSet → ItemSet.Name_lang + ItemSet.ItemID (17 posições, zeros 
 Verificado no `Relentless Rider's Lament` (set 1978): nome, as cinco peças, e
 seis bônus — dois thresholds (2 e 4) × três specs de Death Knight.
 
-**Os bônus são POR SPEC**, e o jogo mostra só os da spec de quem olha. Sem
-personagem, mostramos os três conjuntos, na ordem do `OrderIndex`:
-
-```
-Relentless Rider's Lament · Death Knight · 5 peças
-
-Blood    2: …   4: …
-Frost    2: …   4: …
-Unholy   2: …   4: …
-```
-
-A classe sai do `ClassID` e é a mesma em todas as linhas, então aparece uma vez
-no cabeçalho.
+**Os bônus são POR SPEC**, e o jogo mostra só os da spec de quem olha.
 
 **A contagem `(4/5)` do tooltip fica de fora**: é estado de personagem. O total
-vem da contagem de `ItemID` não-zero; o numerador não existe sem instância.
+vem da contagem de `ItemID` não-zero; o numerador não existe sem instância — num
+inspect de outro personagem o jogo mostra `(0/5)`, contando o **espectador**.
+
+### O nome do set não é uma das peças
+
+O tooltip lista **seis** nomes e o set tem **cinco**:
+
+```
+Devouring Reaver's Sheathe (0/5)      ← ItemSet.Name_lang
+   Engine · Essence Grips · Intake · Pistons · Exhaustplates
+```
+
+`Sheathe` não é nenhum dos cinco `ItemID`. O nome do set é escolhido pela
+Blizzard e **tem cara de peça** — quem tratar a primeira linha como item mostra
+seis peças num set de cinco. O `(x/y)` ao lado é o que denuncia: ele pertence ao
+cabeçalho.
+
+### O jogo já tem um modo sem personagem — e é o nosso
+
+O popover renderiza **sem personagem**: não há spec, não há bind, não há
+contagem. Isso parecia problema nosso, e não é — o cliente cai no mesmo estado
+sempre que mostra um item que não é seu, e as strings estão no `GlobalStrings`:
+
+| linha        | com personagem                 | sem                                                                                             |
+| ------------ | ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| vínculo      | `ITEM_SOULBOUND` → "Soulbound" | `ITEM_BIND_ON_PICKUP` → **"Binds when picked up"**                                              |
+| bônus de set | os da spec de quem olha        | `ITEM_SET_BONUS_NO_VALID_SPEC` → **"Bonus effects vary based on the player's specialization."** |
+| contagem     | `(4/5)`                        | `(0/5)` — conta o espectador, então fica de fora                                                |
+
+Observado num inspect de outro personagem, que é exatamente a situação do
+popover: item real, espectador sem vínculo com ele.
+
+> **Isto reverteu a decisão da rodada anterior.** Antes: "sem personagem,
+> mostramos os três conjuntos de bônus, na ordem do `OrderIndex`". O jogo não faz
+> isso — imprime uma linha só. E a razão é boa: seis bônus de três specs
+> empilhados soterram o que decide voto, que é **qual peça**, não o texto do
+> bônus.
+>
+> O padrão passa a ser a linha genérica; os bônus por spec continuam mapeados
+> (o `ItemSetSpell` não mudou) e ficam como conteúdo expandível.
+
+A lição vale além do set: **quando a renderização precisa de estado que não
+temos, olhar como o cliente resolve o mesmo caso**. Ele já resolveu, e a string
+traduzida vem junto.
 
 ### Os números do texto de set ficam para depois
 
@@ -725,9 +773,9 @@ Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
 > pelo addon e transcrever o tooltip à mão. Por isso viram arquivo, e não uma
 > tabela em prosa — e por isso o arquivo carrega o build junto.
 
-**106 valores em 18 espécimes**, cobrindo os quatro tipos de multiplicador
+**113 valores em 19 espécimes**, cobrindo os quatro tipos de multiplicador
 (armadura, joia, trinket, arma), as três classes de orçamento, primário fixo e
-flexível, uma track inteira de seis ranks, três terciários, dois itens de set de
+flexível, uma track inteira de seis ranks, os quatro terciários, três itens de set de
 classes diferentes, cinco armas (uma mão, duas mãos, caster), um escudo, uma
 off-hand, e um item pós-squish de expansão antiga.
 
@@ -741,15 +789,15 @@ errada com números plausíveis.
 | ------------------------------------- | --------------------------------------------------------- |
 | item level (item moderno)             | ✅ fórmula completa, 4/4                                  |
 | primário, stamina, secundários        | ✅ **43 stats**                                           |
-| primário flexível (todos os tipos)    | ✅ enum do SimC, 2 dos 4 observados                       |
+| primário flexível (todos os tipos)    | ✅ enum do SimC, 3 dos 4 observados                       |
 | armadura                              | ✅ 10/10, escudo incluso                                  |
 | dano, speed, dps                      | ✅ 5/5, com a seleção entre as 4 tabelas                  |
 | descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                    |
 | `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                 |
 | track completo (nome, rank, total)    | ✅ 3 grupos — `Type 34` + `SharedString`                  |
 | **on use / proc — texto e números**   | ✅ 4/4, com o `ScalingClass` decodificado                 |
-| **terciários**                        | ✅ Leech e Speed medidos; Indestructible é flag           |
-| **set** (nome, peças, bônus por spec) | ✅ verificado num set de 5 peças e 3 specs                |
+| **terciários**                        | ✅ os 4; Indestructible é flag, os outros 3 medidos       |
+| **set** (nome, peças, bônus por spec) | ✅ 2 sets, e o modo sem personagem vem do próprio cliente |
 | flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                  |
 | socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças   |
 | números dentro do texto de set        | ⚠️ tem expressão (`${$1271198s1/10}`), não só placeholder |
@@ -760,9 +808,12 @@ errada com números plausíveis.
 
 - **peça com socket nativo**, para exercitar o `penalty` de verdade — é coleta,
   não pesquisa
-- **terciário `Avoidance`** (bônus 40) — os outros três já apareceram
 - **o `Block` do escudo**: o espécime mostra `1915` e nada do que foi mapeado
   produz esse número
+- **`Type 38` do `ItemBonus`**, que não está no enum do SimC. São 11 padrões, todos
+  da forma `n,n`, ~10 entradas cada; os valores `1,3,5,7,10` batem com os cinco
+  slots de tier, mas `17` a `22` não. Não toca stat nenhum nos espécimes — fica
+  como pergunta aberta, não como detalhe
 - **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1, e a
   tabela geral de escala por `ScalingClass` não foi identificada
 - **item level de era antiga**: o machado de Dragonflight usa `Type 1`

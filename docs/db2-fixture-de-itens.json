@@ -586,12 +586,56 @@
         "Importante: mecânica de season NÃO é categoria homogênea. O Sporefused perturba,",
         "este não. Cada uma precisa ser verificada por conta própria."
       ]
+    },
+    {
+      "nome": "Devouring Reaver's Essence Grips",
+      "itemId": 250034,
+      "slot": "Hands",
+      "material": "Leather",
+      "itemString": "item:250034::::::::90:250::110:5:40:12798:13337:13574:3161::::::",
+      "itemLevel": 276,
+      "origem": "inspect de outro personagem — por isso o tooltip está no modo sem personagem",
+      "esperado": {
+        "primario": {
+          "valor": 82,
+          "tipos": ["Agility", "Intellect"]
+        },
+        "stamina": 1481,
+        "crit": 77,
+        "haste": 39,
+        "avoidance": 49,
+        "armadura": 76
+      },
+      "set": {
+        "nome": "Devouring Reaver's Sheathe",
+        "pecas": 5,
+        "itemSetId": 1979,
+        "nomesDasPecas": [
+          "Devouring Reaver's Engine",
+          "Devouring Reaver's Essence Grips",
+          "Devouring Reaver's Intake",
+          "Devouring Reaver's Pistons",
+          "Devouring Reaver's Exhaustplates"
+        ],
+        "textoObservado": {
+          "contagemExibida": "0/5",
+          "linhas": ["Bonus effects vary based on the player's specialization."]
+        },
+        "$comment": "O nome do set NAO e uma das 5 pecas. E a linha de bonus e a generica do ITEM_SET_BONUS_NO_VALID_SPEC."
+      },
+      "linhaDeVinculo": "Binds when picked up",
+      "notas": [
+        "Fecha o quarto e ultimo terciario: Avoidance = 49 (bonus 40, Type 2, 63/3000).",
+        "Melhor espécime de PRIMARIO FLEXIVEL: uma unica entrada (Type 73, aloc 5259) gera as duas linhas do tooltip, +82 Agility e +82 Intellect apagado.",
+        "Veio de INSPECT, e por isso mostra 'Binds when picked up' no lugar de 'Soulbound' e a linha generica de set — o modo sem personagem que o popover precisa.",
+        "Traz Type 38 no bonus 13337 ('10,10' e '21,21'), fora do enum do SimC e sem efeito em stat."
+      ]
     }
   ],
   "aindaFaltaNaFixture": [
     "Peça com socket NATIVO (StatPercentageOfSocket não-zero) — o penalty nunca rodou com valor diferente de zero.",
-    "Terciário Avoidance (bônus 40) — Leech, Indestructible e Speed já foram observados.",
     "A fórmula do Block do escudo — o valor 1915 está registrado e não fecha com nada mapeado.",
-    "Item de era antiga cujo item level seja derivável — o machado é o único, e o squish não foi resolvido."
+    "Item de era antiga cujo item level seja derivável — o machado é o único, e o squish não foi resolvido.",
+    "O que o Type 38 do ItemBonus significa — 11 padrões da forma n,n, sem efeito observado em stat."
   ]
 }
