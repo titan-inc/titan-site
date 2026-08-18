@@ -175,7 +175,8 @@
       "notas": [
         "Item de Dragonflight pós-squish: base 415 exibida como 82.",
         "Único espécime de arma, e o único de era antiga.",
-        "O item level dele NÃO é derivável hoje — ver 'o que continua aberto' no doc."
+        "O item level dele NÃO é derivável hoje — ver 'o que continua aberto' no doc.",
+        "O item level 82 sai da fórmula normal, uma vez expandido o Type 50 (APPLY_BONUS): bônus 9330 -> lista 13478 -> Type 49 = config 7 -> base 70, curva identidade, offset 12. Nao ha passo de squish."
       ]
     },
     {
@@ -517,7 +518,8 @@
       "notas": [
         "Único ESCUDO: armadura vem do ItemArmorShield, sem modificador de slot nem material.",
         "Tem Strength E Intellect como entradas separadas (o Intellect aparece apagado no tooltip).",
-        "O BLOCK (1915) não fecha com nada mapeado — único valor de tooltip ainda sem fórmula."
+        "O BLOCK (1915) não fecha com nada mapeado — único valor de tooltip ainda sem fórmula.",
+        "Hipotese do Block: armadura crua (766,169) x 2,5 = 1915,42 -> 1915. UM especimen so; nao distingue floor de round nem confirma o 2,5."
       ]
     },
     {
@@ -633,9 +635,7 @@
     }
   ],
   "aindaFaltaNaFixture": [
-    "Peça com socket NATIVO (StatPercentageOfSocket não-zero) — o penalty nunca rodou com valor diferente de zero.",
-    "A fórmula do Block do escudo — o valor 1915 está registrado e não fecha com nada mapeado.",
-    "Item de era antiga cujo item level seja derivável — o machado é o único, e o squish não foi resolvido.",
-    "O que o Type 38 do ItemBonus significa — 11 padrões da forma n,n, sem efeito observado em stat."
+    "Um SEGUNDO escudo, de item level diferente de 250 — é o único espécime que ainda muda alguma coisa. Fecha o Block: testa o multiplicador 2,5, e nos ilvls 259, 268 ou 272 separa floor de round.",
+    "Um efeito com ScalingClass 0 — a regra veio do SimC (PLAYER_NONE -> DamageSecondary) e nenhum espécime a exercita."
   ]
 }

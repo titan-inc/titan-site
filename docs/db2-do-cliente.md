@@ -305,7 +305,7 @@ do SimC, em `enum item_bonus_type`.
 | 11   | `SCALING`               | 52   | `CRAFTING_QUALITY`       |
 | 13   | `SCALING_2`             | 53   | `POST_SQUISH_ITEM_LEVEL` |
 | 14   | `SET_ILEVEL`            | 17   | `ADD_RANK`               |
-| 23   | `ADD_ITEM_EFFECT`       |      |                          |
+| 23   | `ADD_ITEM_EFFECT`       | 50   | **`APPLY_BONUS`**        |
 
 Os quatro que tinham sido decodificados à mão (1, 2, 3, 6) estão certos. E há um
 comentário no fonte que confirma uma medição nossa: **`QUALITY` "seems unused as
@@ -315,6 +315,36 @@ linhas do `RandPropPoints`.
 O `Type 2` **valida cruzado** os ids de stat terciário: bonus 40 → `63,3000`;
 41 → `62,3000`; 42 → `61,3000`; 43 → `64,3000`, ou seja **63=Avoidance,
 62=Leech, 61=Speed, 64=Indestructible**.
+
+#### O `Type 38` não está no enum, e é seguro ignorar
+
+Ele aparece em **53 listas, e todas contêm exclusivamente `Type 38`** — nenhuma
+carrega ilvl, stat, qualidade ou qualquer outra coisa. Vêm em **grupos de cinco**,
+um grupo por geração de tier (10 gerações), mais três listas soltas com `17`.
+
+Cruzando um grupo com o set correspondente, o padrão fecha:
+
+| peça          | `InventoryType` | lista | `Type 38`   |
+| ------------- | --------------- | ----- | ----------- |
+| Intake        | 1 (Head)        | 13338 | `1` + `18`  |
+| Exhaustplates | 3 (Shoulder)    | 13340 | `3` + `19`  |
+| Engine        | 5 (Chest)       | 13336 | `5` + `20`  |
+| Pistons       | 7 (Legs)        | 13339 | `7` + `22`  |
+| Essence Grips | 10 (Hands)      | 13337 | `10` + `21` |
+
+**O primeiro valor é o `InventoryType` da peça** — que já lemos do `ItemSparse`.
+O segundo é um enum paralelo de cinco valores (18–22), numa ordem diferente
+(Head, Shoulder, Chest, **Hands**, Legs), e esse não foi identificado.
+
+Provavelmente marcação de tier/Catalyst, **e isso é palpite** — fica escrito como
+palpite. O que é medição: aparece só em peça de tier, não toca stat, ilvl,
+qualidade nem efeito, e **o que ele diz de slot nós já sabemos por outro
+caminho**. Não pode mudar nenhum número de tooltip.
+
+> Isto não contradiz a regra "campo não decodificado é pergunta aberta". A
+> pergunta foi feita e respondida o suficiente para decidir: **o campo é
+> redundante para o que renderizamos.** O que a regra proíbe é arquivar sem
+> perguntar.
 
 ### O item level dos itens modernos
 
@@ -327,7 +357,22 @@ ItemScalingConfig[ valor_do_bonus ]
 ilvl = round( curve_point_value( CurveID, ItemScalingConfig.ItemLevel ) ) + Offset
 ```
 
-Verificado em quatro configs, todas exatas: 289, 292, 295, 298.
+Verificado em seis configs, todas exatas: 82, 276, 289, 292, 295, 298.
+
+#### O `Type 50` (`APPLY_BONUS`) aponta para OUTRA lista — a resolução é recursiva
+
+Uma lista de bônus pode não conter o `SCALE_CONFIG` ela mesma: ela contém um
+`Type 50`, cujo valor é **o id de outra lista de bônus**, que precisa ser expandida
+no lugar.
+
+```
+bônus 9330 → Type 50 → lista 13478 → Type 49 (SCALE_CONFIG) = 7
+```
+
+**Quem lê só o primeiro nível vê um item incompleto — sem erro, com números
+plausíveis.** É o formato de engano que este documento já registrou três vezes,
+e a implementação precisa acertá-lo de saída: expandir `Type 50` antes de
+interpretar qualquer coisa.
 
 Nos espécimes analisados a curva é a **identidade** — `CurveID` 88583 tem dois
 pontos, `(0,0)` e `(1300,1300)`, e `Offset` 0 —, então o `ItemScalingConfig.ItemLevel`
@@ -372,8 +417,30 @@ base, que é zero para quem não nasce com socket.
 > Uma versão anterior afirmava que o socket custava "3 pontos de orçamento",
 > medidos comparando um anel com um cinto. **Era artefato**: o anel é índice 2
 > com multiplicador de joia, e eu o estava calculando no índice 1 sem
-> multiplicador. Nas sete peças analisadas o penalty real é **zero** — nenhuma
-> nasce com socket.
+> multiplicador.
+
+#### O `penalty` é termo morto, e procurar espécime foi descartado
+
+Nos **19 espécimes** o penalty é zero, e isso não é amostra pequena. Medindo o
+build inteiro:
+
+```
+StatPercentageOfSocket não-zero:  12.260 de 175.174 itens
+   por ExpansionID:  4 (6.563) · 2 (2.813) · 3 (2.794) · 0, 1 e 5 (84)
+   maior ItemLevel entre eles:  60
+```
+
+**O maior item level que paga penalty no jogo inteiro é 60.** Custo de orçamento
+por socket é mecânica pré-Legion.
+
+Socket moderno existe — 141 itens de `ExpansionID` 6 e 101 de 7 têm `SocketType`
+— e entra por bônus `Type 6`, **de graça**.
+
+> **Decisão (18/08/2026): não procurar espécime com socket nativo.** Ele existiria
+> só em item de Warlords ou anterior, que a guilda não loota. O termo continua no
+> código porque veio do SimC e custa uma multiplicação — mas fica registrado que
+> **nenhuma fixture nossa vai exercitá-lo**, para ninguém depois ler "penalty
+> sempre zero" como sinal de bug.
 
 ### O texto de efeito: template, e nenhum valor guardado
 
@@ -406,11 +473,29 @@ Do `spelleffect_data_t::average( const item_t* )` do SimC:
 ```
 valor = Coefficient × escala( ScalingClass, itemLevel )
 
-  caso geral (inclui −1) → RandPropPoints.Epic[0]
-  −7                     → Epic[0] × CombatRatingsMultByILvl
-  −8                     → RandPropPoints.DamageReplaceStat
-  −9                     → RandPropPoints.DamageSecondary
+  −7                       → Epic[0] × CombatRatingsMultByILvl
+  −8                       → RandPropPoints.DamageReplaceStat
+  0 (PLAYER_NONE) e −9     → RandPropPoints.DamageSecondary
+  resto (−1 a −6, −10)     → RandPropPoints.Epic[0]
 ```
+
+> **O `0` NÃO é o caso geral, e uma versão anterior deste documento dizia que
+> era.** No SimC ele é `PLAYER_NONE`, e cai no mesmo ramo do `−9`:
+>
+> ```cpp
+> else if ( scaling_class() == PLAYER_NONE || scaling_class() == PLAYER_SPECIAL_SCALE9 )
+>   budget = props.damage_secondary;
+> ```
+>
+> Isso importa porque `0` é o valor **esmagadoramente mais comum**: 619.055
+> linhas do `SpellEffect`, contra 3.290 do `−1`. Nenhum espécime pegou o erro
+> porque os quatro efeitos do trinket são `−1` e `−8` — a fixture não reprova o
+> que ela não exercita.
+
+**Não existe tabela geral por `ScalingClass`, e a pendência que dizia isso era
+falsa.** Valor positivo seria índice de classe, escalando por nível de
+personagem; neste build o campo só assume `0` e `−1` a `−10`. Não há nada
+faltando para procurar.
 
 Verificado no trinket, nos dois ranks e nos dois efeitos:
 
@@ -552,8 +637,16 @@ O texto tem os mesmos `$s1`/`$s2`, e mais uma forma que o on-use não tinha:
 ${$1271198s1/10}
 ```
 
-— expressão que referencia **outro spell** e divide. Para set, o que decide voto
-é _qual_ efeito, não se o dano é 8% ou 9%, então a v1 pode elidir os números.
+— expressão que referencia **outro spell** e divide.
+
+**A decisão da linha genérica tirou isso do caminho crítico.** O padrão de
+renderização é o `ITEM_SET_BONUS_NO_VALID_SPEC`, que não tem número nenhum
+dentro. As expressões só voltam a importar se um dia construirmos o expansível
+por spec — ou seja, isto deixou de ser pendência de pesquisa e virou
+**pré-requisito de uma feature opcional**.
+
+E mesmo lá vale o que já estava escrito: para set, o que decide voto é _qual_
+efeito, não se o dano é 8% ou 9%.
 
 ## O erro que se cancelava
 
@@ -606,9 +699,62 @@ armadura = floor( ItemArmorShield[ilvl].Quality[qual] + 0,5 )
 
 Sem modificador de slot nem de material. Verificado: 766 num escudo no ilvl 250.
 
-> **O `Block` do escudo continua sem fórmula.** O espécime mostra `1915 Block` e
-> nada no que foi mapeado produz esse número. É o único valor de tooltip
-> observado que ainda não fecha.
+E aqui o SimC confirma a nossa medição **literalmente**, `+0,5` dentro do `floor`
+incluso:
+
+```cpp
+if ( item.item_class == ITEM_CLASS_ARMOR && item.item_subclass == ITEM_SUBCLASS_ARMOR_SHIELD )
+    return ( uint32_t ) floor( dbc.item_armor_shield( ilevel ).value( item.quality ) + 0.5 );
+```
+
+### O `Block` é o último valor aberto — e o SimC não tem
+
+O espécime mostra `1915 Block` no ilvl 250, e a armadura crua de lá é `766,169`:
+
+```
+766,169 × 2,5 = 1915,42   →   1915      hipótese, UM espécime
+```
+
+**Não procure isso no SimC.** O `parsed_input_t` dele tem um campo de armadura
+(`int armor`) e nada de block, porque para simulação o que conta é **chance** de
+bloqueio (mastery, parry) e não valor. É limite de requisito dele, não ausência
+de dado — a distinção que a seção "o que ele deixa de fazer não é evidência"
+manda fazer, aqui aplicada no sentido informativo: se block value fosse dado de
+item, estaria no `parsed_input_t`.
+
+E não é dado de item mesmo. Procurando `block` e `shield` em todos os nomes de
+tabela do build, a única é a `ItemArmorShield`, que tem três colunas — `ID`,
+`Quality`, `ItemLevel`. O `GlobalStrings` mostra as duas eras lado a lado:
+
+| tag                     | texto                         |
+| ----------------------- | ----------------------------- |
+| `STAT_BLOCK_TOOLTIP`    | `Increases Block Value by %d` |
+| `SHIELD_BLOCK_TEMPLATE` | `%s Block`                    |
+
+O primeiro é fóssil de quando block era stat de item; o segundo é o que o cliente
+usa hoje — um **formato**, preenchido com número calculado na hora.
+
+#### O que falta é um segundo escudo, e ele resolve de uma vez
+
+O `× 2,5` **não fecha por aritmética**: `766,169 × 2,5` e `250 × 7,66169` dão o
+mesmo 1915,42 porque o 7,66 saiu do próprio 766. É uma equação com duas
+incógnitas, não duas confirmações.
+
+Qualquer escudo de outro ilvl testa o 2,5. E três item levels testam **também**
+`floor` contra `round`, porque é onde os dois divergem:
+
+| ilvl | Armadura | `Block` previsto     |
+| ---- | -------- | -------------------- |
+| 239  | 725      | 1811                 |
+| 250  | 766      | 1915 ✓ observado     |
+| 259  | 804      | **2008** ou **2009** |
+| 268  | 844      | **2110** ou **2111** |
+| 272  | 863      | **2158** ou **2159** |
+| 285  | 931      | 2327                 |
+| 298  | 1007     | 2518                 |
+
+Enquanto não fechar, o `Block` volta **nulo** e a tela mostra a lacuna — a regra
+de "nunca um valor aproximado" vale aqui como vale para stat.
 
 ### A quinta coluna do `ArmorLocation` NÃO entra
 
@@ -777,7 +923,7 @@ Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
 (armadura, joia, trinket, arma), as três classes de orçamento, primário fixo e
 flexível, uma track inteira de seis ranks, os quatro terciários, três itens de set de
 classes diferentes, cinco armas (uma mão, duas mãos, caster), um escudo, uma
-off-hand, e um item pós-squish de expansão antiga.
+off-hand, e um item de expansão antiga.
 
 Um deles é **deliberadamente contaminado** — o cinto com `Sporefused: Myth` — e
 está lá marcado como tal, porque foi o espécime que quase produziu uma fórmula
@@ -787,7 +933,7 @@ errada com números plausíveis.
 
 | elemento                              | status                                                    |
 | ------------------------------------- | --------------------------------------------------------- |
-| item level (item moderno)             | ✅ fórmula completa, 4/4                                  |
+| item level                            | ✅ 6/6, moderno e de era antiga                           |
 | primário, stamina, secundários        | ✅ **43 stats**                                           |
 | primário flexível (todos os tipos)    | ✅ enum do SimC, 3 dos 4 observados                       |
 | armadura                              | ✅ 10/10, escudo incluso                                  |
@@ -798,29 +944,33 @@ errada com números plausíveis.
 | **on use / proc — texto e números**   | ✅ 4/4, com o `ScalingClass` decodificado                 |
 | **terciários**                        | ✅ os 4; Indestructible é flag, os outros 3 medidos       |
 | **set** (nome, peças, bônus por spec) | ✅ 2 sets, e o modo sem personagem vem do próprio cliente |
+| item level (era antiga)               | ✅ era `Type 50` não expandido, não squish                |
 | flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                  |
-| socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças   |
-| números dentro do texto de set        | ⚠️ tem expressão (`${$1271198s1/10}`), não só placeholder |
-| **`Block` do escudo**                 | ❌ 1915 observado, nada mapeado produz esse número        |
-| item level (era antiga)               | ❌ ver abaixo                                             |
+| socket (`penalty`)                    | ✅ fórmula do SimC; termo morto acima do ilvl 60          |
+| números dentro do texto de set        | ⏸️ fora do caminho: o padrão é a linha genérica           |
+| `Type 38` do `ItemBonus`              | ⏸️ redundante — repete o `InventoryType` que já temos     |
+| **`Block` do escudo**                 | ❌ único valor de tooltip ainda aberto                    |
 
 ## O que ainda está aberto
 
-- **peça com socket nativo**, para exercitar o `penalty` de verdade — é coleta,
-  não pesquisa
-- **o `Block` do escudo**: o espécime mostra `1915` e nada do que foi mapeado
-  produz esse número
-- **`Type 38` do `ItemBonus`**, que não está no enum do SimC. São 11 padrões, todos
-  da forma `n,n`, ~10 entradas cada; os valores `1,3,5,7,10` batem com os cinco
-  slots de tier, mas `17` a `22` não. Não toca stat nenhum nos espécimes — fica
-  como pergunta aberta, não como detalhe
-- **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1, e a
-  tabela geral de escala por `ScalingClass` não foi identificada
-- **item level de era antiga**: o machado de Dragonflight usa `Type 1`
-  (`ILEVEL`, +13) sobre a base 415, o que dá 428 — e o tooltip mostra **82**.
-  Falta o passo de squish. O SimC tem `ITEM_BONUS_SQUISH_CURVE`,
-  `POST_SQUISH_ITEM_LEVEL` e uma constante `SQUISH_CURVE_MIDNIGHT`; nenhum foi
-  investigado
+**Uma coisa, e é coleta:** um **segundo escudo**, de qualquer item level
+diferente de 250, para fechar o `Block` — ver a seção do escudo.
+
+Nada mais bloqueia a implementação. As pendências que esta lista carregou por
+seis rodadas terminaram assim:
+
+| era pendência                  | virou                                                          |
+| ------------------------------ | -------------------------------------------------------------- |
+| squish de era antiga           | **não existia** — faltava expandir o `Type 50`                 |
+| socket nativo                  | **decisão de não procurar** — termo morto acima do ilvl 60     |
+| tabela geral de `ScalingClass` | **não existe** — o campo não assume valor positivo neste build |
+| `Type 38`                      | **redundante** — repete o `InventoryType`                      |
+| números do texto de set        | **fora do caminho** — o padrão é a linha genérica              |
+
+> Três das cinco não eram pendências: eram **perguntas mal formuladas**, que
+> sumiram quando a pergunta certa foi feita. Vale registrar porque o padrão se
+> repete — a primeira reação a um número que não fecha foi supor mecanismo
+> faltando (squish, tabela geral), e nas duas vezes o mecanismo não existia.
 
 ## Consultar outro projeto funciona — mas o que ele NÃO faz não é evidência
 
