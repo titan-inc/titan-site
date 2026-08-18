@@ -632,10 +632,46 @@
         "Veio de INSPECT, e por isso mostra 'Binds when picked up' no lugar de 'Soulbound' e a linha generica de set — o modo sem personagem que o popover precisa.",
         "Traz Type 38 no bonus 13337 ('10,10' e '21,21'), fora do enum do SimC e sem efeito em stat."
       ]
+    },
+    {
+      "nome": "Bubblefin Splash Guard",
+      "itemId": 268262,
+      "slot": "Off Hand",
+      "material": "Shield",
+      "itemString": "item:268262::::::::90:66::5:1:3524:1:28:5850:::::",
+      "itemLevel": 305,
+      "descritor": "Heroic",
+      "itemContext": 5,
+      "track": {
+        "nome": "Hero",
+        "rank": 1,
+        "total": 6,
+        "grupo": 617
+      },
+      "linhaDeVinculo": "Binds when picked up",
+      "esperado": {
+        "primario": {
+          "valor": 72,
+          "tipos": ["Strength"]
+        },
+        "stamina": 1397,
+        "haste": 29,
+        "mastery": 60,
+        "intellect": 221,
+        "armadura": 1052,
+        "block": 2630
+      },
+      "notas": [
+        "O ESPECIMEN MAIS IMPORTANTE DA FIXTURE. O itemString tem UM bonus (3524) e ele e Type 0, no-op.",
+        "ilvl 305, descritor Heroic e track Hero 1/6 NAO estao no itemString: vem da arvore de bonus, resolvida pelo itemContext 5 (ItemXBonusTree -> ItemBonusTreeNode).",
+        "Sem a arvore, este item renderiza com o ItemLevel base do ItemSparse, que e 219 — sem erro nenhum.",
+        "Fecha o Block: floor(1052,271 x 2,5) = 2630. E discriminante: round daria 2631.",
+        "Tambem derruba a regra antiga do total da track: o grupo 617 tem o rank 4 com Flags 0, entao 'mesmo Flags' daria 5 e o tooltip diz 6. O certo e contar Flags != 3."
+      ]
     }
   ],
   "aindaFaltaNaFixture": [
-    "Um SEGUNDO escudo, de item level diferente de 250 — é o único espécime que ainda muda alguma coisa. Fecha o Block: testa o multiplicador 2,5, e nos ilvls 259, 268 ou 272 separa floor de round.",
-    "Um efeito com ScalingClass 0 — a regra veio do SimC (PLAYER_NONE -> DamageSecondary) e nenhum espécime a exercita."
+    "Um efeito com ScalingClass 0 — a regra veio do SimC (PLAYER_NONE -> DamageSecondary) e nenhum espécime a exercita.",
+    "Um item cujo itemContext ofereça MAIS DE UM grupo de track sem Type 34 no itemString — seria o caso ambíguo do rank padrão. Nos espécimes, quando a árvore oferece vários grupos o itemString sempre traz o Type 34."
   ]
 }
