@@ -98,11 +98,17 @@ formato e um job nosso quebra em produção.
 
 ### Essenciais
 
-| tabela           | responde                                                                           | tamanho |
-| ---------------- | ---------------------------------------------------------------------------------- | ------- |
-| `ItemSparse`     | ilvl base, qualidade, `InventoryType`, **quais stats** e a **alocação** de cada um | ~59 MB  |
-| `RandPropPoints` | o **orçamento** de pontos de stat para cada item level                             | pequena |
-| `ItemBonus`      | o que cada bonus id modifica                                                       | média   |
+| tabela                  | responde                                                                           | tamanho |
+| ----------------------- | ---------------------------------------------------------------------------------- | ------- |
+| `ItemSparse`            | ilvl base, qualidade, `InventoryType`, **quais stats** e a **alocação** de cada um | ~59 MB  |
+| `RandPropPoints`        | o **orçamento** de pontos de stat para cada item level                             | pequena |
+| `ItemBonus`             | o que cada bonus id modifica                                                       | média   |
+| **`ItemXBonusTree`**    | item → árvore de bônus                                                             | média   |
+| **`ItemBonusTreeNode`** | os nós da árvore, filtrados por `ItemContext`                                      | pequena |
+
+> As duas últimas são **obrigatórias**, e isso só ficou claro no vigésimo
+> espécime: o `itemString` não é a fonte completa. Ver "O `itemString` NÃO é a
+> fonte completa" adiante.
 
 ### Para resolver o item level
 
@@ -707,13 +713,24 @@ if ( item.item_class == ITEM_CLASS_ARMOR && item.item_subclass == ITEM_SUBCLASS_
     return ( uint32_t ) floor( dbc.item_armor_shield( ilevel ).value( item.quality ) + 0.5 );
 ```
 
-### O `Block` é o último valor aberto — e o SimC não tem
-
-O espécime mostra `1915 Block` no ilvl 250, e a armadura crua de lá é `766,169`:
+### O `Block` — fechado, e o SimC não tem
 
 ```
-766,169 × 2,5 = 1915,42   →   1915      hipótese, UM espécime
+Block = floor( ItemArmorShield[ilvl].Quality[qual] × 2,5 )
 ```
+
+Duas linhas do tooltip saem do **mesmo número cru com arredondamentos
+diferentes** — `+0,5` dentro do `floor` na armadura, truncamento puro no Block:
+
+| ilvl | cru      | Armadura                  | `Block`                       |
+| ---- | -------- | ------------------------- | ----------------------------- |
+| 250  | 766,169  | `floor(766,67)` = 766 ✓   | `floor(1915,42)` = 1915 ✓     |
+| 305  | 1052,271 | `floor(1052,77)` = 1052 ✓ | `floor(2630,68)` = **2630** ✓ |
+
+O ilvl 305 é discriminante: `round` daria **2631**. Foi ele que decidiu
+truncamento contra arredondamento, e confirmou o `× 2,5` num segundo item level —
+o primeiro espécime não fazia nem uma coisa nem outra, porque `766,169 × 2,5` e
+`250 × 7,66169` são a mesma equação escrita duas vezes.
 
 **Não procure isso no SimC.** O `parsed_input_t` dele tem um campo de armadura
 (`int armor`) e nada de block, porque para simulação o que conta é **chance** de
@@ -733,28 +750,6 @@ tabela do build, a única é a `ItemArmorShield`, que tem três colunas — `ID`
 
 O primeiro é fóssil de quando block era stat de item; o segundo é o que o cliente
 usa hoje — um **formato**, preenchido com número calculado na hora.
-
-#### O que falta é um segundo escudo, e ele resolve de uma vez
-
-O `× 2,5` **não fecha por aritmética**: `766,169 × 2,5` e `250 × 7,66169` dão o
-mesmo 1915,42 porque o 7,66 saiu do próprio 766. É uma equação com duas
-incógnitas, não duas confirmações.
-
-Qualquer escudo de outro ilvl testa o 2,5. E três item levels testam **também**
-`floor` contra `round`, porque é onde os dois divergem:
-
-| ilvl | Armadura | `Block` previsto     |
-| ---- | -------- | -------------------- |
-| 239  | 725      | 1811                 |
-| 250  | 766      | 1915 ✓ observado     |
-| 259  | 804      | **2008** ou **2009** |
-| 268  | 844      | **2110** ou **2111** |
-| 272  | 863      | **2158** ou **2159** |
-| 285  | 931      | 2327                 |
-| 298  | 1007     | 2518                 |
-
-Enquanto não fechar, o `Block` volta **nulo** e a tela mostra a lacuna — a regra
-de "nunca um valor aproximado" vale aqui como vale para stat.
 
 ### A quinta coluna do `ArmorLocation` NÃO entra
 
@@ -829,6 +824,97 @@ Nenhuma das duas sozinha bate. Somar as alocações **antes** também dá 394 ne
 caso (394,14), então o espécime não distingue "somar os arredondados" de
 "arredondar a soma" — fica anotado como pergunta aberta.
 
+## O `itemString` NÃO é a fonte completa — existe a árvore de bônus
+
+Esta é a descoberta mais cara da pesquisa toda, e ela chegou no vigésimo
+espécime. Um escudo cujo `itemString` é:
+
+```
+item:268262::::::::90:66::5:1:3524:1:28:5850:::::
+                            ↑ ↑ ↑
+              itemContext = 5 │ └─ o único bônus, e ele é Type 0 (no-op)
+                 numBonusIDs = 1
+```
+
+Um bônus só, e no-op. Mesmo assim o tooltip mostra **`Heroic`**, **`Item Level
+305`** e **`Upgrade Level: Hero 1/6`**, com a base do item no `ItemSparse` sendo
+**219**.
+
+**Nenhum desses três valores está no `itemString`.**
+
+### O `itemContext` é chave de resolução, não metadado
+
+Quem os fornece são duas tabelas que não estavam extraídas:
+
+```
+ItemXBonusTree[ itemID ]           →  a árvore de bônus do item
+ItemBonusTreeNode[ árvore ]        →  os nós, cada um com um ItemContext
+```
+
+Para o escudo, com `itemContext = 5`:
+
+```
+árvore 5741  ctx 5  →  lista 13334  →  Type 4 = 2015    →  "Heroic"
+árvore 5998  ctx 5  →  grupo 617    →  (nenhuma lista direta)
+                          rank 1 = estado padrão  →  lista 12841
+                             Type 34 = 617,974  →  SharedString 974 = "Hero"
+                             Type 49 = 314      →  ItemScalingConfig → ilvl 305
+```
+
+Três de três. E o `Type 0` do `3524` deixa de ser esquisito: **a peça está no
+rank 1, o padrão**, e não existe bônus incrementando nada porque nada foi
+incrementado.
+
+### A árvore é um CARDÁPIO — aplicá-la inteira dá item errado
+
+O erro fácil aqui é percorrer a árvore e aplicar tudo. Não funciona: a árvore do
+escudo traz as listas `40, 41, 42 e 43`, que são **os quatro terciários**.
+Aplicadas juntas, produziriam uma peça com Avoidance, Leech, Speed e
+Indestructible ao mesmo tempo.
+
+Quem separa é o `ItemContext` do nó:
+
+| `ItemContext` do nó  | o que é                                                       |
+| -------------------- | ------------------------------------------------------------- |
+| **0**                | **opção** — o pool de onde o drop sorteia (terciário, socket) |
+| **igual ao do item** | **aplicado** — a identidade daquela versão da peça            |
+
+Descer pelos nós de `ctx 0` é necessário (a árvore é hierárquica e os nós
+intermediários têm `ctx 0`); **aplicar** os de `ctx 0` é que não.
+
+Medido nos espécimes, resolvendo só os nós de contexto exato:
+
+| peça             | ctx | árvore devolve          | está no `itemString`?    |
+| ---------------- | --- | ----------------------- | ------------------------ |
+| escudo           | 5   | lista 13334 · grupo 617 | **não, nenhum dos dois** |
+| Bellamy          | 6   | lista 13335 · grupo 612 | a lista sim, o grupo não |
+| Greataxe         | 60  | lista 13844             | sim                      |
+| Bramblebarricade | 174 | lista 11215 · grupo 609 | a lista sim              |
+| luva Devouring   | 110 | grupos 609, 610 e 611   | não                      |
+
+### A regra: união dos dois, nunca um ou outro
+
+```
+bônus aplicados = bônus do itemString  ∪  nós da árvore com ItemContext igual ao do item
+```
+
+Como conjunto — lista que aparece nos dois lados entra uma vez só.
+
+E o grupo de track resolve assim:
+
+- **`Type 34` presente** num bônus do `itemString` → ele diz o grupo **e** o rank
+- **ausente** → o grupo vem da árvore, e o rank é **1**, o padrão
+
+O caso da luva mostra por que a ordem importa: a árvore oferece **três** grupos
+(609 Veteran, 610 Champion, 611 Hero), e sozinha é ambígua. Quem desempata é o
+`Type 34` do `itemString`, que aponta `611`. No escudo a árvore oferece **um**
+grupo, e o padrão é inequívoco.
+
+> **Por que os 19 espécimes anteriores fecharam sem isso:** neles o `itemString`
+> já trazia a lista que a árvore repetiria. O escudo é o primeiro que depende só
+> da árvore — e o modo de falha é o de sempre: sem ela, ele renderiza com o ilvl
+> base 219 em vez de 305, **sem erro nenhum**.
+
 ## O track de upgrade — resolvido, inteiro
 
 `Upgrade Level: Adventurer 1/6`, sem curadoria e localizável.
@@ -839,7 +925,7 @@ Type 34 do bônus = ( ItemBonusListGroupID , SharedString.ID )
 nome  = SharedString[ segundo valor ].String_lang
 entrada = ItemBonusListGroupEntry onde ItemBonusListID = <bonus do itemString>
 rank  = entrada.SequenceValue
-total = quantas entradas do grupo têm o MESMO Flags
+total = quantas entradas do grupo têm Flags != 3
 ```
 
 O `Type 34` **não existe no enum do SimC** — eles ignoram, porque não precisam do
@@ -864,9 +950,31 @@ E casa com os três espécimes:
 | colar        | `616,973` | **Champion** ✓   |
 | cinto e anel | `612,978` | **Myth** ✓       |
 
-O rank e o total foram verificados em três grupos: cada um tem **6 entradas com
-`flags=2`** mais 2–3 com `flags=3`, e o tooltip mostra `/6`. O que as de
-`flags=3` são, continua desconhecido.
+#### O total NÃO é "entradas com o mesmo `Flags`" — e essa versão durou cinco dias
+
+A regra anterior dizia _mesmo `Flags`_, e funcionava nos três primeiros grupos
+porque **os três são uniformes**: seis entradas com `Flags 2`, depois 2–3 com
+`Flags 3`. As duas regras dão 6 nos dois casos.
+
+O quarto espécime separou. O escudo mostra `Hero 1/6`, e o grupo dele é:
+
+```
+grupo 617:  rank 1→2   2→2   3→2   4→0   5→2   6→2   7→3   8→3
+```
+
+Pelo mesmo-`Flags` dá **5**, porque o rank 4 tem `Flags 0`. Pelo `!= 3` dá **6**,
+que é o que o tooltip diz.
+
+E não é raridade: **193 dos 235 grupos** têm alguma entrada com `Flags 0`. A regra
+errada estava errada na maioria dos itens do jogo — nenhum espécime tinha caído
+num deles.
+
+> Terceira vez que o mesmo formato aparece: espécimes que concordam entre si não
+> distinguem duas regras que concordam neles. As outras duas foram o dps de arma
+> e o erro que se cancelava.
+
+O que as entradas de `Flags 3` são continua desconhecido; o que se sabe é que
+elas ficam **fora** da contagem.
 
 `Adventurer` aparece duas vezes no `SharedString` (971 e 990), o que sugere um
 conjunto por expansão.
@@ -919,11 +1027,11 @@ Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
 > pelo addon e transcrever o tooltip à mão. Por isso viram arquivo, e não uma
 > tabela em prosa — e por isso o arquivo carrega o build junto.
 
-**113 valores em 19 espécimes**, cobrindo os quatro tipos de multiplicador
+**121 valores em 20 espécimes**, cobrindo os quatro tipos de multiplicador
 (armadura, joia, trinket, arma), as três classes de orçamento, primário fixo e
 flexível, uma track inteira de seis ranks, os quatro terciários, três itens de set de
 classes diferentes, cinco armas (uma mão, duas mãos, caster), um escudo, uma
-off-hand, e um item de expansão antiga.
+duas off-hand, dois escudos, e um item de expansão antiga.
 
 Um deles é **deliberadamente contaminado** — o cinto com `Sporefused: Myth` — e
 está lá marcado como tal, porque foi o espécime que quase produziu uma fórmula
@@ -936,11 +1044,11 @@ errada com números plausíveis.
 | item level                            | ✅ 6/6, moderno e de era antiga                           |
 | primário, stamina, secundários        | ✅ **43 stats**                                           |
 | primário flexível (todos os tipos)    | ✅ enum do SimC, 3 dos 4 observados                       |
-| armadura                              | ✅ 10/10, escudo incluso                                  |
+| armadura                              | ✅ 11/11, escudos inclusos                                |
 | dano, speed, dps                      | ✅ 5/5, com a seleção entre as 4 tabelas                  |
 | descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                    |
 | `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                 |
-| track completo (nome, rank, total)    | ✅ 3 grupos — `Type 34` + `SharedString`                  |
+| track completo (nome, rank, total)    | ✅ 5 grupos — e a regra do total corrigida                |
 | **on use / proc — texto e números**   | ✅ 4/4, com o `ScalingClass` decodificado                 |
 | **terciários**                        | ✅ os 4; Indestructible é flag, os outros 3 medidos       |
 | **set** (nome, peças, bônus por spec) | ✅ 2 sets, e o modo sem personagem vem do próprio cliente |
@@ -949,19 +1057,29 @@ errada com números plausíveis.
 | socket (`penalty`)                    | ✅ fórmula do SimC; termo morto acima do ilvl 60          |
 | números dentro do texto de set        | ⏸️ fora do caminho: o padrão é a linha genérica           |
 | `Type 38` do `ItemBonus`              | ⏸️ redundante — repete o `InventoryType` que já temos     |
-| **`Block` do escudo**                 | ❌ único valor de tooltip ainda aberto                    |
+| **`Block` do escudo**                 | ✅ 2/2 — `floor( armadura_crua × 2,5 )`                   |
+| **resolução pela árvore de bônus**    | ✅ 5/5 — `itemContext` sobre `ItemBonusTreeNode`          |
 
 ## O que ainda está aberto
 
-**Uma coisa, e é coleta:** um **segundo escudo**, de qualquer item level
-diferente de 250, para fechar o `Block` — ver a seção do escudo.
+**Nada bloqueia a implementação.** O escudo que faltava chegou, fechou o `Block`
+— e revelou a árvore de bônus, que era um buraco que ninguém sabia que existia.
 
-Nada mais bloqueia a implementação. As pendências que esta lista carregou por
-seis rodadas terminaram assim:
+Fica registrado o que ele custaria se não tivesse aparecido: **o popover
+renderizaria peças com o item level base**, silenciosamente. Não era pendência
+conhecida; era pendência invisível, e a única coisa que a expôs foi continuar
+coletando espécimes depois de a pesquisa "estar fechada".
+
+> **A lição de método:** a rodada anterior deste documento declarou a pesquisa
+> encerrada. Estava errada, e não por descuido — por não haver como saber. O que
+> corrigiu foi o hábito, não o raciocínio: mais um espécime real.
+
+As pendências que esta lista carregou por sete rodadas terminaram assim:
 
 | era pendência                  | virou                                                          |
 | ------------------------------ | -------------------------------------------------------------- |
 | squish de era antiga           | **não existia** — faltava expandir o `Type 50`                 |
+| `Block` do escudo              | **fechado** — `floor( cru × 2,5 )`, dois espécimes             |
 | socket nativo                  | **decisão de não procurar** — termo morto acima do ilvl 60     |
 | tabela geral de `ScalingClass` | **não existe** — o campo não assume valor positivo neste build |
 | `Type 38`                      | **redundante** — repete o `InventoryType`                      |
