@@ -83,8 +83,9 @@ O `dbfile` é o jeito certo de descobrir o nome e o **tipo** de um arquivo — f
 ele que revelou que os três multiplicadores são GameTables e não db2.
 
 **Consultar o SimC antes de medir**, não depois. Medir serve para confirmar que
-entendemos o que copiamos; foi assim que as sete peças da fixture viraram
-verificação em vez de fonte.
+entendemos o que copiamos — quando a ordem se inverteu, nesta pesquisa, o
+resultado foi seis afirmações erradas que fechavam contra peças reais (ver "O
+erro que se cancelava").
 
 ## Regra que vale para os dois lados
 
@@ -134,7 +135,7 @@ formato e um job nosso quebra em produção.
 
 | tabela                    | papel                                                                  |
 | ------------------------- | ---------------------------------------------------------------------- |
-| `ItemBonusListGroupEntry` | `SequenceValue` (o rank), o grupo, e o `Flags` que define o total      |
+| `ItemBonusListGroupEntry` | `SequenceValue` (o rank) e o `Flags` — o total são as entradas `!= 3`  |
 | **`SharedString`**        | **o nome da track**, apontado pelo 2º valor do `Type 34`               |
 | `ItemBonusListGroup`      | o grupo. O `ItemGroupIlvlScalingID` distingue season atual da anterior |
 | `GlobalStrings`           | o formato `ITEM_UPGRADE_TOOLTIP_FORMAT_STRING` — útil de referência    |
@@ -156,16 +157,46 @@ formato e um job nosso quebra em produção.
 | `SpellMisc` + `SpellDuration` | o `$d` (duração)                                                      |
 | `SpellAuraOptions`            | o `$u` (`CumulativeAura`, máximo de stacks)                           |
 
-### Fora do escopo atual, mas já extraídas
+### Para item que NÃO é equipamento
 
-`ItemArmorTotal`, `ItemArmorQuality`, `ItemArmorShield` (armadura);
-`ItemDamageOneHand`, `ItemDamageTwoHand` e as variantes `*Caster` (dano de
-arma); `Item` (class/subclass, que o nosso catálogo já tem); `SpellScaling` e
-`ExpectedStat` — esta última é indexada por **nível de personagem**, não por
-item level, então provavelmente não é o que a escala de efeito precisa.
+| tabela         | papel                                                              |
+| -------------- | ------------------------------------------------------------------ |
+| `ChrClasses`   | nome da classe, para a linha `Classes: …`                          |
+| `ItemClass`    | nome da classe de item (`Housing`, `Miscellaneous`)                |
+| `ItemSubClass` | nome da subclasse — é o que o tooltip mostra (`Decor`, `Cosmetic`) |
 
-Armadura e dano de arma abrem issue própria — têm fórmula e conjunto de tabelas
-próprios.
+### Para item de set
+
+| tabela              | papel                                       |
+| ------------------- | ------------------------------------------- |
+| `ItemSet`           | nome do set e os `ItemID` das peças         |
+| `ItemSetSpell`      | os bônus, por `ChrSpecID` e por `Threshold` |
+| `ChrSpecialization` | nome da spec, `ClassID` e `OrderIndex`      |
+
+### Também obrigatórias, e fáceis de esquecer
+
+| tabela          | papel                                                                 |
+| --------------- | --------------------------------------------------------------------- |
+| `Item`          | `ClassID` e `SubclassID` — entram no `idx` de orçamento e na armadura |
+| `GlobalStrings` | **toda frase que o tooltip mostra e não está no dado do item**        |
+| `SpellName`     | nome do spell, útil para conferir o que se está lendo                 |
+
+O `GlobalStrings` deixou de ser "útil de referência" e virou dependência: o modo
+sem personagem, o `Binds to Warband`, o `Use:` do cosmético e a linha
+`Classes: %s` saem todos dele.
+
+### Extraídas e ainda sem uso
+
+`ItemBonusTree` e `ItemBonusTreeGroupEntry` (a navegação usa só o
+`ItemBonusTreeNode`), `ItemSubClassMask`, `ItemLevelSelector` e
+`ItemLevelSelectorQuality`, `ItemBonusListLevelDelta`,
+`ItemBonusSeasonBonusListGroup`, `ItemBonusSequenceSpell`, `ContentTuning`,
+`SpellScaling` e `ExpectedStat`.
+
+Elas ficam extraídas de propósito: cada uma foi hipótese em alguma rodada, e
+apagar da lista faria a próxima pessoa refazer a mesma busca. **`ExpectedStat` é
+indexada por nível de personagem**, não por item level — foi por isso que não
+serviu para escala de efeito.
 
 ## O tamanho não é obstáculo, desde que o filtro seja o certo
 
@@ -243,9 +274,42 @@ A análise abaixo é do build **12.1.0 69299 (Aug 12 2026)**.
 Sem isso, uma divergência de número daqui a dois meses é indistinguível entre
 bug nosso e mudança de patch — e essa é a dúvida que mais custa tempo.
 
+## A ordem em que as coisas se resolvem
+
+Este documento cresceu por rodadas de investigação, e por isso as seções estão na
+ordem em que as coisas foram **descobertas**, não na ordem em que precisam ser
+**executadas**. Quem for implementar segue esta lista; as seções detalham cada
+passo.
+
+```
+1. RESOLVER OS BÔNUS   ← faça isto antes de qualquer conta
+   a) os bonus IDs do itemString
+   b) MAIS os nós da árvore com ItemContext igual ao do item
+   c) expandindo todo Type 50 (APPLY_BONUS), que aponta para outra lista
+   união dos três, como conjunto
+
+2. ITEM LEVEL          Type 49 → ItemScalingConfig → curva + offset
+
+3. OS NÚMEROS          orçamento por ilvl e slot, multiplicadores,
+                       armadura, dano de arma, efeito
+
+4. O TEXTO             descritor, track, set, vínculo, flavor
+                       e o que só existe no GlobalStrings
+```
+
+> **Os dois primeiros passos são onde mora o perigo.** Os dois canais de bônus
+> fora do `itemString` — a **árvore** e o **`Type 50`** — falham do mesmo jeito
+> quando ignorados: o item renderiza com o valor base, **sem erro nenhum**. Foram
+> os dois últimos achados da pesquisa, e os dois estavam invisíveis por meses.
+>
+> Ver "O `itemString` NÃO é a fonte completa" e "O `Type 50` aponta para OUTRA
+> lista".
+
+Nada abaixo vale se o passo 1 estiver incompleto.
+
 ## A fórmula
 
-**Reproduz 19 de 19 stats em 7 peças reais**, sem nenhuma constante ajustada à
+**Reproduz ~103 valores em 20 peças reais**, sem nenhuma constante ajustada à
 mão.
 
 ```
@@ -299,19 +363,19 @@ valor = round( cru )
 Não precisa ser decodificado à mão: está nomeado no `engine/dbc/data_enums.hh`
 do SimC, em `enum item_bonus_type`.
 
-| Type | nome                    | Type | nome                     |
-| ---- | ----------------------- | ---- | ------------------------ |
-| 1    | `ILEVEL`                | 25   | `MOD_ITEM_STAT`          |
-| 2    | `MOD` (acrescenta stat) | 36   | `ILEVEL_IN_PVP`          |
-| 3    | `QUALITY`               | 42   | `SET_ILEVEL_2`           |
-| 4    | **`DESC`**              | 48   | `SQUISH_CURVE`           |
-| 5    | `SUFFIX`                | 49   | **`SCALE_CONFIG`**       |
-| 6    | `SOCKET`                | 50   | `APPLY_BONUS`            |
-| 8    | `REQ_LEVEL`             | 51   | `SCALE_CONFIG_2`         |
-| 11   | `SCALING`               | 52   | `CRAFTING_QUALITY`       |
-| 13   | `SCALING_2`             | 53   | `POST_SQUISH_ITEM_LEVEL` |
-| 14   | `SET_ILEVEL`            | 17   | `ADD_RANK`               |
-| 23   | `ADD_ITEM_EFFECT`       | 50   | **`APPLY_BONUS`**        |
+| Type | nome                    | Type | nome                      |
+| ---- | ----------------------- | ---- | ------------------------- |
+| 1    | `ILEVEL`                | 25   | `MOD_ITEM_STAT`           |
+| 2    | `MOD` (acrescenta stat) | 36   | `ILEVEL_IN_PVP`           |
+| 3    | `QUALITY`               | 42   | `SET_ILEVEL_2`            |
+| 4    | **`DESC`**              | 48   | `SQUISH_CURVE`            |
+| 5    | `SUFFIX`                | 49   | **`SCALE_CONFIG`**        |
+| 6    | `SOCKET`                | 50   | **`APPLY_BONUS`**         |
+| 8    | `REQ_LEVEL`             | 51   | `SCALE_CONFIG_2`          |
+| 11   | `SCALING`               | 52   | `CRAFTING_QUALITY`        |
+| 13   | `SCALING_2`             | 53   | `POST_SQUISH_ITEM_LEVEL`  |
+| 14   | `SET_ILEVEL`            | 17   | `ADD_RANK`                |
+| 23   | `ADD_ITEM_EFFECT`       | 38   | _(sem nome — ver abaixo)_ |
 
 Os quatro que tinham sido decodificados à mão (1, 2, 3, 6) estão certos. E há um
 comentário no fonte que confirma uma medição nossa: **`QUALITY` "seems unused as
@@ -427,7 +491,7 @@ base, que é zero para quem não nasce com socket.
 
 #### O `penalty` é termo morto, e procurar espécime foi descartado
 
-Nos **19 espécimes** o penalty é zero, e isso não é amostra pequena. Medindo o
+Nos **20 espécimes** o penalty é zero, e isso não é amostra pequena. Medindo o
 build inteiro:
 
 ```
@@ -497,6 +561,35 @@ valor = Coefficient × escala( ScalingClass, itemLevel )
 > linhas do `SpellEffect`, contra 3.290 do `−1`. Nenhum espécime pegou o erro
 > porque os quatro efeitos do trinket são `−1` e `−8` — a fixture não reprova o
 > que ela não exercita.
+
+#### E esse ramo é inalcançável na prática — implemente mesmo assim
+
+Restringindo aos efeitos **ligados a itens**:
+
+| `ScalingClass` | efeitos de item | com `Coefficient != 0` |
+| -------------- | --------------- | ---------------------- |
+| **0**          | **45.115**      | **2**                  |
+| −1             | 1.389           | 1.386                  |
+| −9             | 957             | 932                    |
+| −7             | 801             | 776                    |
+| −8             | 766             | 751                    |
+
+Nas classes negativas ~99% têm coeficiente; no `0`, **dois em 45 mil**. E a razão
+é estrutural: **sem `Coefficient` o caminho de escala nem é percorrido** — o
+valor sai direto do `EffectBasePointsF`. `ScalingClass 0` não é um tipo de escala
+que não observamos; é o marcador de **efeito que não escala com item level**, e
+é por isso que ele domina a tabela.
+
+Os dois outliers confirmam pelo lado do absurdo: uma capa de Vanilla
+(`Green Dragonskin Cloak`, ilvl 29) e um consumível de Shadowlands. **Nenhum é
+loot de raid.**
+
+> **Decisão (18/08/2026): implementar o ramo conforme o SimC e registrar que ele
+> é inalcançável.** Escrito porque protege dos dois erros opostos — alguém
+> "simplificar" removendo o ramo por não ver teste cobrindo, e alguém abrir issue
+> de coleta para um espécime que não existe.
+>
+> Mesmo formato do `penalty` de socket, e pela mesma razão.
 
 **Não existe tabela geral por `ScalingClass`, e a pendência que dizia isso era
 falsa.** Valor positivo seria índice de classe, escalando por nível de
@@ -654,13 +747,150 @@ por spec — ou seja, isto deixou de ser pendência de pesquisa e virou
 E mesmo lá vale o que já estava escrito: para set, o que decide voto é _qual_
 efeito, não se o dano é 8% ou 9%.
 
+## Item que não é equipamento: token, decor, cosmético
+
+Boa parte do que cai numa raid **não é peça**. Numa lista real de 32 drops
+não-equipamento, quatro formatos:
+
+| formato                     | qtd | `ClassID` / `SubClassID`      |
+| --------------------------- | --- | ----------------------------- |
+| **token de set** (`Venom*`) | 20  | 15/0 (`Miscellaneous`/`Junk`) |
+| **decor de casa**           | 8   | **20/0** (`Housing`/`Decor`)  |
+| **cosmético de aparência**  | 2   | 4/5 (`Armor`/`Cosmetic`)      |
+| reagente e companion        | 2   | 5/2 e 15/2                    |
+
+`ClassID 20` é **`Housing`**, novidade da 12.0, e não está em enum nenhum que
+circule por aí — vem do próprio `ItemClass`.
+
+### Eles NÃO são um modelo separado
+
+Uma versão anterior desta seção dizia que "nada aqui usa árvore de bônus". Errado,
+e os tooltips reais derrubaram na primeira conferência. **Token de set tem item
+level e descritor, e os dois vêm da árvore**, exatamente como equipamento:
+
+| token           | ctx | árvore devolve                   | tooltip                     |
+| --------------- | --- | -------------------------------- | --------------------------- |
+| Venomcast Relic | 3   | config 312 · lista 13333 (no-op) | ilvl **298**, sem descritor |
+| Venomwoven Idol | 5   | config 315 · lista 13334         | ilvl **308**, **Heroic**    |
+| Venomcured Icon | 6   | config 320 · lista 13335         | ilvl **324**, **Mythic**    |
+
+O mesmo `itemID` aparece com `itemContext` 3, 5 ou 6 conforme a dificuldade de
+onde caiu, e é só isso que muda entre eles.
+
+> O que é verdade é mais estreito: eles não usam **orçamento de stat,
+> multiplicador nem track**. A resolução de bônus é a mesma.
+
+### O que muda é a montagem da tela
+
+```
+nome
+descritor        ItemBonus Type 4  OU  ItemSparse.ItemNameDescriptionID
+Item Level       da árvore; base do ItemSparse quando ela não dá nada
+vínculo
+Use: …           ItemXItemEffect → ItemEffect → Spell.Description_lang
+Classes: …       ItemSparse.AllowableClass
+"flavor"         ItemSparse.Description_lang
+```
+
+**O `Use:` vem antes do `Classes:`** — a versão anterior tinha a ordem trocada.
+
+### A linha de tipo só aparece com `InventoryType != 0`
+
+Os tokens são `Miscellaneous/Junk` e o `Slumbering Coil Curio` é `Context Token`,
+e **nenhum dos dois exibe essas palavras**. Quem exibe é o cosmético, que tem
+`InventoryType 1`:
+
+```
+Head    Cosmetic
+```
+
+Renderizar a subclasse sempre poria **`Junk`** no tooltip de um token épico.
+
+### O descritor também mora no `ItemSparse`
+
+O `Mural` mostra `Housing Decor` na mesma posição em que uma peça mostra
+`Heroic`. Não vem de bônus: vem do `ItemSparse.ItemNameDescriptionID` = 14292,
+que é uma linha do **mesmo `ItemNameDescription`** já usado pelo `Type 4`.
+
+**São duas fontes para o mesmo campo**, e o item pode ter qualquer uma.
+
+### `Binds to Warband` é flag, não `Bonding`
+
+O `Mural` e o `Hex Lord's Visage` têm `Bonding = 1`, igual aos tokens — e mesmo
+assim o tooltip diz outra coisa:
+
+| item   | `Bonding` | `Flags[0]` bit 27 | tooltip                |
+| ------ | --------- | ----------------- | ---------------------- |
+| token  | 1         | não               | `Binds when picked up` |
+| Mural  | 1         | **sim**           | **`Binds to Warband`** |
+| Visage | 1         | **sim**           | **`Binds to Warband`** |
+
+O bit 27 do primeiro elemento do `Flags` **vence o `Bonding`**, e são 13.899
+itens no build. Ler só o `Bonding` erra em todos eles.
+
+As strings estão no `GlobalStrings`: `ITEM_BIND_TO_ACCOUNT` e
+`ITEM_BIND_TO_BNETACCOUNT`, as duas hoje traduzidas como `Binds to Warband`.
+
+### O `Use:` do cosmético não existe em tabela nenhuma
+
+O `Hex Lord's Visage` exibe
+
+```
+Use: Add this appearance to your Warband collection.
+```
+
+e o `ItemXItemEffect` dele é **vazio**. A frase é do cliente:
+`ITEM_COSMETIC_LEARN`, no `GlobalStrings`. A linha solta `Cosmetic`, logo abaixo
+do nome, é `ITEM_COSMETIC`.
+
+> É o mesmo padrão do modo sem personagem: **quando o tooltip mostra algo que não
+> está no dado do item, a frase está no `GlobalStrings`** e o gatilho é uma
+> propriedade estrutural — aqui, ser `Armor`/`Cosmetic`.
+
+### `AllowableClass` é bitmask, e nos tokens ela É o tipo de armadura
+
+`-1` significa "todas". Fora isso, bit `n−1` ligado quer dizer `ChrClasses[n]`:
+
+| valor | classes                          | token         |
+| ----- | -------------------------------- | ------------- |
+| 35    | Warrior, Paladin, Death Knight   | `Venomforged` |
+| 3592  | Rogue, Monk, Druid, Demon Hunter | `Venomcured`  |
+| 4164  | Hunter, Shaman, Evoker           | `Venomcast`   |
+| 400   | Priest, Mage, Warlock            | `Venomwoven`  |
+
+Bate um a um com o nome do token, e com o tooltip real dos quatro. O formato da
+linha é `ITEM_CLASSES_ALLOWED = 'Classes: %s'`.
+
+> **Iterar sobre o `ChrClasses`, nunca sobre `1..13` fixo.** A tabela tem **15**
+> linhas neste build — `Adventurer` e `Traveler` ocupam 14 e 15. Hoje nenhuma
+> máscara observada usa esses bits, e é exatamente o tipo de constante que
+> envelhece sem avisar.
+
+E os nomes curtos **não estão no `GlobalStrings`**: lá o `CLASS_WARRIOR` é o
+texto longo de descrição da classe. Quem tem "Warrior" é o `ChrClasses.Name_lang`.
+
+### O que a conferência pegou
+
+Sete tooltips reais reprovaram **cinco** afirmações da versão anterior desta
+seção: que não havia árvore, que não havia item level, a ordem de `Use:` e
+`Classes:`, o `Bonding` como fonte única do vínculo, e a linha de tipo sempre
+visível.
+
+A versão anterior estava marcada como "não verificado contra tooltip real", e era
+esse o motivo. **Vale como argumento a favor de sempre marcar** — o texto
+avisava exatamente onde ia quebrar.
+
+Fica aberto um detalhe só: o `Mural` traz um **número 5 ao lado de um ícone**, que
+é o espaço que a decoração ocupa na casa. Nenhuma tabela extraída tem esse
+campo, e ele não pertence ao loot.
+
 ## O erro que se cancelava
 
 Antes de encontrar o SimC, a fórmula tinha sido reconstruída ajustando **um item
 por vez**: para cada peça, procurar qual índice de orçamento fazia os números
 fecharem.
 
-Isso produziu quatro afirmações erradas, todas registradas como "medidas":
+Isso produziu seis afirmações erradas, todas registradas como "medidas":
 
 | afirmado                                   | real                                                |
 | ------------------------------------------ | --------------------------------------------------- |
@@ -942,13 +1172,17 @@ tooltip. É achado nosso.
 | 974 | Hero       |
 | 978 | Myth       |
 
-E casa com os três espécimes:
+E casa com os espécimes:
 
 | peça         | `Type 34` | track no tooltip |
 | ------------ | --------- | ---------------- |
 | ombro        | `614,971` | **Adventurer** ✓ |
 | colar        | `616,973` | **Champion** ✓   |
 | cinto e anel | `612,978` | **Myth** ✓       |
+| escudo       | `617,974` | **Hero** ✓       |
+
+O escudo é o único cujo `Type 34` **não vem do `itemString`** — vem do grupo que
+a árvore devolveu, no rank padrão. Ver "O `itemString` NÃO é a fonte completa".
 
 #### O total NÃO é "entradas com o mesmo `Flags`" — e essa versão durou cinco dias
 
@@ -1027,11 +1261,14 @@ Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
 > pelo addon e transcrever o tooltip à mão. Por isso viram arquivo, e não uma
 > tabela em prosa — e por isso o arquivo carrega o build junto.
 
-**121 valores em 20 espécimes**, cobrindo os quatro tipos de multiplicador
-(armadura, joia, trinket, arma), as três classes de orçamento, primário fixo e
-flexível, uma track inteira de seis ranks, os quatro terciários, três itens de set de
-classes diferentes, cinco armas (uma mão, duas mãos, caster), um escudo, uma
-duas off-hand, dois escudos, e um item de expansão antiga.
+**~103 valores em 20 espécimes de equipamento**, cobrindo os quatro tipos de
+multiplicador (armadura, joia, trinket, arma), as classes de orçamento, primário
+fixo e flexível, uma track inteira de seis ranks, os quatro terciários, três
+itens de set de classes diferentes, cinco armas (uma mão, duas mãos e caster),
+dois escudos, duas off-hand, e um item de expansão antiga.
+
+Mais **7 espécimes de não-equipamento** — token de set, decor de casa, cosmético,
+reagente — com o tooltip inteiro transcrito, linha a linha.
 
 Um deles é **deliberadamente contaminado** — o cinto com `Sporefused: Myth` — e
 está lá marcado como tal, porque foi o espécime que quase produziu uma fórmula
@@ -1039,36 +1276,51 @@ errada com números plausíveis.
 
 ## Placar: o que dá para montar hoje
 
-| elemento                              | status                                                    |
-| ------------------------------------- | --------------------------------------------------------- |
-| item level                            | ✅ 6/6, moderno e de era antiga                           |
-| primário, stamina, secundários        | ✅ **43 stats**                                           |
-| primário flexível (todos os tipos)    | ✅ enum do SimC, 3 dos 4 observados                       |
-| armadura                              | ✅ 11/11, escudos inclusos                                |
-| dano, speed, dps                      | ✅ 5/5, com a seleção entre as 4 tabelas                  |
-| descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                    |
-| `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                 |
-| track completo (nome, rank, total)    | ✅ 5 grupos — e a regra do total corrigida                |
-| **on use / proc — texto e números**   | ✅ 4/4, com o `ScalingClass` decodificado                 |
-| **terciários**                        | ✅ os 4; Indestructible é flag, os outros 3 medidos       |
-| **set** (nome, peças, bônus por spec) | ✅ 2 sets, e o modo sem personagem vem do próprio cliente |
-| item level (era antiga)               | ✅ era `Type 50` não expandido, não squish                |
-| flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                  |
-| socket (`penalty`)                    | ✅ fórmula do SimC; termo morto acima do ilvl 60          |
-| números dentro do texto de set        | ⏸️ fora do caminho: o padrão é a linha genérica           |
-| `Type 38` do `ItemBonus`              | ⏸️ redundante — repete o `InventoryType` que já temos     |
-| **`Block` do escudo**                 | ✅ 2/2 — `floor( armadura_crua × 2,5 )`                   |
-| **resolução pela árvore de bônus**    | ✅ 5/5 — `itemContext` sobre `ItemBonusTreeNode`          |
+**Resolução de bônus** — o que transforma um `itemString` no item real:
+
+| elemento                            | status                                               |
+| ----------------------------------- | ---------------------------------------------------- |
+| `Type` do `ItemBonus`               | ✅ enum do SimC, mais o `Type 34` que é achado nosso |
+| `Type 50` (`APPLY_BONUS`) recursivo | ✅ é o que resolve o item de era antiga              |
+| árvore de bônus por `itemContext`   | ✅ 5/5 — e é obrigatória, não atalho                 |
+| item level                          | ✅ 7/7, moderno e de era antiga                      |
+
+**Números do tooltip:**
+
+| elemento                        | status                                               |
+| ------------------------------- | ---------------------------------------------------- |
+| primário, stamina, secundários  | ✅ ~90 stats em 20 peças                             |
+| primário flexível               | ✅ enum do SimC, 3 dos 4 tipos observados            |
+| terciários                      | ✅ os 4 — Indestructible é flag, os outros medidos   |
+| armadura                        | ✅ 11/11, escudos inclusos                           |
+| `Block` do escudo               | ✅ 2/2 — `floor( armadura_crua × 2,5 )`              |
+| dano, speed, dps                | ✅ 5/5, com a seleção entre as 4 tabelas             |
+| on use / proc — texto e números | ✅ 4/4, com o `ScalingClass` decodificado            |
+| socket (`penalty`)              | ✅ fórmula do SimC; **termo morto** acima do ilvl 60 |
+
+**Texto e montagem da tela:**
+
+| elemento                       | status                                                    |
+| ------------------------------ | --------------------------------------------------------- |
+| descritor de dificuldade       | ✅ duas fontes: `Type 4` e `ItemNameDescriptionID`        |
+| track (nome, rank, total)      | ✅ 5 grupos — e a regra do total corrigida                |
+| set (nome, peças, bônus)       | ✅ 3 sets, e o modo sem personagem vem do próprio cliente |
+| flavor text                    | ✅ `ItemSparse.Description_lang`                          |
+| vínculo, incluindo Warband     | ✅ `Bonding` **mais** o bit 27 do `Flags[0]`              |
+| item que não é equipamento     | ✅ 7 tooltips reais, 4 formatos                           |
+| números dentro do texto de set | ⏸️ fora do caminho: o padrão é a linha genérica           |
+| `Type 38` do `ItemBonus`       | ⏸️ redundante — repete o `InventoryType` que já temos     |
 
 ## O que ainda está aberto
 
-**Nada bloqueia a implementação.** O escudo que faltava chegou, fechou o `Block`
-— e revelou a árvore de bônus, que era um buraco que ninguém sabia que existia.
+**Nada.** E vale desconfiar dessa frase, porque a rodada anterior deste
+documento também a escreveu — e estava errada.
 
-Fica registrado o que ele custaria se não tivesse aparecido: **o popover
-renderizaria peças com o item level base**, silenciosamente. Não era pendência
-conhecida; era pendência invisível, e a única coisa que a expôs foi continuar
-coletando espécimes depois de a pesquisa "estar fechada".
+O que a derrubou foi um escudo. Ele fechou o `Block`, que era a pendência
+conhecida, e **de quebra revelou a árvore de bônus**, que não era pendência
+nenhuma: sem ela o popover renderizaria peças com o item level base,
+silenciosamente. Era **pendência invisível**, e a única coisa que a expôs foi
+continuar coletando espécimes depois de a pesquisa "estar fechada".
 
 > **A lição de método:** a rodada anterior deste documento declarou a pesquisa
 > encerrada. Estava errada, e não por descuido — por não haver como saber. O que
@@ -1080,15 +1332,22 @@ As pendências que esta lista carregou por sete rodadas terminaram assim:
 | ------------------------------ | -------------------------------------------------------------- |
 | squish de era antiga           | **não existia** — faltava expandir o `Type 50`                 |
 | `Block` do escudo              | **fechado** — `floor( cru × 2,5 )`, dois espécimes             |
+| não-equipamento sem fixture    | **conferido** — e a conferência reprovou cinco afirmações      |
 | socket nativo                  | **decisão de não procurar** — termo morto acima do ilvl 60     |
 | tabela geral de `ScalingClass` | **não existe** — o campo não assume valor positivo neste build |
 | `Type 38`                      | **redundante** — repete o `InventoryType`                      |
 | números do texto de set        | **fora do caminho** — o padrão é a linha genérica              |
+| efeito com `ScalingClass 0`    | **inalcançável** — 2 casos em 45.115, nenhum é loot de raid    |
 
-> Três das cinco não eram pendências: eram **perguntas mal formuladas**, que
+> **Quatro das oito não eram pendências**: eram perguntas mal formuladas, que
 > sumiram quando a pergunta certa foi feita. Vale registrar porque o padrão se
-> repete — a primeira reação a um número que não fecha foi supor mecanismo
-> faltando (squish, tabela geral), e nas duas vezes o mecanismo não existia.
+> repete — a primeira reação a um número que não fecha foi supor **mecanismo
+> faltando** (squish, tabela geral de `ScalingClass`), e nas duas vezes o
+> mecanismo não existia.
+>
+> E as outras quatro se dividem limpo: duas fecharam com espécime novo (`Block`,
+> não-equipamento) e duas viraram **decisão registrada de não perseguir** (socket
+> nativo, `ScalingClass 0`) — as duas com o número que justifica a decisão.
 
 ## Consultar outro projeto funciona — mas o que ele NÃO faz não é evidência
 
@@ -1166,8 +1425,8 @@ erro que se cancelava"). Fixture detecta fórmula **errada**; não detecta fórm
 
 O que separa os dois casos é uma fonte independente — no nosso caso o SimC. A
 ordem certa é: **implementação vem da fonte, fixture confirma que entendemos o
-que copiamos.** O inverso — deduzir da fixture — é o que produziu os quatro
-erros registrados aqui.
+que copiamos.** O inverso — deduzir da fixture — é o que produziu a maior parte
+dos erros registrados aqui.
 
 ## O procedimento a cada patch
 
