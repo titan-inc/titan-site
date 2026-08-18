@@ -396,12 +396,202 @@
         "Renderizar o número seria certo pelo dado e errado pela tela.",
         "Primário flexível tipo 73 (Agility ou Intellect)."
       ]
+    },
+    {
+      "nome": "Ancient Amani Greataxe",
+      "itemId": 279237,
+      "slot": "Two-Hand",
+      "material": "Axe",
+      "itemString": "item:279237::::::::90:250::60:3:13844:13845:13615:1:28:5381:::::",
+      "itemLevel": 263,
+      "esperado": {
+        "primario": {
+          "valor": 97,
+          "tipos": ["Strength"]
+        },
+        "stamina": 1694,
+        "haste": 69,
+        "mastery": 75,
+        "danoMin": 171,
+        "danoMax": 356,
+        "speed": 3.6,
+        "dps": 73.2
+      },
+      "notas": [
+        "Primeiro espécime de DUAS MÃOS: índice de orçamento 0.",
+        "Sem descritor e sem mecânica de season — espécime limpo."
+      ]
+    },
+    {
+      "nome": "Beakbreaker Scimitar",
+      "itemId": 258048,
+      "slot": "One-Hand",
+      "material": "Sword",
+      "itemString": "item:258048::::::::90:66::179:4:6652:12701:11215:12790:1:28:1279:::::",
+      "itemLevel": 263,
+      "esperado": {
+        "primario": {
+          "valor": 49,
+          "tipos": ["Strength"]
+        },
+        "stamina": 847,
+        "crit": 37,
+        "versatility": 34,
+        "danoMin": 107,
+        "danoMax": 180,
+        "speed": 2.6,
+        "dps": 55.2
+      },
+      "notas": [
+        "Arma de uma mão de era MODERNA — o machado é a outra, e é pós-squish.",
+        "Prova que o dps exibido não é o da tabela: a tabela daria 55,3."
+      ]
+    },
+    {
+      "nome": "Tarnished Dawnlit Greatsword",
+      "itemId": 258958,
+      "slot": "Two-Hand",
+      "material": "Sword",
+      "itemString": "item:258958::::::::81:1468::133:1:13900:2:9:90:28:5381:::::",
+      "itemLevel": 253,
+      "esperado": {
+        "primario": {
+          "valor": 394,
+          "tipos": ["Intellect"]
+        },
+        "stamina": 1515,
+        "crit": 74,
+        "mastery": 62,
+        "danoMin": 90,
+        "danoMax": 150,
+        "speed": 3.6,
+        "dps": 33.3
+      },
+      "notas": [
+        "Arma de CASTER: usa ItemDamageTwoHandCaster. O bit 0x200 está no segundo elemento do Flags (8704 = 8192 + 512).",
+        "E o único espécime com STAT REPETIDO: Intellect em duas entradas (aloc 5259 -> 89 e 18121 -> 305), somando 394.",
+        "Sem ele, a fórmula mostraria 305 e ninguém saberia por quê."
+      ]
+    },
+    {
+      "nome": "Tarnished Dawnlit Beacon",
+      "itemId": 258960,
+      "slot": "Held In Off-hand",
+      "itemString": "item:258960::::::::81:1468::133:1:13900:2:9:90:28:5381:::::",
+      "itemLevel": 253,
+      "esperado": {
+        "primario": {
+          "valor": 136,
+          "tipos": ["Intellect"]
+        },
+        "stamina": 758,
+        "versatility": 29,
+        "mastery": 38
+      },
+      "notas": [
+        "Off-hand (InventoryType 23): índice de orçamento 3, multiplicador do tipo Armor.",
+        "SubclassID 0: não tem armadura, e o tooltip não tem a linha."
+      ]
+    },
+    {
+      "nome": "Bramblebarricade",
+      "itemId": 249676,
+      "slot": "Off Hand",
+      "material": "Shield",
+      "itemString": "item:249676::::::::90:66::174:3:6652:11215:12782:1:28:6015:::::",
+      "itemLevel": 250,
+      "esperado": {
+        "primario": {
+          "valor": 43,
+          "tipos": ["Strength"]
+        },
+        "stamina": 726,
+        "versatility": 39,
+        "mastery": 28,
+        "intellect": 132,
+        "armadura": 766
+      },
+      "naoCalculado": {
+        "block": 1915
+      },
+      "notas": [
+        "Único ESCUDO: armadura vem do ItemArmorShield, sem modificador de slot nem material.",
+        "Tem Strength E Intellect como entradas separadas (o Intellect aparece apagado no tooltip).",
+        "O BLOCK (1915) não fecha com nada mapeado — único valor de tooltip ainda sem fórmula."
+      ]
+    },
+    {
+      "nome": "Luminant Verdict's Divine Warplate",
+      "itemId": 249964,
+      "slot": "Chest",
+      "material": "Plate",
+      "itemString": "item:249964::::::::90:66::5:5:13334:42:13336:13575:12798::::::",
+      "itemLevel": 276,
+      "descritor": "Heroic",
+      "esperado": {
+        "primario": {
+          "valor": 110,
+          "tipos": ["Strength", "Intellect"]
+        },
+        "stamina": 1975,
+        "haste": 53,
+        "mastery": 101,
+        "speed": 66,
+        "armadura": 301
+      },
+      "set": {
+        "nome": "Luminant Verdict's Vestments",
+        "pecas": 5,
+        "textoObservado": {
+          "contagemExibida": "4/5",
+          "linhas": [
+            "Set: Shield of the Righteous deals 20% increased damage.",
+            "Set: After casting Shield of the Righteous, your next Avenger's Shield deals 5% increased damage. Stacks up to 5."
+          ]
+        },
+        "$comment": "Set de Paladin. As linhas observadas são de uma spec só, como no set de Death Knight."
+      },
+      "notas": [
+        "Único espécime com o terciário SPEED (bônus 42): 66.",
+        "Segundo espécime de set, de outra classe."
+      ]
+    },
+    {
+      "nome": "Bellamy's Final Judgement",
+      "itemId": 249277,
+      "slot": "Two-Hand",
+      "material": "Mace",
+      "itemString": "item:249277:6245:::::::90:250::6:3:6652:13335:13654:1:28:3605:::::",
+      "itemLevel": 298,
+      "descritor": "Mythic",
+      "esperado": {
+        "primario": {
+          "valor": 135,
+          "tipos": ["Strength"]
+        },
+        "stamina": 2579,
+        "crit": 51,
+        "mastery": 121,
+        "danoMin": 319,
+        "danoMax": 411,
+        "speed": 3.6,
+        "dps": 101.4
+      },
+      "encantamento": {
+        "enchantId": 6245,
+        "nome": "Rune of the Apocalypse"
+      },
+      "notas": [
+        "Tem 'Ascendant Voidforged: Myth' (bônus 13654) e MESMO ASSIM fecha nos quatro stats.",
+        "Importante: mecânica de season NÃO é categoria homogênea. O Sporefused perturba,",
+        "este não. Cada uma precisa ser verificada por conta própria."
+      ]
     }
   ],
   "aindaFaltaNaFixture": [
     "Peça com socket NATIVO (StatPercentageOfSocket não-zero) — o penalty nunca rodou com valor diferente de zero.",
-    "Terciários Avoidance (bônus 40) e Speed (42) — só Leech e Indestructible foram observados.",
-    "Arma de duas mãos, escudo e offhand — só há uma arma de uma mão.",
+    "Terciário Avoidance (bônus 40) — Leech, Indestructible e Speed já foram observados.",
+    "A fórmula do Block do escudo — o valor 1915 está registrado e não fecha com nada mapeado.",
     "Item de era antiga cujo item level seja derivável — o machado é o único, e o squish não foi resolvido."
   ]
 }

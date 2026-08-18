@@ -550,7 +550,17 @@ armadura = floor( ItemArmorTotal[ilvl][material] × ItemArmorQuality[ilvl][qual]
 cujo subclass é `Misc` (0) ou maior que Plate **não tem armadura innata**: o anel
 devolve zero, e o tooltip dele de fato não tem a linha.
 
-Escudo tem tabela própria (`ItemArmorShield`) e não passa por aqui.
+**Escudo tem tabela própria** e não passa por aqui:
+
+```
+armadura = floor( ItemArmorShield[ilvl].Quality[qual] + 0,5 )
+```
+
+Sem modificador de slot nem de material. Verificado: 766 num escudo no ilvl 250.
+
+> **O `Block` do escudo continua sem fórmula.** O espécime mostra `1915 Block` e
+> nada no que foi mapeado produz esse número. É o único valor de tooltip
+> observado que ainda não fecha.
 
 ### A quinta coluna do `ArmorLocation` NÃO entra
 
@@ -564,14 +574,66 @@ só as quatro primeiras — está certo, e a quinta coluna é outra coisa.
 ## Arma
 
 ```
-dps   = ItemDamage{OneHand|TwoHand}[ilvl].Quality[qual]
-speed = ItemSparse.ItemDelay / 1000
-min   = floor( dps × speed × (1 − DmgVariance/2) )
-max   = floor( dps × speed × (1 + DmgVariance/2) + 0,5 )
+dpsTabela = ItemDamage{OneHand|TwoHand}[Caster][ilvl].Quality[qual]
+speed     = ItemSparse.ItemDelay / 1000
+
+min = floor( dpsTabela × speed × (1 − DmgVariance/2) )
+max = floor( dpsTabela × speed × (1 + DmgVariance/2) + 0,5 )
 ```
 
-O `speed` e o `dps` do tooltip não são calculados: são o `ItemDelay` e o valor da
-tabela, direto. As variantes `*Caster` existem para arma de caster.
+### Qual das quatro tabelas de dano
+
+Pelo `InventoryType` e por um **bit de flag**:
+
+|                                               | tabela               |
+| --------------------------------------------- | -------------------- |
+| `INVTYPE_2HWEAPON` (17)                       | `ItemDamageTwoHand`  |
+| uma mão (13, 21, 22)                          | `ItemDamageOneHand`  |
+| qualquer uma das duas **com o bit de caster** | a variante `*Caster` |
+
+O bit é `ITEM_FLAG2_CASTER_WEAPON = 0x200`, no **segundo elemento** do
+`ItemSparse.Flags`. Medido: uma espada de Intellect tem `65536,8704,…` e
+`8704 = 8192 + 512`; as três armas de Strength têm `8192` no mesmo lugar.
+
+### O dps EXIBIDO não é o da tabela
+
+Ele é recalculado a partir do dano **já arredondado**:
+
+```
+dpsExibido = arredonda1casa( (min + max) / 2 / speed )
+```
+
+| arma       | pela tabela | pela fórmula | tooltip   |
+| ---------- | ----------- | ------------ | --------- |
+| Scimitar   | 55,3        | **55,2**     | **55,2**  |
+| Greatsword | 33,4        | **33,3**     | **33,3**  |
+| Bellamy    | 101,5       | **101,4**    | **101,4** |
+
+> Uma versão anterior deste documento dizia que "o dps do tooltip não é
+> calculado: é o valor da tabela, direto". Estava errado, e passou porque o
+> **único** espécime de arma na época — o machado — dá 10,2 pelos dois
+> caminhos. A regra só apareceu com a quinta arma.
+>
+> É o mesmo modo de falha da seção "O erro que se cancelava", em escala menor:
+> um espécime não distingue duas fórmulas que concordam nele.
+
+## Um stat que aparece duas vezes SOMA
+
+O `StatModifier_bonusStat` pode repetir o mesmo tipo em posições diferentes, com
+alocações diferentes — e o tooltip mostra a **soma**.
+
+Medido numa espada de duas mãos de caster, com Intellect em duas entradas:
+
+```
+alocação  5259 →  89
+alocação 18121 → 305
+                 ---
+tooltip:         394
+```
+
+Nenhuma das duas sozinha bate. Somar as alocações **antes** também dá 394 neste
+caso (394,14), então o espécime não distingue "somar os arredondados" de
+"arredondar a soma" — fica anotado como pergunta aberta.
 
 ## O track de upgrade — resolvido, inteiro
 
@@ -663,10 +725,11 @@ Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
 > pelo addon e transcrever o tooltip à mão. Por isso viram arquivo, e não uma
 > tabela em prosa — e por isso o arquivo carrega o build junto.
 
-**66 valores em 15 espécimes**, cobrindo os quatro tipos de multiplicador
-(armadura, joia, trinket, arma), três classes de orçamento, primário fixo e
-flexível, uma track inteira de seis ranks, dois terciários, um item de set, e um
-item pós-squish de expansão antiga.
+**106 valores em 18 espécimes**, cobrindo os quatro tipos de multiplicador
+(armadura, joia, trinket, arma), as três classes de orçamento, primário fixo e
+flexível, uma track inteira de seis ranks, três terciários, dois itens de set de
+classes diferentes, cinco armas (uma mão, duas mãos, caster), um escudo, uma
+off-hand, e um item pós-squish de expansão antiga.
 
 Um deles é **deliberadamente contaminado** — o cinto com `Sporefused: Myth` — e
 está lá marcado como tal, porque foi o espécime que quase produziu uma fórmula
@@ -679,23 +742,27 @@ errada com números plausíveis.
 | item level (item moderno)             | ✅ fórmula completa, 4/4                                  |
 | primário, stamina, secundários        | ✅ **43 stats**                                           |
 | primário flexível (todos os tipos)    | ✅ enum do SimC, 2 dos 4 observados                       |
-| armadura                              | ✅ 8/8, e a quinta coluna do `ArmorLocation` descartada   |
-| dano, speed, dps                      | ✅ 4/4                                                    |
+| armadura                              | ✅ 10/10, escudo incluso                                  |
+| dano, speed, dps                      | ✅ 5/5, com a seleção entre as 4 tabelas                  |
 | descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                    |
 | `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                 |
 | track completo (nome, rank, total)    | ✅ 3 grupos — `Type 34` + `SharedString`                  |
 | **on use / proc — texto e números**   | ✅ 4/4, com o `ScalingClass` decodificado                 |
-| **terciários**                        | ✅ Leech medido; Indestructible é flag                    |
+| **terciários**                        | ✅ Leech e Speed medidos; Indestructible é flag           |
 | **set** (nome, peças, bônus por spec) | ✅ verificado num set de 5 peças e 3 specs                |
 | flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                  |
 | socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças   |
 | números dentro do texto de set        | ⚠️ tem expressão (`${$1271198s1/10}`), não só placeholder |
+| **`Block` do escudo**                 | ❌ 1915 observado, nada mapeado produz esse número        |
 | item level (era antiga)               | ❌ ver abaixo                                             |
 
 ## O que ainda está aberto
 
-- **peça com socket nativo**, para exercitar o `penalty` de verdade, e **peça com
-  terciário**, que nunca apareceu — as duas são coleta, não pesquisa
+- **peça com socket nativo**, para exercitar o `penalty` de verdade — é coleta,
+  não pesquisa
+- **terciário `Avoidance`** (bônus 40) — os outros três já apareceram
+- **o `Block` do escudo**: o espécime mostra `1915` e nada do que foi mapeado
+  produz esse número
 - **`ScalingClass −8`** (o dano de fogo do trinket) não segue a regra do −1, e a
   tabela geral de escala por `ScalingClass` não foi identificada
 - **item level de era antiga**: o machado de Dragonflight usa `Type 1`
@@ -762,6 +829,12 @@ até conferir peça por peça contra o jogo.
 É o modo de falha que a TIT-136 descreve — _um stat calculado errado é
 indistinguível de um certo, e o conselho vota nele_ — materializado na primeira
 hora de análise.
+
+> **E "mecânica de season" não é categoria homogênea.** Uma maça com
+> `Ascendant Voidforged: Myth` — mesma família de descritor — fecha nos quatro
+> stats sem desvio nenhum. Saber que uma perturba não diz nada sobre a outra:
+> **cada mecânica precisa ser verificada por conta própria**, e a fixture marca
+> individualmente qual está contaminada.
 
 Daí a regra: **stat que não dá para calcular com confiança volta `null`, e a
 tela mostra a lacuna.** Nunca um valor aproximado, nunca o do item base quando o
