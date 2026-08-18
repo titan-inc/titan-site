@@ -399,26 +399,113 @@ Cada placeholder resolve assim:
 | `$u`         | `SpellAuraOptions.CumulativeAura` (6)                                     |
 | `$s1`, `$s2` | `Coefficient` × escala(`ScalingClass`, item level)                        |
 
-### `ScalingClass −1` escala pelo orçamento do item
+### O `ScalingClass` decide de qual coluna sai a escala
 
-Medido no trinket, contra os dois ranks:
+Do `spelleffect_data_t::average( const item_t* )` do SimC:
 
-|                 | derivado do tooltip | `RandPropPoints.EpicF[0]` |
-| --------------- | ------------------- | ------------------------- |
-| Strength rank 1 | 242,34              | **242,44** (ilvl 292)     |
-| Strength rank 2 | 249,27              | **249,31** (ilvl 295)     |
+```
+valor = Coefficient × escala( ScalingClass, itemLevel )
 
-Erro menor que o arredondamento do inteiro exibido, em dois pontos
-independentes.
+  caso geral (inclui −1) → RandPropPoints.Epic[0]
+  −7                     → Epic[0] × CombatRatingsMultByILvl
+  −8                     → RandPropPoints.DamageReplaceStat
+  −9                     → RandPropPoints.DamageSecondary
+```
 
-**Isto dá um jeito de LER o item level real de uma peça** — útil para a TIT-82,
-e foi como se descobriu que o trinket estava em 292/295, e não em 290/292 como o
-orçamento de stat sugeria.
+Verificado no trinket, nos dois ranks e nos dois efeitos:
+
+| efeito                 | cálculo  | tooltip   |
+| ---------------------- | -------- | --------- |
+| Strength r1 (`−1`)     | 105,044  | **105**   |
+| Strength r2 (`−1`)     | 108,021  | **108**   |
+| dano de fogo r1 (`−8`) | 77.365,5 | **77365** |
+| dano de fogo r2 (`−8`) | 79.753,0 | **79753** |
+
+O `DamageReplaceStat` e o `DamageSecondary` são colunas do `RandPropPoints` que
+parecem "coisa de arma" e não são — o `−8` de um trinket usa a primeira.
+
+**O caso `−1` também dá um jeito de LER o item level real de uma peça**:
+dividindo o número do tooltip pelo `Coefficient`, sai o orçamento, e dele o
+ilvl. Foi assim que se descobriu que o trinket estava em 292/295.
 
 > **Correção de estimativa.** Uma versão anterior deste documento e da TIT-136
 > tratavam efeito de trinket como o pedaço mais caro de todos. Não é: é uma
-> consulta e uma multiplicação. O custo real está em identificar a tabela de
-> escala por `ScalingClass`.
+> consulta e uma multiplicação.
+
+## Terciários, e uma regra de exibição
+
+Terciário entra como stat comum: o bônus traz `Type 2` com alocação **3000**, e o
+valor sai da mesma fórmula dos secundários.
+
+| bônus | stat                | verificado                                      |
+| ----- | ------------------- | ----------------------------------------------- |
+| 40    | Avoidance (63)      | —                                               |
+| 41    | Leech (62)          | **71**, num elmo de placa no ilvl 289           |
+| 42    | Speed (61)          | —                                               |
+| 43    | Indestructible (64) | calcula **68**, e o tooltip mostra só a palavra |
+
+> **`Indestructible` é flag na tela, mesmo tendo valor no dado.** Renderizar o
+> número seria certo pelo dado e errado pela tela.
+
+## Primário flexível: mostrar todos, porque não há personagem
+
+O stat de primário não diz "Strength" — diz **quais primários a peça pode
+assumir**, e o jogo escolhe pela spec de quem está olhando.
+
+| stat | primários possíveis          |
+| ---- | ---------------------------- |
+| 71   | Strength, Agility, Intellect |
+| 72   | Strength, Agility            |
+| 73   | Agility, Intellect           |
+| 74   | Strength, Intellect          |
+
+O valor é **o mesmo** para qualquer um deles, então é uma linha só. Como a nossa
+renderização não tem personagem, ela mostra todos:
+
+```
++124 (Strength or Intellect)
+```
+
+## Item de set
+
+```
+ItemSparse.ItemSet → ItemSet.Name_lang + ItemSet.ItemID (17 posições, zeros no fim)
+                   → ItemSetSpell onde ItemSetID = set
+                       agrupado por ChrSpecID, ordenado por Threshold
+                       texto em Spell.Description_lang
+                   → ChrSpecialization dá nome da spec, ClassID e OrderIndex
+```
+
+Verificado no `Relentless Rider's Lament` (set 1978): nome, as cinco peças, e
+seis bônus — dois thresholds (2 e 4) × três specs de Death Knight.
+
+**Os bônus são POR SPEC**, e o jogo mostra só os da spec de quem olha. Sem
+personagem, mostramos os três conjuntos, na ordem do `OrderIndex`:
+
+```
+Relentless Rider's Lament · Death Knight · 5 peças
+
+Blood    2: …   4: …
+Frost    2: …   4: …
+Unholy   2: …   4: …
+```
+
+A classe sai do `ClassID` e é a mesma em todas as linhas, então aparece uma vez
+no cabeçalho.
+
+**A contagem `(4/5)` do tooltip fica de fora**: é estado de personagem. O total
+vem da contagem de `ItemID` não-zero; o numerador não existe sem instância.
+
+### Os números do texto de set ficam para depois
+
+O texto tem os mesmos `$s1`/`$s2`, e mais uma forma que o on-use não tinha:
+
+```
+${$1271198s1/10}
+```
+
+— expressão que referencia **outro spell** e divide. Para set, o que decide voto
+é _qual_ efeito, não se o dano é 8% ou 9%, então a v1 pode elidir os números.
 
 ## O erro que se cancelava
 
@@ -566,43 +653,44 @@ fechar a questão.
 
 ## A fixture: as peças que a fórmula reproduz
 
-Critério de aceite da TIT-136. Cada linha é `itemString` + os números exatos que
-o tooltip mostrou. **55 valores em 13 espécimes.**
+Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
+**exatamente**, ele está errado — e não "quase".
 
-| peça                             | item   | ilvl             | conferido                                                                |
-| -------------------------------- | ------ | ---------------- | ------------------------------------------------------------------------ |
-| Relentless Rider's Chain (cinto) | 249967 | 289              | Str 93, Sta 1745, Mastery 88, Crit 35, armadura 183                      |
-| idem, outro rank                 | 249967 | 298              | armadura 193                                                             |
-| Platinum Star Band (anel)        | 193708 | 289              | Sta 1309, Crit 199, Mastery 104, sem armadura                            |
-| Wallcliber's Hatchet (1H)        | 204279 | 82               | Agi 9, Sta 16, Haste 12, Vers 6, 17–36 dano, speed 2,60, 10,2 dps        |
-| Blazebinder's Hoof (trinket)     | 193762 | 292 e 295        | Haste 119 e 121                                                          |
-| Pendant of Malefic Fury (colar)  | 251142 | 292 e 295        | Sta 1353/1402, Haste 97/100, Mastery 212/217                             |
-| **Steelbark Shoulderguards**     | 256998 | 266→282, 6 ranks | Str, Sta, Crit, Mastery e armadura nos **seis** — 24 stats e 6 armaduras |
+> **Os espécimes estão versionados em [`db2-fixture-de-itens.json`](db2-fixture-de-itens.json)**,
+> com `itemString` completo e os números do tooltip.
+>
+> Coletá-los **não é trivial**: exige ter a peça no jogo, extrair o `itemString`
+> pelo addon e transcrever o tooltip à mão. Por isso viram arquivo, e não uma
+> tabela em prosa — e por isso o arquivo carrega o build junto.
 
-Cobre os quatro tipos de multiplicador (armadura, joia, trinket, arma), três
-classes de orçamento (1, 2, 3), primário fixo e flexível, uma track inteira, e
-um item pós-squish de expansão antiga.
+**66 valores em 15 espécimes**, cobrindo os quatro tipos de multiplicador
+(armadura, joia, trinket, arma), três classes de orçamento, primário fixo e
+flexível, uma track inteira de seis ranks, dois terciários, um item de set, e um
+item pós-squish de expansão antiga.
 
-**Falta na fixture**: peça com socket nativo (`StatPercentageOfSocket` não-zero)
-— nenhuma tem, então o `penalty` nunca foi exercitado com valor diferente de
-zero. E peça com terciário.
+Um deles é **deliberadamente contaminado** — o cinto com `Sporefused: Myth` — e
+está lá marcado como tal, porque foi o espécime que quase produziu uma fórmula
+errada com números plausíveis.
 
 ## Placar: o que dá para montar hoje
 
-| elemento                               | status                                                      |
-| -------------------------------------- | ----------------------------------------------------------- |
-| item level (item moderno)              | ✅ fórmula completa, 4/4                                    |
-| primário, stamina, secundários         | ✅ **43 stats** em 13 espécimes                             |
-| **armadura**                           | ✅ **8/8**, e a quinta coluna do `ArmorLocation` descartada |
-| **dano, speed, dps**                   | ✅ 4/4                                                      |
-| descritor (Mythic / Mythic+ / Heroic)  | ✅ 3/3                                                      |
-| `Type` do `ItemBonus`                  | ✅ enum completo, do SimC                                   |
-| **track completo** (nome, rank, total) | ✅ 3 grupos — `Type 34` + `SharedString`                    |
-| flavor text                            | 🔧 é ler o `ItemSparse.Description_lang`                    |
-| terciários                             | ⚠️ mecanismo conhecido, **nenhum espécime** ainda           |
-| socket                                 | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças     |
-| on use / proc                          | ⚠️ texto, `$d` e `$u` sim; escala por `ScalingClass` não    |
-| item level (era antiga)                | ❌ ver abaixo                                               |
+| elemento                              | status                                                    |
+| ------------------------------------- | --------------------------------------------------------- |
+| item level (item moderno)             | ✅ fórmula completa, 4/4                                  |
+| primário, stamina, secundários        | ✅ **43 stats**                                           |
+| primário flexível (todos os tipos)    | ✅ enum do SimC, 2 dos 4 observados                       |
+| armadura                              | ✅ 8/8, e a quinta coluna do `ArmorLocation` descartada   |
+| dano, speed, dps                      | ✅ 4/4                                                    |
+| descritor (Mythic / Mythic+ / Heroic) | ✅ 3/3                                                    |
+| `Type` do `ItemBonus`                 | ✅ enum completo, do SimC                                 |
+| track completo (nome, rank, total)    | ✅ 3 grupos — `Type 34` + `SharedString`                  |
+| **on use / proc — texto e números**   | ✅ 4/4, com o `ScalingClass` decodificado                 |
+| **terciários**                        | ✅ Leech medido; Indestructible é flag                    |
+| **set** (nome, peças, bônus por spec) | ✅ verificado num set de 5 peças e 3 specs                |
+| flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                  |
+| socket                                | ⚠️ fórmula conhecida, `penalty` foi 0 em todas as peças   |
+| números dentro do texto de set        | ⚠️ tem expressão (`${$1271198s1/10}`), não só placeholder |
+| item level (era antiga)               | ❌ ver abaixo                                             |
 
 ## O que ainda está aberto
 
