@@ -671,69 +671,139 @@
     }
   ],
   "aindaFaltaNaFixture": [
-    "Um tooltip TRANSCRITO de token de set, de decor e de cosmético — o mapeamento existe mas nunca foi conferido contra o jogo.",
     "Um efeito com ScalingClass 0 — a regra veio do SimC (PLAYER_NONE -> DamageSecondary) e nenhum espécime a exercita."
   ],
   "naoEquipamento": {
-    "$comment": "Drops de raid que nao sao peca. AINDA SEM TOOLTIP TRANSCRITO — os valores abaixo sao o que a estrutura do db2 preve, nao o que foi observado. Confirmar antes de tratar como fixture.",
-    "itemStringComum": "item:<id>::::::::90:250::3:1:3524:1:28:7359:::::",
-    "notaSobreOBonus": "Os 32 carregam o MESMO bonusID 3524, que e Type 0 (no-op) — o mesmo do escudo Bubblefin. Confirma que 3524 e o bonus vazio padrao, nao anomalia.",
-    "formatos": [
+    "$comment": "Drops de raid que nao sao peca. VERIFICADO contra 7 tooltips reais.",
+    "notaSobreOBonus": "Os itemStrings carregam o MESMO bonusID 3524, que e Type 0 (no-op) — o mesmo do escudo Bubblefin. E o bonus vazio padrao. O que da ilvl e descritor e a ARVORE, pelo itemContext.",
+    "ordemDasLinhas": [
+      "nome",
+      "descritor",
+      "Item Level",
+      "vinculo",
+      "Use: ...",
+      "Classes: ...",
+      "flavor"
+    ],
+    "regras": {
+      "linhaDeTipo": "So aparece quando InventoryType != 0. Token (Junk) e Context Token nao exibem.",
+      "descritor": "Duas fontes: ItemBonus Type 4 (tokens) OU ItemSparse.ItemNameDescriptionID (o Mural, 14292 = 'Housing Decor').",
+      "vinculo": "Bit 27 do Flags[0] vence o Bonding: ITEM_BIND_TO_ACCOUNT = 'Binds to Warband'. 13.899 itens no build.",
+      "useDoCosmetico": "Nao existe em tabela: e ITEM_COSMETIC_LEARN do GlobalStrings, disparado por ser Armor/Cosmetic. ItemXItemEffect e vazio."
+    },
+    "especimes": [
       {
-        "formato": "token de set",
-        "qtd": 20,
-        "classeDeItem": "15/0 (Miscellaneous/Junk)",
-        "exemplo": {
-          "itemId": 270913,
-          "nome": "Venomforged Idol",
-          "qualidade": "Epic",
-          "previsto": [
-            "Binds when picked up",
-            "Classes: Warrior, Paladin, Death Knight",
-            "Requires Level 90",
-            "Use: Create a soulbound set hand item appropriate for your class."
-          ]
-        },
-        "duvida": "A subclasse e 'Junk'; provavelmente a linha de tipo nao aparece no tooltip."
+        "itemId": 270910,
+        "nome": "Venomwoven Idol",
+        "itemString": "item:270910::::::::90:250::5:1:3524:1:28:7363:::::",
+        "itemContext": 5,
+        "itemLevel": 308,
+        "descritor": "Heroic",
+        "tooltip": [
+          "Venomwoven Idol",
+          "Heroic",
+          "Item Level 308",
+          "Bind when picked up",
+          "Use: Create a soulbound set hand item appropriate for your class.",
+          "Classes: Priest, Mage, Warlock"
+        ]
       },
       {
-        "formato": "decor de casa",
-        "qtd": 8,
-        "classeDeItem": "20/0 (Housing/Decor)",
-        "exemplo": {
-          "itemId": 279500,
-          "nome": "\"Rage of the Shackled\" Mural",
-          "qualidade": "Rare",
-          "previsto": ["Binds when picked up", "Decor", "Use: Add this Decor to your House Chest."]
-        }
+        "itemId": 270925,
+        "nome": "Venomforged Remnant",
+        "itemString": "item:270925::::::::90:250::5:1:3524:1:28:7363:::::",
+        "itemContext": 5,
+        "itemLevel": 308,
+        "descritor": "Heroic",
+        "tooltip": [
+          "Venomforged Remnant",
+          "Heroic",
+          "Item Level 308",
+          "Binds when picked up",
+          "Use: Create a soulbound set shoulder item appropriate for your class.",
+          "Classes: Warrior, Paladin, Death Knight"
+        ]
       },
       {
-        "formato": "cosmetico de aparencia",
-        "qtd": 2,
-        "classeDeItem": "4/5 (Armor/Cosmetic)",
-        "exemplo": {
-          "itemId": 275937,
-          "nome": "Hex Lord's Visage",
-          "qualidade": "Rare",
-          "previsto": ["Binds when picked up", "Head    Cosmetic"]
-        }
+        "itemId": 270927,
+        "nome": "Venomcured Icon",
+        "itemString": "item:270927::::::::90:250::6:1:3524:1:28:7362:::::",
+        "itemContext": 6,
+        "itemLevel": 324,
+        "descritor": "Mythic",
+        "tooltip": [
+          "Venomcured Icon",
+          "Mythic",
+          "Item Level 324",
+          "Binds when picked up",
+          "Use: Create a soulbound set chest item appropriate for your class.",
+          "Classes: Rogue, Monk, Druid, Demon Hunter"
+        ]
       },
       {
-        "formato": "reagente e companion",
-        "qtd": 2,
-        "classeDeItem": "5/2 e 15/2",
-        "exemplo": {
-          "itemId": 270909,
-          "nome": "Slumbering Coil Curio",
-          "qualidade": "Epic",
-          "previsto": [
-            "Binds when picked up",
-            "Context Token",
-            "Requires Level 90",
-            "\"Find Kirana near the Catalyst in Silvermoon to trade this for powerful class set armor.\""
-          ]
-        },
-        "duvida": "No companion (280305) o Description_lang e o texto do efeito dizem quase a mesma coisa; a ordem nao foi observada."
+        "itemId": 270920,
+        "nome": "Venomcast Relic",
+        "itemString": "item:270920::::::::90:250::3:1:3524:1:28:7359:::::",
+        "itemContext": 3,
+        "itemLevel": 298,
+        "descritor": null,
+        "tooltip": [
+          "Venomcast Relic",
+          "Item Level 298",
+          "Binds when picked up",
+          "Use: Create a soulbound set leg item appropriate for your class.",
+          "Classes: Hunter, Shaman, Evoker"
+        ],
+        "nota": "ctx 3 resolve na lista 13333, que e no-op — por isso NAO tem descritor. Prova que a ausencia tambem e derivada."
+      },
+      {
+        "itemId": 270909,
+        "nome": "Slumbering Coil Curio",
+        "itemString": "item:270909::::::::90:250::5:1:3524:1:28:7363:::::",
+        "itemContext": 5,
+        "itemLevel": 311,
+        "descritor": "Heroic",
+        "tooltip": [
+          "Slumbering Coil Curio",
+          "Heroic",
+          "Item Level 311",
+          "Binds when picked up",
+          "\"Find Kirana near the Catalyst in Silvermoon to trade this for powerful class set armor.\""
+        ],
+        "nota": "Context Token (5/2), e a linha de tipo NAO aparece: InventoryType 0."
+      },
+      {
+        "itemId": 279500,
+        "nome": "\"Rage of the Shackled\" Mural",
+        "itemString": "item:279500::::::::90:250::5:1:3524:1:28:7363:::::",
+        "itemContext": 5,
+        "itemLevel": 1,
+        "descritor": "Housing Decor",
+        "tooltip": [
+          "\"Rage of the Shackled\" Mural",
+          "Housing Decor",
+          "Item Level 1",
+          "Binds to Warband",
+          "Use: Add this Decor to your House Chest."
+        ],
+        "nota": "Descritor vem do ItemSparse.ItemNameDescriptionID (14292), nao de bonus. A arvore nao devolve nada no ctx 5, entao o ilvl e o base (1). Tem um numero 5 ao lado de um icone = espaco na casa, campo nao mapeado."
+      },
+      {
+        "itemId": 275937,
+        "nome": "Hex Lord's Visage",
+        "itemString": "item:275937::::::::90:250::3:1:3524:1:28:7359:::::",
+        "itemContext": 3,
+        "itemLevel": 1,
+        "descritor": "Cosmetic",
+        "tooltip": [
+          "Hex Lord's Visage",
+          "Cosmetic",
+          "Item Level 1",
+          "Binds to Warband",
+          "Head    Cosmetic",
+          "Use: Add this appearance to your Warband collection."
+        ],
+        "nota": "ItemXItemEffect VAZIO — o Use: e ITEM_COSMETIC_LEARN do GlobalStrings. A linha solta 'Cosmetic' e ITEM_COSMETIC. Unico com linha de tipo, porque InventoryType = 1."
       }
     ],
     "mascarasDeClasse": {

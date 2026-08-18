@@ -664,7 +664,8 @@ efeito, não se o dano é 8% ou 9%.
 
 ## Item que não é equipamento: token, decor, cosmético
 
-Boa parte do que cai numa raid **não é peça**. Numa lista real de 32 drops não-equipamento, quatro formatos:
+Boa parte do que cai numa raid **não é peça**. Numa lista real de 32 drops
+não-equipamento, quatro formatos:
 
 | formato                     | qtd | `ClassID` / `SubClassID`      |
 | --------------------------- | --- | ----------------------------- |
@@ -676,19 +677,90 @@ Boa parte do que cai numa raid **não é peça**. Numa lista real de 32 drops n�
 `ClassID 20` é **`Housing`**, novidade da 12.0, e não está em enum nenhum que
 circule por aí — vem do próprio `ItemClass`.
 
-Nada aqui usa orçamento, multiplicador, árvore de bônus ou track. **O modelo é
-outro, e é muito mais simples:**
+### Eles NÃO são um modelo separado
+
+Uma versão anterior desta seção dizia que "nada aqui usa árvore de bônus". Errado,
+e os tooltips reais derrubaram na primeira conferência. **Token de set tem item
+level e descritor, e os dois vêm da árvore**, exatamente como equipamento:
+
+| token           | ctx | árvore devolve                   | tooltip                     |
+| --------------- | --- | -------------------------------- | --------------------------- |
+| Venomcast Relic | 3   | config 312 · lista 13333 (no-op) | ilvl **298**, sem descritor |
+| Venomwoven Idol | 5   | config 315 · lista 13334         | ilvl **308**, **Heroic**    |
+| Venomcured Icon | 6   | config 320 · lista 13335         | ilvl **324**, **Mythic**    |
+
+O mesmo `itemID` aparece com `itemContext` 3, 5 ou 6 conforme a dificuldade de
+onde caiu, e é só isso que muda entre eles.
+
+> O que é verdade é mais estreito: eles não usam **orçamento de stat,
+> multiplicador nem track**. A resolução de bônus é a mesma.
+
+### O que muda é a montagem da tela
 
 ```
-nome        = ItemSparse.Display_lang
-qualidade   = ItemSparse.OverallQualityID          (cor)
-vínculo     = ItemSparse.Bonding                    (ver a regra do modo sem personagem)
-tipo        = ItemSubClass[ClassID, SubClassID].DisplayName_lang
-classes     = ItemSparse.AllowableClass             (bitmask, ver abaixo)
-nível       = ItemSparse.RequiredLevel
-efeito      = ItemXItemEffect → ItemEffect → Spell.Description_lang
-flavor      = ItemSparse.Description_lang
+nome
+descritor        ItemBonus Type 4  OU  ItemSparse.ItemNameDescriptionID
+Item Level       da árvore; base do ItemSparse quando ela não dá nada
+vínculo
+Use: …           ItemXItemEffect → ItemEffect → Spell.Description_lang
+Classes: …       ItemSparse.AllowableClass
+"flavor"         ItemSparse.Description_lang
 ```
+
+**O `Use:` vem antes do `Classes:`** — a versão anterior tinha a ordem trocada.
+
+### A linha de tipo só aparece com `InventoryType != 0`
+
+Os tokens são `Miscellaneous/Junk` e o `Slumbering Coil Curio` é `Context Token`,
+e **nenhum dos dois exibe essas palavras**. Quem exibe é o cosmético, que tem
+`InventoryType 1`:
+
+```
+Head    Cosmetic
+```
+
+Renderizar a subclasse sempre poria **`Junk`** no tooltip de um token épico.
+
+### O descritor também mora no `ItemSparse`
+
+O `Mural` mostra `Housing Decor` na mesma posição em que uma peça mostra
+`Heroic`. Não vem de bônus: vem do `ItemSparse.ItemNameDescriptionID` = 14292,
+que é uma linha do **mesmo `ItemNameDescription`** já usado pelo `Type 4`.
+
+**São duas fontes para o mesmo campo**, e o item pode ter qualquer uma.
+
+### `Binds to Warband` é flag, não `Bonding`
+
+O `Mural` e o `Hex Lord's Visage` têm `Bonding = 1`, igual aos tokens — e mesmo
+assim o tooltip diz outra coisa:
+
+| item   | `Bonding` | `Flags[0]` bit 27 | tooltip                |
+| ------ | --------- | ----------------- | ---------------------- |
+| token  | 1         | não               | `Binds when picked up` |
+| Mural  | 1         | **sim**           | **`Binds to Warband`** |
+| Visage | 1         | **sim**           | **`Binds to Warband`** |
+
+O bit 27 do primeiro elemento do `Flags` **vence o `Bonding`**, e são 13.899
+itens no build. Ler só o `Bonding` erra em todos eles.
+
+As strings estão no `GlobalStrings`: `ITEM_BIND_TO_ACCOUNT` e
+`ITEM_BIND_TO_BNETACCOUNT`, as duas hoje traduzidas como `Binds to Warband`.
+
+### O `Use:` do cosmético não existe em tabela nenhuma
+
+O `Hex Lord's Visage` exibe
+
+```
+Use: Add this appearance to your Warband collection.
+```
+
+e o `ItemXItemEffect` dele é **vazio**. A frase é do cliente:
+`ITEM_COSMETIC_LEARN`, no `GlobalStrings`. A linha solta `Cosmetic`, logo abaixo
+do nome, é `ITEM_COSMETIC`.
+
+> É o mesmo padrão do modo sem personagem: **quando o tooltip mostra algo que não
+> está no dado do item, a frase está no `GlobalStrings`** e o gatilho é uma
+> propriedade estrutural — aqui, ser `Armor`/`Cosmetic`.
 
 ### `AllowableClass` é bitmask, e nos tokens ela É o tipo de armadura
 
@@ -701,8 +773,8 @@ flavor      = ItemSparse.Description_lang
 | 4164  | Hunter, Shaman, Evoker           | `Venomcast`   |
 | 400   | Priest, Mage, Warlock            | `Venomwoven`  |
 
-Bate um a um com o nome do token. O formato da linha está no `GlobalStrings`:
-`ITEM_CLASSES_ALLOWED = 'Classes: %s'`.
+Bate um a um com o nome do token, e com o tooltip real dos quatro. O formato da
+linha é `ITEM_CLASSES_ALLOWED = 'Classes: %s'`.
 
 > **Iterar sobre o `ChrClasses`, nunca sobre `1..13` fixo.** A tabela tem **15**
 > linhas neste build — `Adventurer` e `Traveler` ocupam 14 e 15. Hoje nenhuma
@@ -712,31 +784,20 @@ Bate um a um com o nome do token. O formato da linha está no `GlobalStrings`:
 E os nomes curtos **não estão no `GlobalStrings`**: lá o `CLASS_WARRIOR` é o
 texto longo de descrição da classe. Quem tem "Warrior" é o `ChrClasses.Name_lang`.
 
-### O `Use:` sai pelo mesmo caminho do trinket
+### O que a conferência pegou
 
-`ItemXItemEffect` → `ItemEffect` → `Spell.Description_lang`, e o `TriggerType`
-decide o rótulo — `0` é "on use" (39.677 linhas), `1` é "on equip" (8.854).
+Sete tooltips reais reprovaram **cinco** afirmações da versão anterior desta
+seção: que não havia árvore, que não havia item level, a ordem de `Use:` e
+`Classes:`, o `Bonding` como fonte única do vínculo, e a linha de tipo sempre
+visível.
 
-```
-Venomforged Idol → Use: Create a soulbound set hand item appropriate for your class.
-Mural            → Use: Add this Decor to your House Chest.
-Soulcoil Remnant → Right Click to summon and dismiss this companion.   (TriggerType 6)
-```
+A versão anterior estava marcada como "não verificado contra tooltip real", e era
+esse o motivo. **Vale como argumento a favor de sempre marcar** — o texto
+avisava exatamente onde ia quebrar.
 
-### Isto ainda NÃO foi verificado contra tooltip real
-
-O mapeamento acima é **derivado da estrutura**, não medido — nenhum dos 32 veio
-com o tooltip transcrito. Pela regra deste documento isso é implementação sem
-fixture, e fica marcado como tal.
-
-Dois pontos concretos em dúvida, os dois de exibição e não de dado:
-
-- **os tokens dão `Junk`** como subclasse (15/0), e é improvável que o tooltip
-  mostre isso — provavelmente a linha some para `Miscellaneous`;
-- no companion, o `Description_lang` e o texto do efeito **dizem quase a mesma
-  coisa**, e a ordem entre eles não foi observada.
-
-Basta um tooltip transcrito de cada formato para fechar.
+Fica aberto um detalhe só: o `Mural` traz um **número 5 ao lado de um ícone**, que
+é o espaço que a decoração ocupa na casa. Nenhuma tabela extraída tem esse
+campo, e ele não pertence ao loot.
 
 ## O erro que se cancelava
 
@@ -1138,7 +1199,7 @@ errada com números plausíveis.
 | **set** (nome, peças, bônus por spec) | ✅ 2 sets, e o modo sem personagem vem do próprio cliente |
 | item level (era antiga)               | ✅ era `Type 50` não expandido, não squish                |
 | flavor text                           | 🔧 é ler o `ItemSparse.Description_lang`                  |
-| **item que não é equipamento**        | 🔧 mapeado inteiro, **sem tooltip real para conferir**    |
+| **item que não é equipamento**        | ✅ 7 tooltips reais, 4 formatos                           |
 | socket (`penalty`)                    | ✅ fórmula do SimC; termo morto acima do ilvl 60          |
 | números dentro do texto de set        | ⏸️ fora do caminho: o padrão é a linha genérica           |
 | `Type 38` do `ItemBonus`              | ⏸️ redundante — repete o `InventoryType` que já temos     |
@@ -1147,11 +1208,7 @@ errada com números plausíveis.
 
 ## O que ainda está aberto
 
-**Um tooltip transcrito de token, decor e cosmético** — o mapeamento de
-não-equipamento está inteiro, mas nenhum dos 32 veio com o tooltip, então é
-implementação sem fixture. Ver a seção deles.
-
-O resto não bloqueia. O escudo que faltava chegou, fechou o `Block`
+**Nada bloqueia.** O escudo que faltava chegou, fechou o `Block`
 — e revelou a árvore de bônus, que era um buraco que ninguém sabia que existia.
 
 Fica registrado o que ele custaria se não tivesse aparecido: **o popover
@@ -1169,6 +1226,7 @@ As pendências que esta lista carregou por sete rodadas terminaram assim:
 | ------------------------------ | -------------------------------------------------------------- |
 | squish de era antiga           | **não existia** — faltava expandir o `Type 50`                 |
 | `Block` do escudo              | **fechado** — `floor( cru × 2,5 )`, dois espécimes             |
+| não-equipamento sem fixture    | **conferido** — e a conferência reprovou cinco afirmações      |
 | socket nativo                  | **decisão de não procurar** — termo morto acima do ilvl 60     |
 | tabela geral de `ScalingClass` | **não existe** — o campo não assume valor positivo neste build |
 | `Type 38`                      | **redundante** — repete o `InventoryType`                      |
