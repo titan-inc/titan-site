@@ -1458,16 +1458,32 @@ Speed e Indestructible ao mesmo tempo.
 > terciários). **A regra escrita estava certa nas duas vezes.** Fica registrado
 > porque os dois erros são os modos de falha naturais de quem implementa isto.
 
-### Bonus loot é detectável, e isso não é assunto de tooltip
+### Bonus loot: identificado, e é só isso
 
 Bonus loot de raid cai **uma track abaixo** da dificuldade corrente e
 `Warbound until equipped`. Os dois sinais estão no `itemString`: o descritor pelo
-`Type 4` e o vínculo pelo `Type 46`.
+`Type 4` e o vínculo pelo `Type 46`. Foi o que explicou os sete itens de track
+mais baixa dentro de blocos carimbados como Normal — o cabeçalho estava certo.
 
-Isso não muda nada na renderização — muda quem entra no **histórico de loot**.
-Pela Regra 7 o histórico é "a decisão que o conselho tomou", e bonus loot é
-sorteio pessoal. Fica registrado aqui porque a descoberta veio deste dado, mas o
-lugar dela é o import, não este documento.
+Isso importa **para renderizar a linha de vínculo**, e para nada além disso.
+
+> **E não vira filtro no import.** A tentação aqui foi propor um: o histórico de
+> loot é "a decisão que o conselho tomou" (Regra 7), bonus loot é sorteio
+> pessoal, logo o import deveria descartá-lo — e a dificuldade também, já que
+> conselho só roda em Heroic para cima.
+>
+> **Errado, e o motivo generaliza.** Quem decide o que entra é a pessoa que liga
+> o RCLootCouncil: se a distribuição não interessa, a extração nem existe. Uma
+> noite pode ser Normal sem addon e terminar com um boss Heroic com addon, e o
+> arquivo sai certo sozinho.
+>
+> Código que refizesse isso estaria **reimplementando, pior, uma escolha que um
+> humano já faz na hora certa e com contexto que o sistema não tem** — e ainda
+> criaria um segundo lugar para discordar do primeiro. É a Regra 7 no outro
+> sentido: nada que o fluxo natural já resolva deve exigir feature.
+
+Este arquivo é sobre montar o tooltip. O parágrafo fica porque a hipótese
+descartada é o tipo de coisa que alguém propõe de novo.
 
 ### O que a noite deixou em aberto
 
