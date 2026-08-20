@@ -309,7 +309,7 @@ Nada abaixo vale se o passo 1 estiver incompleto.
 
 ## A fórmula
 
-**Reproduz 69 de 69 valores de stat da fixture**, sem nenhuma constante ajustada
+**Reproduz 73 de 73 valores de stat da fixture**, sem nenhuma constante ajustada
 à mão.
 
 ```
@@ -356,8 +356,8 @@ Medido contra a fixture inteira, mesmo conferidor, mudando só a coluna:
 
 | coluna do orçamento | valores de stat que fecham |
 | ------------------- | -------------------------- |
-| `Epic` (INT)        | 37 de 69                   |
-| **`EpicF` (float)** | **69 de 69**               |
+| `Epic` (INT)        | 38 de 73                   |
+| **`EpicF` (float)** | **73 de 73**               |
 
 ### Duas coisas menores, ambas confirmadas
 
@@ -1076,7 +1076,7 @@ especial. Três dos quatro stats vieram um ponto acima do previsto:
 | Mastery         | 55           | **55**            | 55      |
 
 Rodando a fixture inteira, mesmo conferidor, mudando só a coluna: **`EpicF` fecha
-69 de 69; `Epic` fecha 37 de 69.** Não é caso de borda — é metade da fixture.
+73 de 73; `Epic` fecha 38 de 73.** Não é caso de borda — é metade da fixture.
 
 ### As duas lições, e a segunda é nova
 
@@ -1427,6 +1427,55 @@ string, pronta e traduzida. Não mostra que o dado não existe.
 tratada como prova; aqui, ausência foi tratada como prova. Os dois vêm de querer
 fechar a questão.
 
+## Uma noite de raid inteira, como conferência de estrutura
+
+54 linhas de loot capturadas pelo addon numa raid **que não existia quando esta
+pesquisa fechou** — instância nova, seis encontros, 38 itens distintos. Sem
+tooltip transcrito, então **não confere número nenhum**; confere resolução.
+
+O que ela estabeleceu:
+
+|                                |                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| 43 drops de equipamento        | **43 resolvidos**, sem adaptação nenhuma no caminho                      |
+| seis `ItemScalingConfig` novos | 306–308 e 310–312 → ilvl 279/282/285 e 292/295/298, curva identidade     |
+| dois grupos de track novos     | **614 Adventurer, 615 Veteran, 616 Champion**, todos com total 6         |
+| a regra do total               | `Flags != 3` fecha nos três, que têm seq 1–6 com `Flags 2` e 7–8 com `3` |
+
+E uma **confirmação negativa**, que vale tanto quanto as positivas: em **39 de 39
+pares (item, `itemContext`) a árvore não acrescentou nada** ao `itemString`, e o
+grupo de track que ela oferece bate com o `Type 34` explícito nos dois contextos.
+
+Isso não enfraquece a árvore — ela continua obrigatória, e o escudo continua
+sendo a prova. O que isso testa é o **outro** lado do erro: a regra da união não
+super-aplica. Percorrer a árvore aplicando os nós de `ctx 0` daria a cada peça
+desta raid as listas `40, 41, 42, 43` e dois sockets, ou seja Avoidance, Leech,
+Speed e Indestructible ao mesmo tempo.
+
+> Escrevendo o conferidor desta rodada eu errei os dois lados antes de reler a
+> seção da árvore: primeiro filtrei `ItemContext` na descida (e a árvore devolveu
+> vazio), depois aceitei `ctx 0` como aplicável (e ela devolveu os quatro
+> terciários). **A regra escrita estava certa nas duas vezes.** Fica registrado
+> porque os dois erros são os modos de falha naturais de quem implementa isto.
+
+### Bonus loot é detectável, e isso não é assunto de tooltip
+
+Bonus loot de raid cai **uma track abaixo** da dificuldade corrente e
+`Warbound until equipped`. Os dois sinais estão no `itemString`: o descritor pelo
+`Type 4` e o vínculo pelo `Type 46`.
+
+Isso não muda nada na renderização — muda quem entra no **histórico de loot**.
+Pela Regra 7 o histórico é "a decisão que o conselho tomou", e bonus loot é
+sorteio pessoal. Fica registrado aqui porque a descoberta veio deste dado, mas o
+lugar dela é o import, não este documento.
+
+### O que a noite deixou em aberto
+
+- **modificadores do `itemString`**: o `28` aparece com três valores distintos
+  (`1040`, `6011`, `7359`), e surgiram o `29` e o `30`. **Nenhum modificador foi
+  analisado até hoje** — nem os que já estavam nos espécimes antigos
+- os seis `Type` sem decodificação da tabela acima
+
 ## A fixture: as peças que a fórmula reproduz
 
 Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
@@ -1439,11 +1488,16 @@ Critério de aceite da TIT-136: se o cálculo não reproduz estes itens
 > pelo addon e transcrever o tooltip à mão. Por isso viram arquivo, e não uma
 > tabela em prosa — e por isso o arquivo carrega o build junto.
 
-**~103 valores em 20 espécimes de equipamento**, cobrindo os quatro tipos de
+**~110 valores em 21 espécimes de equipamento**, cobrindo os quatro tipos de
 multiplicador (armadura, joia, trinket, arma), as classes de orçamento, primário
 fixo e flexível, uma track inteira de seis ranks, os quatro terciários, três
 itens de set de classes diferentes, cinco armas (uma mão, duas mãos e caster),
-dois escudos, duas off-hand, e um item de expansão antiga.
+dois escudos, duas off-hand, um item de expansão antiga, e **uma peça Rare** —
+a única não-épica, e a que separou a coluna do orçamento.
+
+> **Os 73 valores de stat são o número que importa acompanhar**, porque é o que
+> o conferidor roda inteiro a cada mudança de fórmula. Foi ele que expôs a coluna
+> INT: 38 de 73 pela regra que estava publicada.
 
 Mais **7 espécimes de não-equipamento** — token de set, decor de casa, cosmético,
 reagente — com o tooltip inteiro transcrito, linha a linha.
@@ -1456,18 +1510,18 @@ errada com números plausíveis.
 
 **Resolução de bônus** — o que transforma um `itemString` no item real:
 
-| elemento                            | status                                               |
-| ----------------------------------- | ---------------------------------------------------- |
-| `Type` do `ItemBonus`               | ✅ enum do SimC, mais o `Type 34` que é achado nosso |
-| `Type 50` (`APPLY_BONUS`) recursivo | ✅ é o que resolve o item de era antiga              |
-| árvore de bônus por `itemContext`   | ✅ 5/5 — e é obrigatória, não atalho                 |
-| item level                          | ✅ 7/7, moderno e de era antiga                      |
+| elemento                            | status                                                 |
+| ----------------------------------- | ------------------------------------------------------ |
+| `Type` do `ItemBonus`               | ⚠️ enum do SimC **não cobre tudo** — 6 sem decodificar |
+| `Type 50` (`APPLY_BONUS`) recursivo | ✅ é o que resolve o item de era antiga                |
+| árvore de bônus por `itemContext`   | ✅ 5/5 aplicando, e 39/39 não super-aplicando          |
+| item level                          | ✅ 7/7, moderno e de era antiga                        |
 
 **Números do tooltip:**
 
 | elemento                        | status                                               |
 | ------------------------------- | ---------------------------------------------------- |
-| primário, stamina, secundários  | ✅ ~90 stats em 20 peças                             |
+| primário, stamina, secundários  | ✅ **73/73** — com a coluna `EpicF`, não `Epic`      |
 | primário flexível               | ✅ enum do SimC, 3 dos 4 tipos observados            |
 | terciários                      | ✅ os 4 — Indestructible é flag, os outros medidos   |
 | armadura                        | ✅ 11/11, escudos inclusos                           |
@@ -1484,27 +1538,48 @@ errada com números plausíveis.
 | track (nome, rank, total)      | ✅ 5 grupos — e a regra do total corrigida                |
 | set (nome, peças, bônus)       | ✅ 3 sets, e o modo sem personagem vem do próprio cliente |
 | flavor text                    | ✅ `ItemSparse.Description_lang`                          |
-| vínculo, incluindo Warband     | ✅ `Bonding` **mais** o bit 27 do `Flags[0]`              |
+| vínculo, três estados          | ✅ `Bonding`, o bit 27 do `Flags[0]` e o `Type 46`        |
 | item que não é equipamento     | ✅ 7 tooltips reais, 4 formatos                           |
 | números dentro do texto de set | ⏸️ fora do caminho: o padrão é a linha genérica           |
 | `Type 38` do `ItemBonus`       | ⏸️ redundante — repete o `InventoryType` que já temos     |
 
 ## O que ainda está aberto
 
-**Nada.** E vale desconfiar dessa frase, porque a rodada anterior deste
-documento também a escreveu — e estava errada.
+Esta seção já disse **"Nada"** duas vezes, e nas duas estava errada.
 
-O que a derrubou foi um escudo. Ele fechou o `Block`, que era a pendência
-conhecida, e **de quebra revelou a árvore de bônus**, que não era pendência
-nenhuma: sem ela o popover renderizaria peças com o item level base,
-silenciosamente. Era **pendência invisível**, e a única coisa que a expôs foi
-continuar coletando espécimes depois de a pesquisa "estar fechada".
+| rodada    | declarou fechado | o que derrubou                                |
+| --------- | ---------------- | --------------------------------------------- |
+| penúltima | tudo             | um **escudo** → o `Block` e a árvore de bônus |
+| última    | tudo             | um peito **Rare** de bag → a coluna `EpicF`   |
 
-> **A lição de método:** a rodada anterior deste documento declarou a pesquisa
-> encerrada. Estava errada, e não por descuido — por não haver como saber. O que
-> corrigiu foi o hábito, não o raciocínio: mais um espécime real.
+Nos dois casos o que derrubou foi **um espécime real que ninguém tinha motivo
+para coletar**, aparecendo depois de a pesquisa "estar fechada". Nos dois o
+espécime foi mostrado de passagem, sem relação com nenhuma pendência da lista.
 
-As pendências que esta lista carregou por sete rodadas terminaram assim:
+> **A lição de método, agora com duas ocorrências:** o documento não tem como
+> saber o que não sabe. O que corrigiu não foi o raciocínio — foi o hábito de
+> continuar olhando peça real depois de declarar o fim.
+>
+> Consequência prática: **esta seção nunca mais escreve "nada".** O que ela pode
+> dizer é o que está aberto e conhecido, que é o de baixo.
+
+### Aberto e conhecido
+
+| o quê                                                  | o que fecharia                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------ |
+| seis `Type` sem decodificar (7, 9, 16, 26, 37, 47)     | achar um espécime em que um deles altere um valor conferível |
+| `DamageReplaceStat` / `DamageSecondary`: float ou INT? | um trinket de `ScalingClass −8` com tooltip transcrito       |
+| modificadores do `itemString` (28, 29, 30)             | nunca foram analisados — nem os que já estão na fixture      |
+
+Nenhum dos três bloqueia a implementação: os seis `Type` não apareceram mexendo
+em valor conferido, a escolha de coluna afeta só efeito de trinket, e os
+modificadores nunca foram necessários para nenhuma linha reproduzida. **Mas isso
+é o mesmo formato de argumento que falhou com o `Type 50`** — "não vi mexer" não
+é "não mexe".
+
+### As pendências antigas terminaram assim
+
+As que esta lista carregou por sete rodadas:
 
 | era pendência                  | virou                                                          |
 | ------------------------------ | -------------------------------------------------------------- |
