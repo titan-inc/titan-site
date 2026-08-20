@@ -668,6 +668,41 @@
         "Fecha o Block: floor(1052,271 x 2,5) = 2630. E discriminante: round daria 2631.",
         "Tambem derruba a regra antiga do total da track: o grupo 617 tem o rank 4 com Flags 0, entao 'mesmo Flags' daria 5 e o tooltip diz 6. O certo e contar Flags != 3."
       ]
+    },
+    {
+      "nome": "Pyrewalker's Doublet",
+      "itemId": 272231,
+      "slot": "Chest",
+      "material": "Cloth",
+      "itemString": "item:272231::::::::90:252::172:4:12820:6652:11215:13663:1:28:6011:::::",
+      "itemLevel": 276,
+      "qualidade": "Rare",
+      "itemContext": 172,
+      "track": {
+        "nome": "Adventurer",
+        "rank": 4,
+        "total": 6,
+        "grupo": 614
+      },
+      "linhaDeVinculo": "Warbound until equipped",
+      "esperado": {
+        "primario": {
+          "valor": 110,
+          "tipos": ["Intellect"]
+        },
+        "stamina": 1975,
+        "crit": 99,
+        "mastery": 55,
+        "armadura": 79
+      },
+      "notas": [
+        "O ESPECIME QUE DERRUBOU A COLUNA DO ORCAMENTO. Com Epic (INT) da 109/1967/98; com EpicF (float), 110/1975/99. Tres dos quatro stats discriminam.",
+        "Primeira peca NAO-EPICA da fixture (Rare). Nos 20 espécimes epicos anteriores a diferenca entre a coluna INT e a float nem sempre atravessava o arredondamento.",
+        "Primeiro espécime com vinculo warband: o Type 46 = 1 do bonus 11215 sobrescreve Bonding = 1 e o bit 27 desligado. Sem ele o tooltip diria 'Binds when picked up'.",
+        "Renderizado sem personagem, a linha e 'Binds to Warband until equipped' (ITEM_BIND_TO_ACCOUNT_UNTIL_EQUIP), nao 'Warbound until equipped'.",
+        "Exercita o ItemArmorQuality fora do 1,0? NAO: Rare cai na faixa 1,0 igual a epico. A armadura 79 confirma o indice, nao a coluna.",
+        "Modificador 28:6011 presente e nao decodificado."
+      ]
     }
   ],
   "aindaFaltaNaFixture": [
