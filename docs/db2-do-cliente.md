@@ -135,6 +135,62 @@ TEXTO (11)
 **Dez tabelas saíram desta lista em 20/08/2026** — ver "Deixaram de ser
 extraídas". Se você está com 51 arquivos, está com a lista velha.
 
+### As palavras de busca: 4 no total
+
+O filtro do `wow.export` é substring simples no nome do recurso, e **Data e Text
+são buscas separadas**. Estas quatro alcançam os 41 arquivos:
+
+| aba      | busque  | pega                                                                                                                           |
+| -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Data** | `Item`  | 26 dos 38                                                                                                                      |
+| **Data** | `Spell` | mais 6                                                                                                                         |
+| **Data** | `r`     | os 7 que sobram: `CurvePoint` `RandPropPoints` `ArmorLocation` `SharedString` `GlobalStrings` `ChrSpecialization` `ChrClasses` |
+| **Text** | `l`     | as 3 GameTables                                                                                                                |
+
+A busca traz muito mais do que você precisa, e tudo bem — a lista acima é a
+checklist do que selecionar.
+
+#### Por que não dá para fazer menos
+
+O mínimo teórico é **3** (`e` + `o` na Data, `l` na Text), provado por busca
+exaustiva sobre todos os substrings dos 41 nomes. **Uma busca só na Data é
+impossível:** `Item` e `Spell` não compartilham nenhuma letra além do `e`, e o
+`e` não alcança `RandPropPoints`, `ArmorLocation` nem `GlobalStrings` — que só se
+juntam pelo `o`.
+
+Mas `e` casa com quase toda tabela do jogo, e o ganho de uma busca não paga a
+lista inteira na tela. Daí o `Item`/`Spell`/`r`.
+
+#### E se você preferir listas curtas
+
+Com palavras de 3+ letras **não existe solução com menos de 6** na Data —
+verificado exaustivamente, 4 e 5 são impossíveis:
+
+```
+Data:  Item   Spe   Armor   Point   String   Class
+Text:  MultByILvl   ItemSocket
+```
+
+`Spe` em vez de `Spell` porque pega `ChrSpecialization` junto.
+
+> **Duas suposições sobre o app, não verificadas:** que o filtro aceita busca de
+> um caractere, e que ele é case-insensitive.
+>
+> Se exigir **2+ caracteres**, o mínimo na Data passa de 3 para **5** — também
+> verificado exaustivamente, 4 é impossível:
+>
+> ```
+> Data:  Item   Spell   in   ar   Chr
+> Text:  MultByILvl   ItemSocket
+> ```
+>
+> (`in` pega `CurvePoint`, `RandPropPoints` e `GlobalStrings`; `ar` pega
+> `ArmorLocation` e `SharedString`.)
+>
+> Na Text a busca de um caractere é a **única** forma de fazer uma só: as três
+> GameTables não têm nenhum par de letras em comum. Com 2+ caracteres são sempre
+> duas buscas.
+
 ### Essenciais
 
 | tabela                  | responde                                                                           | tamanho |
