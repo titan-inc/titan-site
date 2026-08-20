@@ -309,12 +309,12 @@ Nada abaixo vale se o passo 1 estiver incompleto.
 
 ## A fórmula
 
-**Reproduz ~103 valores em 20 peças reais**, sem nenhuma constante ajustada à
-mão.
+**Reproduz 69 de 69 valores de stat da fixture**, sem nenhuma constante ajustada
+à mão.
 
 ```
 idx     = random_suffix_type( itemClass, itemSubclass, inventoryType )
-budget  = RandPropPoints[ilvl].Epic[idx]
+budget  = RandPropPoints[ilvl].EpicF[idx]        ← a coluna FLOAT, não a INT
 penalty = round_banqueiro( StatPercentageOfSocket[i] × ItemSocketCostPerLevel[ilvl] )
 
 cru = StatPercentEditor[i] × budget × 0,0001 − penalty
@@ -346,17 +346,34 @@ valor = round( cru )
 | qualquer arma    | Weapon  |
 | resto (armadura) | Armor   |
 
+### A coluna é a FLOAT — e isto corrige uma afirmação em negrito
+
+`EpicF`, não `Epic`. As duas colunas existem lado a lado no `RandPropPoints`, e a
+INT é a truncagem da outra: no ilvl 276, `208` contra `208,86428833`.
+
+Menos de um ponto de orçamento, e é o bastante para atravessar o arredondamento.
+Medido contra a fixture inteira, mesmo conferidor, mudando só a coluna:
+
+| coluna do orçamento | valores de stat que fecham |
+| ------------------- | -------------------------- |
+| `Epic` (INT)        | 37 de 69                   |
+| **`EpicF` (float)** | **69 de 69**               |
+
 ### Duas coisas menores, ambas confirmadas
 
-|                |                                                                                                                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| arredondamento | **`round`**, nunca truncamento                                                                                                                                                                             |
-| qualidade      | **irrelevante na prática** — `Epic` = `Superior` = `Good` em **1300 de 1300** linhas. O SimC escolhe a coluna por qualidade (épico/lendário → `p_epic`, raro → `p_rare`), e neste build as três são iguais |
+|                |                                                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| arredondamento | **`round`**, nunca truncamento                                                                                                                                                                                |
+| qualidade      | **irrelevante na prática** — `EpicF` = `SuperiorF` = `GoodF` em **1300 de 1300** linhas. O SimC escolhe a coluna por qualidade (épico/lendário → `p_epic`, raro → `p_rare`), e neste build as três são iguais |
 
-> **Esta seção substitui uma versão errada.** A anterior afirmava que quatro
-> slots diferentes usavam todos o índice 1, que o primário mudava de regra por
-> categoria, e que stamina tinha uma constante 7,402. Ver "O erro que se
-> cancelava" adiante.
+> **Esta seção substitui duas versões erradas.**
+>
+> A primeira afirmava que quatro slots diferentes usavam todos o índice 1, que o
+> primário mudava de regra por categoria, e que stamina tinha uma constante
+> 7,402. Ver "O erro que se cancelava" adiante.
+>
+> A segunda afirmava, em negrito, `Epic` **(INT), nunca** `EpicF`. Ver "A coluna
+> INT: o erro que a própria fixture já denunciava" adiante.
 
 ### O `Type` do `ItemBonus` — o enum completo
 
@@ -543,11 +560,24 @@ Do `spelleffect_data_t::average( const item_t* )` do SimC:
 ```
 valor = Coefficient × escala( ScalingClass, itemLevel )
 
-  −7                       → Epic[0] × CombatRatingsMultByILvl
-  −8                       → RandPropPoints.DamageReplaceStat
-  0 (PLAYER_NONE) e −9     → RandPropPoints.DamageSecondary
-  resto (−1 a −6, −10)     → RandPropPoints.Epic[0]
+  −7                       → EpicF[0] × CombatRatingsMultByILvl
+  −8                       → RandPropPoints.DamageReplaceStat?
+  0 (PLAYER_NONE) e −9     → RandPropPoints.DamageSecondary?
+  resto (−1 a −6, −10)     → RandPropPoints.EpicF[0]
 ```
+
+> **O `EpicF` está medido; as outras duas colunas não.**
+>
+> Para o `EpicF` o próprio documento já tinha a prova e não a leu: a medição do
+> trinket registrada adiante dá `242,44` e `249,31` — fracionários, que a coluna
+> INT não produz. A prosa dizia `Epic`, a medição usava `EpicF`, e ninguém
+> confrontou as duas.
+>
+> Para `DamageReplaceStat` e `DamageSecondary` **nenhum espécime distingue a
+> float da INT**, e a diferença não é desprezível: no ilvl 305 são `284,97`
+> contra `284`. Por coerência com o `EpicF` a float é a aposta — mas isso é
+> aposta, e por isso está com interrogação em vez de escrito como fato. Fecha com
+> um trinket de `ScalingClass −8` cujo tooltip alguém transcreva.
 
 > **O `0` NÃO é o caso geral, e uma versão anterior deste documento dizia que
 > era.** No SimC ele é `PLAYER_NONE`, e cai no mesmo ramo do `−9`:
@@ -915,6 +945,72 @@ separou foi uma fonte independente.
 
 Corolário prático: **fixture de item real detecta fórmula errada, não fórmula
 certa-por-acaso.** Ela continua obrigatória, mas não é suficiente sozinha.
+
+## A coluna INT: o erro que a própria fixture já denunciava
+
+Este é o segundo erro da fórmula, e ele é pior que o primeiro — porque não
+precisou de fonte independente nenhuma para ser pego. **Bastava rodar a fixture
+contra o que estava escrito.**
+
+O documento afirmava, em negrito:
+
+> | coluna do orçamento | `Epic` **(INT)**, nunca `EpicF` |
+
+com esta justificativa:
+
+> _"com `EpicF` + truncamento, o Strength do cinto errava por 1 e o Crit
+> acertava. Com `Epic` INT + `round`, os três stats fecham."_
+
+São **duas variáveis independentes** — a coluna e o arredondamento — e a frase
+testa as duas **como par**. Quatro combinações existem; duas foram
+experimentadas; a vencedora entre essas duas virou regra em negrito. A
+combinação certa, **`EpicF` + `round`, nunca foi testada.**
+
+|                 | `Epic` (INT)               | `EpicF` (float)               |
+| --------------- | -------------------------- | ----------------------------- |
+| com truncamento | não testado                | testado, falha                |
+| com `round`     | testado, **virou a regra** | **não testado — e é a certa** |
+
+### O código estava certo; a prosa é que derivou
+
+Os scripts de verificação de todas as rodadas anteriores consultam
+`SELECT ID, EpicF FROM RandPropPoints`. **A medição sempre usou a float.** O
+documento escreveu o contrário e ninguém confrontou os dois, porque os scripts
+são descartáveis e a prosa é o que fica versionado.
+
+Consequência direta: os "~103 valores reproduzidos" que este documento
+anunciava eram reais — só não eram produzidos pela fórmula que ele publicava.
+
+### Como foi pego
+
+Um peito **Rare de ilvl 276**, na bag de um dos três, mostrado sem nenhum motivo
+especial. Três dos quatro stats vieram um ponto acima do previsto:
+
+|                 | `Epic` = 208 | `EpicF` = 208,864 | tooltip |
+| --------------- | ------------ | ----------------- | ------- |
+| Intellect       | 109 ✗        | **110**           | 110     |
+| Stamina         | 1967 ✗       | **1975**          | 1975    |
+| Critical Strike | 98 ✗         | **99**            | 99      |
+| Mastery         | 55           | **55**            | 55      |
+
+Rodando a fixture inteira, mesmo conferidor, mudando só a coluna: **`EpicF` fecha
+69 de 69; `Epic` fecha 37 de 69.** Não é caso de borda — é metade da fixture.
+
+### As duas lições, e a segunda é nova
+
+A primeira já estava escrita e se repetiu: **os 20 espécimes anteriores eram
+todos épicos**, e neles a diferença entre a INT e a float nem sempre atravessava
+o arredondamento. Espécime que concorda não distingue regra que concorda nele.
+
+A segunda não estava, e é a que importa mais:
+
+> **Duas variáveis testadas como par exploram metade do espaço.** Quando uma
+> conclusão depende de duas escolhas ao mesmo tempo, as quatro combinações
+> precisam aparecer — ou a que ficou de fora é candidata a ser a certa.
+
+E há uma terceira, sobre este documento e não sobre WoW: **prosa e verificação
+precisam ser confrontadas de propósito**, porque elas derivam em silêncio. A
+fixture existia, estava versionada, e reprovava o texto havia rodadas.
 
 ## Armadura
 
