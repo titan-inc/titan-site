@@ -375,10 +375,19 @@ Medido contra a fixture inteira, mesmo conferidor, mudando só a coluna:
 > A segunda afirmava, em negrito, `Epic` **(INT), nunca** `EpicF`. Ver "A coluna
 > INT: o erro que a própria fixture já denunciava" adiante.
 
-### O `Type` do `ItemBonus` — o enum completo
+### O `Type` do `ItemBonus` — o enum do SimC, que NÃO é o enum do jogo
 
-Não precisa ser decodificado à mão: está nomeado no `engine/dbc/data_enums.hh`
-do SimC, em `enum item_bonus_type`.
+Boa parte não precisa ser decodificada à mão: está nomeada no
+`engine/dbc/data_enums.hh` do SimC, em `enum item_bonus_type`.
+
+> **Uma versão anterior chamava esta tabela de "o enum completo". Não é.** Ela é
+> o enum completo **do SimC**, e o jogo usa mais do que isso: uma única noite de
+> raid trouxe nove `Type` que ele não nomeia — `0, 7, 9, 16, 26, 34, 37, 46, 47`
+> —, e **dois deles decidem coisas que renderizamos** (o `34` é a track, o `46` é
+> o vínculo). Ver "Consultar outro projeto funciona" no fim do documento.
+>
+> A palavra "completo" importava porque era ela que autorizava arquivar um `Type`
+> desconhecido como ruído.
 
 | Type | nome                    | Type | nome                      |
 | ---- | ----------------------- | ---- | ------------------------- |
@@ -402,6 +411,28 @@ linhas do `RandPropPoints`.
 O `Type 2` **valida cruzado** os ids de stat terciário: bonus 40 → `63,3000`;
 41 → `62,3000`; 42 → `61,3000`; 43 → `64,3000`, ou seja **63=Avoidance,
 62=Leech, 61=Speed, 64=Indestructible**.
+
+#### Os que o SimC não nomeia, e o que sabemos deles
+
+Todos observados em drop real. **Nenhum foi decodificado a partir do nome** — o
+que está aqui é medição ou ausência dela, explicitamente.
+
+| Type | listas no build | o que sabemos                                                                |
+| ---- | --------------- | ---------------------------------------------------------------------------- |
+| 0    | muitas          | **no-op** — lista marcadora, sem efeito em número nenhum                     |
+| 34   | —               | **a track**: `(ItemBonusListGroupID, SharedString.ID)`. Achado nosso         |
+| 46   | **4**           | **vínculo**: `1` → `Warbound until equipped`. Medido, ver a seção do vínculo |
+| 7    | 1.136           | aparece junto das listas de track. Não decodificado                          |
+| 9    | 532             | anda com socket e terciário; presente em loot Normal soulbound               |
+| 16   | 292             | não decodificado                                                             |
+| 26   | 31              | acompanha terciário e socket. Não decodificado                               |
+| 37   | 42              | não decodificado                                                             |
+| 47   | 24              | independente do `46` — existe sozinho em 3 listas. Não decodificado          |
+
+Os seis sem decodificação são **perguntas abertas**, pela regra deste documento,
+e não detalhes. O que autoriza renderizar sem eles hoje é que nenhum deles
+apareceu alterando um valor que a fixture confere — e isso é um argumento fraco,
+do mesmo formato do que já falhou uma vez com o `Type 50`.
 
 #### O `Type 38` não está no enum, e é seguro ignorar
 
@@ -860,6 +891,57 @@ itens no build. Ler só o `Bonding` erra em todos eles.
 
 As strings estão no `GlobalStrings`: `ITEM_BIND_TO_ACCOUNT` e
 `ITEM_BIND_TO_BNETACCOUNT`, as duas hoje traduzidas como `Binds to Warband`.
+
+### E existe um terceiro estado, que vem de BÔNUS e não do item
+
+`Warbound until equipped`: a peça transita pelo warband até alguém equipar, e aí
+vira soulbound. É como cai o **bonus loot** de raid.
+
+Isso **não pode** ser propriedade do item, e o motivo é decisivo: a mesma peça
+cai soulbound no loot normal e warband-até-equipar como bonus loot. Uma coluna do
+`ItemSparse` não consegue ser as duas coisas; um bônus no drop consegue.
+
+```
+Type 46 = 1   →  Warbound until equipped   (sobrescreve Bonding e o bit 27)
+```
+
+Medido em `Pyrewalker's Doublet` (`itemContext 172`), que é `Bonding = 1` com o
+**bit 27 desligado** — pela regra da seção anterior o tooltip diria
+`Binds when picked up`, e ele diz `Warbound until equipped`. Dos quatro bônus do
+`itemString`, só o `11215` carrega algo que não seja ilvl, track ou qualidade.
+
+Dentro do `11215` os outros dois candidatos caem por contraexemplo:
+
+| candidato        | por que cai                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------ |
+| `Type 9 = 6,−1`  | a lista `13695`, que tem `Type 9`, está no `itemString` de drop Normal **soulbound** |
+| `Type 47 = 9,−1` | aparece **sozinha**, sem `Type 46`, nas listas `11214`, `11218` e `11311`            |
+| **`Type 46`**    | sobra — e existe sem `Type 47` nas listas `12395` e `13557`                          |
+
+Os dois são botões independentes, então não há como confundir um com o outro. O
+`Type 46` existe em **4 listas no db2 inteiro**, sempre com o primeiro valor `1`.
+
+#### A string certa é a do modo sem personagem
+
+São **quatro** strings, em dois pares — e é a mesma dobra que o documento já
+registra para soulbound:
+
+| estado             | com dono                  | **sem dono (o nosso caso)**           |
+| ------------------ | ------------------------- | ------------------------------------- |
+| alma               | `Soulbound`               | `Binds when picked up`                |
+| warband permanente | `Warbound`                | `Binds to Warband`                    |
+| **até equipar**    | `Warbound until equipped` | **`Binds to Warband until equipped`** |
+
+O popover renderiza sem personagem, então a linha a mostrar é
+`ITEM_BIND_TO_ACCOUNT_UNTIL_EQUIP`, não `ITEM_ACCOUNTBOUND_UNTIL_EQUIP`.
+
+#### O SimC nunca ia responder isto
+
+O `item_bonus_type` dele não nomeia o `46` — nem o `47`, nem o `9`. Conferido nas
+branches `thewarwithin` e `midnight`. E é coerente: **vínculo não muda simulação
+nenhuma.** É a seção "o que ele NÃO faz não é evidência" acontecendo num caso
+concreto, e o custo de ter tratado o silêncio dele como resposta seria uma linha
+de texto errada em todo bonus loot.
 
 ### O `Use:` do cosmético não existe em tabela nenhuma
 
