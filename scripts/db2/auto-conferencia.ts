@@ -13,6 +13,7 @@ import {
   resolverTabelaDano,
   type ArmorLocationLinha,
 } from './formula-armadura-arma.js';
+import { ResolvedorTrack } from './formula-track.js';
 import { carregarFixture, type EspecimeFixture } from './fixture.js';
 
 /**
@@ -70,6 +71,7 @@ export function rodarAutoConferencia(
   const armorLocationPorSlot = carregarArmorLocation(db);
   const statsExtrasPorBonus = carregarStatsAdicionaisPorBonus(db);
   const qualidadeExtraPorBonus = carregarQualidadeExtraPorBonus(db);
+  const trackResolver = new ResolvedorTrack(db);
 
   const divergencias: DivergenciaFixture[] = [];
   let valoresConferidos = 0;
@@ -126,6 +128,7 @@ export function rodarAutoConferencia(
       armorLocationPorSlot,
     );
     valoresConferidos += conferirDanoDeArma(divergencias, especime, item, qualidade, escala);
+    valoresConferidos += conferirTrack(divergencias, especime, bonusAplicados, trackResolver);
   }
 
   return { valoresConferidos, divergencias };
@@ -359,6 +362,37 @@ function conferirDanoDeArma(
     conferirFloat(divergencias, especime.nome, 'speed', esperado.speed, item.itemDelay / 1000);
 
   return 4;
+}
+
+/**
+ * Só confere quando a fixture registra `track` — o gerador não decide se a
+ * linha aparece (depende da season corrente, ver `WowBonus.trackScalingId`),
+ * então um bônus de track sem linha esperada no tooltip (season passada,
+ * ex. Platinum Star Band) simplesmente não entra na comparação.
+ */
+function conferirTrack(
+  divergencias: DivergenciaFixture[],
+  especime: EspecimeFixture,
+  bonusAplicados: number[],
+  resolver: ResolvedorTrack,
+): number {
+  if (!especime.track) return 0;
+
+  const track = bonusAplicados.map((b) => resolver.resolver(b)).find((t) => t !== null) ?? null;
+  if (!track) {
+    divergencias.push({
+      especime: especime.nome,
+      campo: 'track',
+      esperado: especime.track,
+      calculado: null,
+    });
+    return 1;
+  }
+
+  conferir(divergencias, especime.nome, 'track.nome', especime.track.nome, track.nome);
+  conferir(divergencias, especime.nome, 'track.rank', especime.track.rank, track.rank);
+  conferir(divergencias, especime.nome, 'track.total', especime.track.total, track.total);
+  return 3;
 }
 
 interface StatAdicional {

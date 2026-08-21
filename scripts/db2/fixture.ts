@@ -7,6 +7,12 @@ import fs from 'node:fs';
  * observado, não schema nosso — este módulo só normaliza a leitura.
  */
 
+export interface TrackEsperado {
+  nome: string;
+  rank: number;
+  total: number;
+}
+
 export interface EspecimeFixture {
   nome: string;
   itemId: number;
@@ -17,6 +23,7 @@ export interface EspecimeFixture {
   contaminado: boolean;
   /** Cru — o comparador de cada checkpoint decide quais chaves usar. */
   esperado: Record<string, unknown>;
+  track?: TrackEsperado;
 }
 
 export function carregarFixture(caminho: string): EspecimeFixture[] {
@@ -29,7 +36,15 @@ export function carregarFixture(caminho: string): EspecimeFixture[] {
     if (item.ranks) {
       for (const rank of item.ranks) {
         especimes.push(
-          normalizar(item.nome, item.itemId, rank.itemString, rank.itemLevel, rank.esperado, false),
+          normalizar(
+            item.nome,
+            item.itemId,
+            rank.itemString,
+            rank.itemLevel,
+            rank.esperado,
+            false,
+            rank.track,
+          ),
         );
       }
     } else if (item.itemString) {
@@ -41,6 +56,7 @@ export function carregarFixture(caminho: string): EspecimeFixture[] {
           item.itemLevel!,
           item.esperado!,
           item.CONTAMINADO ?? false,
+          item.track,
         ),
       );
     }
@@ -55,7 +71,13 @@ interface RawItem {
   itemLevel?: number;
   esperado?: Record<string, unknown>;
   CONTAMINADO?: boolean;
-  ranks?: Array<{ itemString: string; itemLevel: number; esperado: Record<string, unknown> }>;
+  track?: TrackEsperado;
+  ranks?: Array<{
+    itemString: string;
+    itemLevel: number;
+    esperado: Record<string, unknown>;
+    track?: TrackEsperado;
+  }>;
 }
 
 function normalizar(
@@ -65,6 +87,7 @@ function normalizar(
   itemLevelEsperado: number,
   esperado: Record<string, unknown>,
   contaminado: boolean,
+  track: TrackEsperado | undefined,
 ): EspecimeFixture {
   const { itemContext, bonusIds } = parsearItemString(itemString);
   return {
@@ -76,6 +99,7 @@ function normalizar(
     itemLevelEsperado,
     contaminado,
     esperado,
+    track,
   };
 }
 
