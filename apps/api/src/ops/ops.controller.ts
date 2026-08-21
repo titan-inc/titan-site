@@ -9,7 +9,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  bonusDictionaryFileSchema,
   catalogFileSchema,
   parseJournalDump,
   rcExportSchema,
@@ -33,10 +32,9 @@ import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
 import {
-  WowBonusReportService,
+  WowDataReportService,
   type RelatorioDeDesconhecidos,
-} from '../wow-bonus/wow-bonus-report.service';
-import { WowBonusService, type ResultadoDaCargaDeBonus } from '../wow-bonus/wow-bonus.service';
+} from '../wow-data/wow-data-report.service';
 import { OpsTokenGuard } from './ops-token.guard';
 import {
   OpsService,
@@ -57,10 +55,6 @@ const catalogGenerateBodySchema = z.object({
 const catalogLoadBodySchema = z.object({
   catalog: catalogFileSchema,
   semConferencia: z.boolean().optional(),
-});
-
-const bonusLoadBodySchema = z.object({
-  dictionary: bonusDictionaryFileSchema,
 });
 
 function parseCharacters(raw?: string): string[] {
@@ -120,8 +114,7 @@ export class OpsController {
     private readonly pasteGenerator: LootCatalogPasteGeneratorService,
     private readonly dummies: LootSessionDummiesService,
     private readonly ops: OpsService,
-    private readonly wowBonus: WowBonusService,
-    private readonly wowBonusReport: WowBonusReportService,
+    private readonly wowDataReport: WowDataReportService,
   ) {}
 
   /** Era `pnpm --filter api probe:snapshot [--backfill]`. */
@@ -256,30 +249,21 @@ export class OpsController {
   }
 
   /**
-   * Carrega o dicionário de bonus IDs — TIT-82. Sem script antigo equivalente.
+   * "O que ainda não conhecemos" — TIT-82, agora respondendo pelo build ativo
+   * (TIT-137). Sem corpo, sem parâmetro: varre o histórico e as sessões já
+   * gravados, ordenado por frequência.
    *
-   * O arquivo vai no corpo, mesmo padrão do `catalog-load`: a app nunca fala
-   * com o wago.tools, o arquivo é obtido e curado à mão (ver `docs/ops.md`), e
-   * esta rota só grava o que já foi decidido.
+   * SEM BUILD ATIVO responde "tudo desconhecido", que é a verdade — e é
+   * exatamente o que se quer ver antes da primeira carga.
    *
-   * Idempotente por `bonusId`: rodar de novo com um arquivo corrigido
-   * atualiza as mesmas linhas.
-   */
-  @Post('bonus-load')
-  async bonusLoad(
-    @Body(new ZodValidationPipe(bonusLoadBodySchema))
-    body: z.infer<typeof bonusLoadBodySchema>,
-  ): Promise<ResultadoDaCargaDeBonus> {
-    return this.wowBonus.carregarArquivo(body.dictionary);
-  }
-
-  /**
-   * "O que ainda não conhecemos" — TIT-82. Sem corpo, sem parâmetro: varre o
-   * histórico e as sessões já gravados, ordenado por frequência.
+   * A carga que populava a tabela (`POST bonus-load`) FOI REMOVIDA junto com o
+   * `kind`: ela subia um dicionário curado à mão, e o modelo que ela preenchia
+   * deixou de existir. Quem repõe é a TIT-139 (gerador) mais a TIT-140
+   * (carga e ativação).
    */
   @Get('bonus-unknown-report')
   async bonusUnknownReport(): Promise<RelatorioDeDesconhecidos> {
-    return this.wowBonusReport.gerar();
+    return this.wowDataReport.gerar();
   }
 
   /**

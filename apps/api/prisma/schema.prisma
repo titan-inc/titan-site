@@ -585,6 +585,15 @@ model WowItem {
 
   drops EncounterDrop[]
 
+  /// O dado que vem do db2, por build — TIT-137.
+  ///
+  /// É RELAÇÃO, não colunas aqui, e isso é deliberado: esta tabela guarda
+  /// curadoria humana (`primaryStats`, `usableBySpecs`) e `WowItemSpec` tem
+  /// `onDelete: Cascade`. Mantendo o db2 em `WowItemData`, o carregador não
+  /// tem o que escrever aqui — a proteção da curadoria é estrutural, não uma
+  /// regra a lembrar.
+  dadosPorBuild WowItemData[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -746,13 +755,6 @@ model EncounterDrop {
   @@index([itemId])
 }
 
-/// Tipo de uma entrada do dicionário de bonus IDs — ver `WowBonus`.
-enum WowBonusKind {
-  track
-  tertiary
-  socket
-}
-
 /// Os quatro terciários observados. Ver o comentário de `BONUS_TERTIARIES` no
 /// shared — lista fechada de propósito.
 enum WowBonusTertiary {
@@ -762,52 +764,283 @@ enum WowBonusTertiary {
   indestructible
 }
 
-/// Dicionário `bonusId -> significado` — TIT-82. Traduz o `itemString` em algo
-/// legível: "Myth 4/6 + Avoidance + Socket" em vez de uma lista de números.
+/// Como a peça se vincula, quando um BÔNUS sobrescreve o vínculo do item base.
 ///
-/// Mesmo formato de problema do `WowItem`/`LootCatalogRaid`: dado externo,
-/// atualizado a cada patch, consultável — não constante no código nem JSON no
-/// bundle do browser (Regra 1: a decodificação roda no Nest).
+/// Precisa ser override de bônus, e não coluna do item: a MESMA peça cai
+/// soulbound no loot normal e warband-até-equipar como bonus loot. Uma coluna
+/// do item não consegue ser as duas coisas.
 ///
-/// Carregado por `POST /internal/ops/bonus-load` a partir de um arquivo obtido
-/// e curado à mão do wago.tools — a app nunca fala com o wago.tools, ver
-/// `docs/ops.md`.
+/// Hoje só o `warbound_until_equipped` foi medido, do `Type 46 = 1` do bônus
+/// `11215` — ver `docs/db2-do-cliente.md`. Os outros existem porque são os
+/// estados que o `GlobalStrings` distingue, e um deles vai aparecer.
+enum WowBonding {
+  bind_on_pickup
+  bind_on_equip
+  warband
+  warbound_until_equipped
+}
+
+/// Qual coluna de multiplicador o item usa, em `WowItemLevelScaling`.
+/// Derivado pelo gerador a partir do slot — nunca recalculado no request.
+enum WowScalingType {
+  armor
+  weapon
+  trinket
+  jewelry
+}
+
+/// Um build do cliente do WoW carregado no banco — TIT-137.
 ///
-/// `kind` decide quais campos abaixo têm valor — ver o decodificador em
-/// `apps/api/src/wow-bonus/wow-bonus-decoder.ts`. Bonus AUSENTE desta tabela é
-/// DESCONHECIDO, nunca zero — Regra 7. Os campos nuláveis por kind espelham a
-/// union discriminada de `BonusDictionaryEntry` no shared: quem lê de volta
-/// (`toBonusEntry`) reconstrói a mesma union, e recusa se a linha não bater
-/// com o invariante do próprio `kind`.
-model WowBonus {
-  /// Id do bonus na Blizzard. Natural key — mesmo precedente do `WowItem.itemId`.
-  bonusId Int @id
+/// **Versionar existe para a virada de patch deixar de ser evento ao vivo.**
+/// Prepara do PTR antes, confere com calma, e na virada troca o ponteiro. Deu
+/// errado, troca de volta — instantâneo, sem regerar nada. É a régua do "o
+/// processo não pode depender de uma pessoa estar disponível" aplicada ao pior
+/// ponto do ciclo: a terça-feira de season nova.
+///
+/// Carregar NUNCA ativa (TIT-140). São duas ações com riscos diferentes:
+/// carregar é inofensivo, ativar é o que a guilda enxerga.
+model WowDataBuild {
+  /// O build carimbado no arquivo — `12.1.0.69299`. Natural key, mesmo
+  /// precedente do `WowItem.itemId`.
+  buildId String @id
 
-  kind WowBonusKind
-
-  /// `Myth`, `Hero`, `Champion`... Só kind=track.
-  trackName String?
-
-  /// O `4` em "4/6". Só kind=track.
-  trackRank Int?
-
-  /// O `6` em "4/6". Só kind=track.
+  /// Qual build a guilda enxerga. **No máximo um `true`**, garantido por índice
+  /// parcial único na migration — dois ativos misturariam builds em silêncio,
+  /// que é a classe de falha que a TIT-136 inteira persegue.
   ///
-  /// Repetido em cada linha do mesmo track de propósito: o valor vem do
-  /// ARQUIVO, um id de cada vez — nunca derivado por aritmética (a regra mais
-  /// importante da TIT-82). Redundância é o preço de não adivinhar.
-  trackMaxRank Int?
+  /// Nunca em variável de ambiente: trocar exigiria deploy, e recriaria a
+  /// dependência de dev disponível que este modelo existe para remover.
+  active Boolean @default(false)
 
-  /// O item level que este bonus determina — só kind=track, e mesmo assim
-  /// opcional: rank e ilvl são duas curadorias diferentes, e nulo aqui é "não
-  /// curado ainda", nunca "não tem ilvl". Pré-requisito da TIT-136.
-  itemLevel Int?
-
-  /// Só kind=tertiary.
-  tertiary WowBonusTertiary?
+  itens        WowItemData[]
+  bonuses      WowBonus[]
+  contextos    WowItemContextBonus[]
+  escalas      WowItemLevelScaling[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([active])
+}
+
+/// O que vem do db2 para um item, por build — TIT-137.
+///
+/// **Tabela separada do `WowItem` de propósito, e a separação é estrutural.**
+/// O `WowItem` guarda identidade, o enriquecimento da Blizzard e a CURADORIA
+/// HUMANA (`primaryStats`, `usableBySpecs`) — e `WowItemSpec` tem
+/// `onDelete: Cascade`. Se o dado de db2 morasse lá, a carga precisaria
+/// escrever numa tabela com curadoria, e "nunca apagar linha que um humano
+/// escreveu" seria regra a lembrar. Aqui vira estrutura: o carregador não tem
+/// o que escrever no `WowItem`.
+model WowItemData {
+  buildId String
+  build   WowDataBuild @relation(fields: [buildId], references: [buildId], onDelete: Cascade)
+
+  itemId Int
+  item   WowItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade)
+
+  /// `ItemSparse.ItemLevel` — a BASE, não o ilvl do drop. O do drop sai do
+  /// `Type 49` do bônus (ver `WowBonus.itemLevel`).
+  itemLevel Int
+
+  /// `OverallQualityID`. O bônus pode sobrescrever (`Type 3`).
+  quality Int
+
+  inventoryType Int
+  material      Int
+  bonding       Int
+
+  /// O array cru de `ItemSparse.Flags`. O bit 27 do primeiro elemento é
+  /// `Binds to Warband`; o bit `0x200` do SEGUNDO é `ITEM_FLAG2_CASTER_WEAPON`,
+  /// que escolhe entre as quatro tabelas de dano.
+  flags Int[]
+
+  /// O "peso de stats", que não muda com o drop.
+  ///
+  /// DOIS ARRAYS PAREADOS POR POSIÇÃO: `statIds[i]` é o stat e
+  /// `statAllocs[i]` é a alocação dele. Espelha `StatModifier_bonusStat` e
+  /// `StatPercentEditor` do `ItemSparse`, na mesma ordem.
+  ///
+  /// Um stat pode APARECER DUAS VEZES — as alocações somam. Ver
+  /// `docs/db2-do-cliente.md`.
+  statIds    Int[]
+  statAllocs Int[]
+
+  /// `StatPercentageOfSocket`, pareado com `statIds` do mesmo jeito. Entra no
+  /// `penalty` da fórmula, que é termo morto acima do ilvl 60 — mas a fórmula
+  /// é transcrita inteira, não podada.
+  socketAllocs Int[]
+
+  /// Arma: `ItemDelay` em milissegundos, e a variância do dano.
+  itemDelay   Int?
+  dmgVariance Float?
+
+  /// `Description_lang` — o texto em itálico do rodapé do tooltip.
+  flavor String?
+
+  /// `ItemNameDescriptionID` — a segunda fonte do descritor de dificuldade,
+  /// quando o bônus não traz `Type 4`.
+  nameDescriptionId Int?
+
+  /// DERIVADOS PELO GERADOR, não recalculados no request.
+  ///
+  /// `budgetIndex` é o `random_suffix_type()` do SimC (0..3); `armorModifier`
+  /// é `ArmorLocation[slot][material]`. Ficam aqui porque UM SÓ LUGAR entende
+  /// db2, e é o gerador — deixá-los em código criaria dois lugares que
+  /// precisam concordar sobre classe, subclasse e slot, e quando divergissem
+  /// divergiriam em silêncio.
+  budgetIndex   Int
+  scalingType   WowScalingType
+  armorModifier Float?
+
+  /// Os efeitos (`Use:`, proc), como template.
+  ///
+  /// JSON de propósito: é `Description_lang` com placeholders mais
+  /// `Coefficient` e `ScalingClass` por efeito — particular de cada item, e
+  /// não vira filtro nem coluna de relatório. O número final depende do ilvl
+  /// do drop, então o que se guarda é a receita, nunca o valor.
+  effects Json?
+
+  @@id([buildId, itemId])
+  @@index([itemId])
+}
+
+/// O que cada bonus id faz, por build — TIT-137, substituindo a TIT-82.
+///
+/// **UMA LINHA POR BONUS, facetas nulas quando não se aplicam.** Não existe
+/// mais `kind`: medido no build 12.1.0, **19% dos bonus ids carregam mais de
+/// um significado** — o `12825` é track E qualidade E scale config ao mesmo
+/// tempo. Um `kind` singular obrigaria a gravar três linhas para o mesmo id ou
+/// a perder dois dos três.
+///
+/// Bonus AUSENTE desta tabela é DESCONHECIDO, nunca zero — Regra 7.
+model WowBonus {
+  buildId String
+  build   WowDataBuild @relation(fields: [buildId], references: [buildId], onDelete: Cascade)
+
+  /// Id do bonus na Blizzard.
+  bonusId Int
+
+  /// `Myth`, `Hero`, `Champion`... do `SharedString` apontado pelo `Type 34`.
+  trackName String?
+
+  /// O `4` em "4/6" — o `SequenceValue` da entrada do grupo.
+  trackRank Int?
+
+  /// O `6` em "4/6" — as entradas do grupo com `Flags != 3`.
+  ///
+  /// **NÃO é "as entradas com o mesmo Flags"**, que era a regra anterior e
+  /// estava errada: 193 dos 235 grupos têm uma entrada com `Flags 0`.
+  trackMaxRank Int?
+
+  /// O `ItemGroupIlvlScalingID` do grupo — `11` season passada, `12` corrente.
+  ///
+  /// **Peça de season passada PERDE a linha de track**: o que renderizava
+  /// `Myth 4/6` passa a mostrar só `Myth`.
+  ///
+  /// Quem decide exibir é o renderizador, comparando com a season corrente —
+  /// NUNCA o gerador. A virada de season não é um patch do cliente, então
+  /// congelar a decisão na geração acertaria no dia e passaria a errar depois,
+  /// sem nada disparar.
+  trackScalingId Int?
+
+  /// O item level que este bonus determina, via `Type 49` → `ItemScalingConfig`
+  /// → curva + offset. Nulo quando o bonus não mexe em ilvl.
+  itemLevel Int?
+
+  tertiary WowBonusTertiary?
+
+  /// `Type 6` — o bonus acrescenta um socket.
+  hasSocket Boolean @default(false)
+
+  /// Override do vínculo do item base — ver `WowBonding`.
+  binding WowBonding?
+
+  /// O descritor de dificuldade e a cor, do `ItemNameDescription` apontado
+  /// pelo `Type 4`: `Mythic`, `Heroic`, `Raid Finder`.
+  difficulty      String?
+  difficultyColor Int?
+
+  /// `Type 3` — o bonus define a qualidade.
+  quality Int?
+
+  @@id([buildId, bonusId])
+  @@index([bonusId])
+}
+
+/// A árvore de bônus, JÁ RESOLVIDA pelo gerador — TIT-137.
+///
+/// O `itemString` NÃO é a fonte completa: parte dos bônus vem da árvore
+/// (`ItemXBonusTree` → `ItemBonusTreeNode`), selecionada pelo `itemContext` do
+/// drop. **Ignorar isso renderiza o item com o valor base, sem erro nenhum** —
+/// foi o achado mais caro da pesquisa, e chegou no vigésimo espécime.
+///
+/// Resolver no gerador tira esse canal de falha silenciosa do código de
+/// request: aqui já é o resultado, não a navegação.
+///
+/// Tabela e não JSON porque responde em SQL o que o JSON não responderia —
+/// "quais itens desta season podem vir com Avoidance".
+model WowItemContextBonus {
+  buildId String
+  build   WowDataBuild @relation(fields: [buildId], references: [buildId], onDelete: Cascade)
+
+  itemId      Int
+  itemContext Int
+  bonusId     Int
+
+  @@id([buildId, itemId, itemContext, bonusId])
+  @@index([buildId, itemId, itemContext])
+}
+
+/// A escala por item level — TIT-137.
+///
+/// Colapsa ONZE tabelas db2 numa só: `RandPropPoints`, os multiplicadores de
+/// combat rating e stamina, o custo de socket, as três de armadura e as quatro
+/// de dano. Todas indexadas por ilvl, nem por item nem por bonus — é o pedaço
+/// irredutível do modelo.
+model WowItemLevelScaling {
+  buildId String
+  build   WowDataBuild @relation(fields: [buildId], references: [buildId], onDelete: Cascade)
+
+  itemLevel Int
+
+  /// `RandPropPoints.EpicF[0..4]` — indexado pelo `WowItemData.budgetIndex`.
+  ///
+  /// **A COLUNA FLOAT, nunca a INT.** Contra a fixture versionada, `Epic` (INT)
+  /// fecha 38 de 73 valores de stat e `EpicF` fecha 73 de 73: no ilvl 276 são
+  /// `208` contra `208,86428833`, e menos de um ponto basta para atravessar o
+  /// arredondamento. Ver `docs/db2-do-cliente.md`.
+  budget Float[]
+
+  /// `DamageReplaceStatF` e `DamageSecondaryF`, para o `ScalingClass` −8 e −9.
+  ///
+  /// Float por coerência com o `budget`, mas ATENÇÃO: nenhum espécime distingue
+  /// a float da INT nestas duas, e a diferença não é desprezível (no ilvl 305,
+  /// `284,97` contra `284`). É aposta registrada, não medição.
+  damageReplaceStat Float
+  damageSecondary   Float
+
+  /// Indexados por `WowItemData.scalingType`, na ordem do enum:
+  /// armor, weapon, trinket, jewelry.
+  crMult   Float[]
+  stamMult Float[]
+
+  /// `ItemSocketCostPerLevel` — termo morto acima do ilvl 60.
+  socketCost Float
+
+  /// Armadura: total por material, e os modificadores por qualidade.
+  armorTotal   Float[]
+  armorQuality Float[]
+  armorShield  Float[]
+
+  /// Dano por qualidade, uma tabela por combinação de mãos e caster. Qual usar
+  /// sai do `inventoryType` mais o bit `0x200` do segundo `flags`.
+  dmgOneHand       Float[]
+  dmgTwoHand       Float[]
+  dmgOneHandCaster Float[]
+  dmgTwoHandCaster Float[]
+
+  @@id([buildId, itemLevel])
 }
 
 /// Opção de resposta que o jogador (ou o loot master) escolhe sobre um item.
