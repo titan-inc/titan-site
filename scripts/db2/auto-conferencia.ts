@@ -5,6 +5,14 @@ import { ResolvedorItemLevel } from './item-level.js';
 import { resolverArvoreDeBonus } from './resolucao-bonus.js';
 import { resolverBudgetIndex, resolverTipoOrcamento } from './orcamento.js';
 import { calcularValorStat } from './formula-stat.js';
+import {
+  calcularArmadura,
+  calcularBlock,
+  calcularDanoDeArma,
+  resolverMaterial,
+  resolverTabelaDano,
+  type ArmorLocationLinha,
+} from './formula-armadura-arma.js';
 import { carregarFixture, type EspecimeFixture } from './fixture.js';
 
 /**
@@ -12,10 +20,9 @@ import { carregarFixture, type EspecimeFixture } from './fixture.js';
  * Se um espécime não fecha, o gerador se recusa a emitir o arquivo — sem
  * flag de pular. Ver "Como ele se confere" na issue.
  *
- * Escopo desta rodada: item level + os valores de stat (primário, stamina,
- * secundários, terciários — os 73 valores que a fixture cobre com mais
- * densidade). Armadura, dano de arma, `Block`, track e texto entram em
- * checkpoints seguintes.
+ * Escopo: item level, os valores de stat (primário, secundários,
+ * terciários), armadura, `Block` e dano de arma. Track, set e texto de
+ * efeito entram em checkpoints seguintes.
  */
 
 /** statId → nome canônico. Primário flexível (71-74) fica de fora — não tem
@@ -59,7 +66,10 @@ export function rodarAutoConferencia(
   const arvore = resolverArvoreDeBonus(db, itemIds);
   const itemLevelResolver = new ResolvedorItemLevel(db);
   const itemSparsePorId = carregarItemSparse(db, itemIds);
+  const materialPorItem = carregarMaterialPorItem(db, itemIds);
+  const armorLocationPorSlot = carregarArmorLocation(db);
   const statsExtrasPorBonus = carregarStatsAdicionaisPorBonus(db);
+  const qualidadeExtraPorBonus = carregarQualidadeExtraPorBonus(db);
 
   const divergencias: DivergenciaFixture[] = [];
   let valoresConferidos = 0;
@@ -98,8 +108,24 @@ export function rodarAutoConferencia(
     const tipo = resolverTipoOrcamento(item.inventoryType);
     const statsExtras = bonusAplicados.flatMap((bonusId) => statsExtrasPorBonus.get(bonusId) ?? []);
     const computado = calcularStatsDoItem(item, statsExtras, idx, tipo, escala);
-
     valoresConferidos += conferirStats(divergencias, especime, computado);
+
+    const qualidade = resolverQualidade(
+      bonusAplicados,
+      qualidadeExtraPorBonus,
+      item.overallQualityId,
+    );
+    const material = materialPorItem.get(especime.itemId) ?? 0;
+    valoresConferidos += conferirArmaduraEBlock(
+      divergencias,
+      especime,
+      material,
+      item.inventoryType,
+      qualidade,
+      escala,
+      armorLocationPorSlot,
+    );
+    valoresConferidos += conferirDanoDeArma(divergencias, especime, item, qualidade, escala);
   }
 
   return { valoresConferidos, divergencias };
@@ -113,6 +139,20 @@ function conferir(
   calculado: unknown,
 ): void {
   if (esperado !== calculado) {
+    divergencias.push({ especime, campo, esperado, calculado });
+  }
+}
+
+/** Tolerância pequena para os dois únicos campos float exibidos direto do
+ * tooltip (velocidade de arma, dps) — o resto da fórmula é inteiro. */
+function conferirFloat(
+  divergencias: DivergenciaFixture[],
+  especime: string,
+  campo: string,
+  esperado: number,
+  calculado: number,
+): void {
+  if (Math.abs(esperado - calculado) > 0.05) {
     divergencias.push({ especime, campo, esperado, calculado });
   }
 }
@@ -146,6 +186,19 @@ function resolverIlvlDoEspecime(
     }
   }
   return candidato?.ilvl ?? ilvlBase;
+}
+
+/** `Type 3` (`QUALITY`) sobrescreve a qualidade base do item — primeiro achado no union vale. */
+function resolverQualidade(
+  bonusAplicados: number[],
+  qualidadeExtraPorBonus: Map<number, number>,
+  base: number,
+): number {
+  for (const bonusId of bonusAplicados) {
+    const override = qualidadeExtraPorBonus.get(bonusId);
+    if (override !== undefined) return override;
+  }
+  return base;
 }
 
 function calcularStatsDoItem(
@@ -208,14 +261,16 @@ function conferirStats(
   let conferidos = 0;
   const { esperado } = especime;
 
-  // Chaves que pertencem a checkpoints futuros (armadura, dano de arma,
-  // Block, texto) — ignoradas aqui de propósito, não são "não encontradas".
+  // Chaves que pertencem a checkpoints futuros (track, set, texto) —
+  // ignoradas aqui de propósito, não são "não encontradas". armadura,
+  // danoMin/danoMax/dps/speed(arma) e block são conferidos à parte, por
+  // helpers dedicados — não são "stat" no sentido do ItemSparse.
   const FORA_DE_ESCOPO = new Set(['armadura', 'danoMin', 'danoMax', 'dps', 'block']);
   const ehArma = 'danoMin' in esperado;
 
   for (const [campo, valorEsperado] of Object.entries(esperado)) {
     if (FORA_DE_ESCOPO.has(campo)) continue;
-    if (campo === 'speed' && ehArma) continue; // "speed" de arma é velocidade, não o terciário.
+    if (campo === 'speed' && ehArma) continue; // "speed" de arma é velocidade, conferido em conferirDanoDeArma.
 
     if (campo === 'primario') {
       const esperadoObj = valorEsperado as number | { valor: number; tipos: string[] };
@@ -236,6 +291,76 @@ function conferirStats(
   return conferidos;
 }
 
+function conferirArmaduraEBlock(
+  divergencias: DivergenciaFixture[],
+  especime: EspecimeFixture,
+  material: number,
+  inventoryType: number,
+  qualidade: number,
+  escala: LinhaEscala,
+  armorLocationPorSlot: Map<number, ArmorLocationLinha>,
+): number {
+  let conferidos = 0;
+  const { esperado } = especime;
+
+  if (typeof esperado.armadura === 'number') {
+    const armadura = calcularArmadura(
+      material,
+      inventoryType,
+      qualidade,
+      escala,
+      armorLocationPorSlot,
+    );
+    conferir(divergencias, especime.nome, 'armadura', esperado.armadura, armadura ?? 0);
+    conferidos++;
+  }
+
+  if (typeof esperado.block === 'number') {
+    conferir(
+      divergencias,
+      especime.nome,
+      'block',
+      esperado.block,
+      calcularBlock(qualidade, escala),
+    );
+    conferidos++;
+  }
+
+  return conferidos;
+}
+
+function conferirDanoDeArma(
+  divergencias: DivergenciaFixture[],
+  especime: EspecimeFixture,
+  item: ItemSparseResumo,
+  qualidade: number,
+  escala: LinhaEscala,
+): number {
+  const { esperado } = especime;
+  if (typeof esperado.danoMin !== 'number') return 0;
+
+  const tabela = resolverTabelaDano(item.inventoryType, item.flags);
+  if (!tabela) {
+    divergencias.push({
+      especime: especime.nome,
+      campo: 'tabelaDano',
+      esperado: 'uma tabela',
+      calculado: 'nenhuma (InventoryType não é arma)',
+    });
+    return 0;
+  }
+
+  const dano = calcularDanoDeArma(tabela, qualidade, item.itemDelay, item.dmgVariance, escala);
+  conferir(divergencias, especime.nome, 'danoMin', esperado.danoMin, dano.min);
+  conferir(divergencias, especime.nome, 'danoMax', esperado.danoMax as number, dano.max);
+  if (typeof esperado.dps === 'number')
+    conferirFloat(divergencias, especime.nome, 'dps', esperado.dps, dano.dps);
+  if (typeof esperado.speed === 'number')
+    conferirFloat(divergencias, especime.nome, 'speed', esperado.speed, item.itemDelay / 1000);
+
+  return 4;
+}
+
 interface StatAdicional {
   statId: number;
   alocacao: number;
@@ -247,7 +372,10 @@ interface StatAdicional {
 function carregarStatsAdicionaisPorBonus(db: DatabaseSync): Map<number, StatAdicional[]> {
   const linhas = db
     .prepare(`SELECT ParentItemBonusListID, Value FROM ItemBonus WHERE Type = 2`)
-    .all() as unknown as Array<{ ParentItemBonusListID: number; Value: string }>;
+    .all() as unknown as Array<{
+    ParentItemBonusListID: number;
+    Value: string;
+  }>;
 
   const porBonus = new Map<number, StatAdicional[]>();
   for (const linha of linhas) {
@@ -262,19 +390,75 @@ function carregarStatsAdicionaisPorBonus(db: DatabaseSync): Map<number, StatAdic
   return porBonus;
 }
 
+/** `Type 3` (`QUALITY`) — bonusId → qualidade que ele força. */
+function carregarQualidadeExtraPorBonus(db: DatabaseSync): Map<number, number> {
+  const linhas = db
+    .prepare(`SELECT ParentItemBonusListID, Value FROM ItemBonus WHERE Type = 3`)
+    .all() as unknown as Array<{
+    ParentItemBonusListID: number;
+    Value: string;
+  }>;
+  return new Map(linhas.map((l) => [l.ParentItemBonusListID, paraArrayNumerico(l.Value)[0] ?? 0]));
+}
+
+/** `ArmorLocation.ID` É o `InventoryType` — confirmado pelas 23 linhas
+ * batendo um a um com os slots que o `docs/db2-do-cliente.md` já mapeia. */
+function carregarArmorLocation(db: DatabaseSync): Map<number, ArmorLocationLinha> {
+  const linhas = db
+    .prepare(
+      `SELECT ID, Clothmodifier, Leathermodifier, Chainmodifier, Platemodifier FROM ArmorLocation`,
+    )
+    .all() as unknown as Array<{
+    ID: number;
+    Clothmodifier: number;
+    Leathermodifier: number;
+    Chainmodifier: number;
+    Platemodifier: number;
+  }>;
+  return new Map(
+    linhas.map((l) => [
+      l.ID,
+      {
+        clothmodifier: l.Clothmodifier,
+        leathermodifier: l.Leathermodifier,
+        chainmodifier: l.Chainmodifier,
+        platemodifier: l.Platemodifier,
+      },
+    ]),
+  );
+}
+
+/** `Item.SubclassID` — só ele dá o material de armadura (1 Cloth .. 4 Plate);
+ * `ItemSparse.Material` é outra coisa (sheathe/textura), não usar aqui. */
+function carregarMaterialPorItem(db: DatabaseSync, itemIds: number[]): Map<number, number> {
+  const placeholders = itemIds.map(() => '?').join(',');
+  const linhas = db
+    .prepare(`SELECT ID, SubclassID FROM Item WHERE ID IN (${placeholders})`)
+    .all(...itemIds) as unknown as Array<{
+    ID: number;
+    SubclassID: number;
+  }>;
+  return new Map(linhas.map((l) => [l.ID, resolverMaterial(l.SubclassID)]));
+}
+
 interface ItemSparseResumo {
   itemLevel: number;
   inventoryType: number;
   statIds: number[];
   statAllocs: number[];
   socketAllocs: number[];
+  flags: number[];
+  itemDelay: number;
+  dmgVariance: number;
+  overallQualityId: number;
 }
 
 function carregarItemSparse(db: DatabaseSync, itemIds: number[]): Map<number, ItemSparseResumo> {
   const placeholders = itemIds.map(() => '?').join(',');
   const linhas = db
     .prepare(
-      `SELECT ID, ItemLevel, InventoryType, StatModifier_bonusStat, StatPercentEditor, StatPercentageOfSocket
+      `SELECT ID, ItemLevel, InventoryType, StatModifier_bonusStat, StatPercentEditor, StatPercentageOfSocket,
+              Flags, ItemDelay, DmgVariance, OverallQualityID
        FROM ItemSparse WHERE ID IN (${placeholders})`,
     )
     .all(...itemIds) as unknown as Array<{
@@ -284,6 +468,10 @@ function carregarItemSparse(db: DatabaseSync, itemIds: number[]): Map<number, It
     StatModifier_bonusStat: string;
     StatPercentEditor: string;
     StatPercentageOfSocket: string;
+    Flags: string;
+    ItemDelay: number;
+    DmgVariance: number;
+    OverallQualityID: number;
   }>;
 
   return new Map(
@@ -295,6 +483,10 @@ function carregarItemSparse(db: DatabaseSync, itemIds: number[]): Map<number, It
         statIds: paraArrayNumerico(l.StatModifier_bonusStat),
         statAllocs: paraArrayNumerico(l.StatPercentEditor),
         socketAllocs: paraArrayNumerico(l.StatPercentageOfSocket),
+        flags: paraArrayNumerico(l.Flags),
+        itemDelay: l.ItemDelay,
+        dmgVariance: l.DmgVariance,
+        overallQualityId: l.OverallQualityID,
       },
     ]),
   );
