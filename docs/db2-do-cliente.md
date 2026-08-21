@@ -652,6 +652,37 @@ aplicada.
 > certo sobre o `ItemLevelSelector` e **errado sobre o resto**: 310 e 311 são
 > ids de `ItemScalingConfig`, e as linhas de lá trazem `ItemLevel` 292 e 295.
 
+#### Dois casos mais, achados pela auto-conferência da TIT-139
+
+Nenhum dos 19 espécimes anteriores exercitava estes dois caminhos — fecharam
+sem eles. Dois espécimes de arma de era antiga (`Ancient Amani Greataxe`,
+`Tarnished Dawnlit Greatsword`/`Beacon`) obrigaram a fórmula a crescer.
+
+**Duas listas do MESMO `itemString` podem carregar `Type 49`, e só uma
+vale.** O `Ancient Amani Greataxe` tem `13844` (`Value "449,1,0,0"`, config
+449 → ilvl **256**) e `13845` (`Value "450,0,0,0"`, config 450 → ilvl **263**,
+o que o tooltip mostra). O segundo elemento do `Value` distingue as duas: `0`
+é a config que vale, `1` não. Uma fixture só não prova regra geral — fica
+registrado como o que a evidência sustenta, não como o enum inteiro do campo.
+
+**`Type 51` (`SCALE_CONFIG_2`) é canal alternativo ao `Type 49`, mesma tabela
+de config — e `ItemScalingConfig.ItemLevel = 0` muda o eixo da curva.** O par
+`Tarnished Dawnlit` carrega `Type 51` (`Value "481,1,0,0"`, config 481) com
+`ItemLevel = 0`. Não é "sem ilvl": é sinal de que a curva apontada
+(`ItemOffsetCurveID 66` → `CurveID 109495`) não é indexada por item level —
+seus `Pos` são **níveis de personagem** (70, 83, 84, 86, 87, 89, 90, 100), com
+plateau em `(90, 253)`. E 253 é exatamente o ilvl que o tooltip mostra.
+
+Como o popover renderiza sem personagem (ver "O jogo já tem um modo sem
+personagem"), o nível usado no eixo é o **nível de personagem máximo (90)**,
+não o nível do `itemString` de quem coletou o espécime (81, porque o
+personagem que linkou não estava no cap). Verificado: `curve_point_value(109495,
+90) = 253`, batendo exato nos dois itens do par.
+
+`Type 51` não está no enum do SimC (eles não olham era antiga do jeito que
+isto olha) nem tinha aparecido nos 19 espécimes anteriores — todos pós-squish,
+todos com `Type 49` só, `ItemLevel` sempre não-zero.
+
 ### O descritor de dificuldade
 
 `Type 4` (`DESC`) aponta para o `ItemNameDescription`, que traz o texto e a cor:

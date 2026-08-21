@@ -18,6 +18,10 @@ import { buscarItemIdsDoCatalogo } from './catalogo.js';
 import { carregarOpsTokenDoEnv } from './ambiente.js';
 import { lerArgs } from './cli.js';
 import { resolverArvoreDeBonus } from './resolucao-bonus.js';
+import { montarEscalasPorIlvl } from './montar-escalas.js';
+import { rodarAutoConferencia } from './auto-conferencia.js';
+
+const CAMINHO_FIXTURE = 'docs/db2-fixture-de-itens.json';
 
 async function main(): Promise<void> {
   const args = lerArgs(process.argv.slice(2));
@@ -55,6 +59,28 @@ async function main(): Promise<void> {
         'ChildItemLevelSelectorID, não resolvido (ver docs/db2-do-cliente.md)',
     );
   }
+
+  const escalas = montarEscalasPorIlvl(db, gameTables);
+  console.log(`escalas: ${escalas.size} linhas de item level`);
+
+  console.log('\n--- auto-conferência ---');
+  const conferencia = rodarAutoConferencia(db, escalas, CAMINHO_FIXTURE);
+  if (conferencia.divergencias.length > 0) {
+    console.error(
+      `${conferencia.divergencias.length} divergência(s) contra a fixture — arquivo NÃO emitido:\n`,
+    );
+    for (const d of conferencia.divergencias) {
+      console.error(
+        `  [${d.especime}] ${d.campo}: esperado=${String(d.esperado)} calculado=${String(d.calculado)}`,
+      );
+    }
+    db.close();
+    process.exitCode = 1;
+    return;
+  }
+  console.log(
+    `fixture fechou: ${conferencia.valoresConferidos} valores conferidos, 0 divergências`,
+  );
 
   db.close();
 }
