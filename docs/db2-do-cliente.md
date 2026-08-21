@@ -97,6 +97,100 @@ formato e um job nosso quebra em produção.
 
 ## Quais tabelas, e o que cada uma responde
 
+### A lista de extração: 41 arquivos
+
+Isto é a checklist do `wow.export`, a cada patch. Abaixo dela, o que cada tabela
+responde e por que está aqui.
+
+```
+RESOLUÇÃO DE BÔNUS (6)
+  ItemSparse   Item   ItemBonus
+  ItemXBonusTree   ItemBonusTreeNode   ItemBonusTree*
+
+ITEM LEVEL (5)
+  ItemScalingConfig   ItemOffsetCurve   CurvePoint
+  ItemLevelSelector*   ItemLevelSelectorQuality*
+
+OS NÚMEROS (12)
+  RandPropPoints
+  CombatRatingsMultByILvl†   StaminaMultByILvl†   ItemSocketCostPerLevel†
+  ItemArmorTotal   ItemArmorQuality   ArmorLocation   ItemArmorShield
+  ItemDamageOneHand   ItemDamageTwoHand
+  ItemDamageOneHandCaster   ItemDamageTwoHandCaster
+
+EFEITO (7)
+  ItemXItemEffect   ItemEffect   Spell   SpellEffect
+  SpellMisc   SpellDuration   SpellAuraOptions
+
+TEXTO (11)
+  ItemNameDescription
+  ItemBonusListGroup   ItemBonusListGroupEntry   SharedString
+  ItemSet   ItemSetSpell   ChrSpecialization
+  GlobalStrings   ChrClasses   ItemClass   ItemSubClass
+
+  †  GameTable — aba Text do wow.export, não a Data
+  *  hoje sem uso; ver "Mantidas apesar de não usadas"
+```
+
+**Dez tabelas saíram desta lista em 20/08/2026** — ver "Deixaram de ser
+extraídas". Se você está com 51 arquivos, está com a lista velha.
+
+### As palavras de busca: 4 no total
+
+O filtro do `wow.export` é substring simples no nome do recurso, e **Data e Text
+são buscas separadas**. Estas quatro alcançam os 41 arquivos:
+
+| aba      | busque  | pega                                                                                                                           |
+| -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **Data** | `Item`  | 26 dos 38                                                                                                                      |
+| **Data** | `Spell` | mais 6                                                                                                                         |
+| **Data** | `r`     | os 7 que sobram: `CurvePoint` `RandPropPoints` `ArmorLocation` `SharedString` `GlobalStrings` `ChrSpecialization` `ChrClasses` |
+| **Text** | `l`     | as 3 GameTables                                                                                                                |
+
+A busca traz muito mais do que você precisa, e tudo bem — a lista acima é a
+checklist do que selecionar.
+
+#### Por que não dá para fazer menos
+
+O mínimo teórico é **3** (`e` + `o` na Data, `l` na Text), provado por busca
+exaustiva sobre todos os substrings dos 41 nomes. **Uma busca só na Data é
+impossível:** `Item` e `Spell` não compartilham nenhuma letra além do `e`, e o
+`e` não alcança `RandPropPoints`, `ArmorLocation` nem `GlobalStrings` — que só se
+juntam pelo `o`.
+
+Mas `e` casa com quase toda tabela do jogo, e o ganho de uma busca não paga a
+lista inteira na tela. Daí o `Item`/`Spell`/`r`.
+
+#### E se você preferir listas curtas
+
+Com palavras de 3+ letras **não existe solução com menos de 6** na Data —
+verificado exaustivamente, 4 e 5 são impossíveis:
+
+```
+Data:  Item   Spe   Armor   Point   String   Class
+Text:  MultByILvl   ItemSocket
+```
+
+`Spe` em vez de `Spell` porque pega `ChrSpecialization` junto.
+
+> **Duas suposições sobre o app, não verificadas:** que o filtro aceita busca de
+> um caractere, e que ele é case-insensitive.
+>
+> Se exigir **2+ caracteres**, o mínimo na Data passa de 3 para **5** — também
+> verificado exaustivamente, 4 é impossível:
+>
+> ```
+> Data:  Item   Spell   in   ar   Chr
+> Text:  MultByILvl   ItemSocket
+> ```
+>
+> (`in` pega `CurvePoint`, `RandPropPoints` e `GlobalStrings`; `ar` pega
+> `ArmorLocation` e `SharedString`.)
+>
+> Na Text a busca de um caractere é a **única** forma de fazer uma só: as três
+> GameTables não têm nenhum par de letras em comum. Com 2+ caracteres são sempre
+> duas buscas.
+
 ### Essenciais
 
 | tabela                  | responde                                                                           | tamanho |
@@ -185,18 +279,41 @@ O `GlobalStrings` deixou de ser "útil de referência" e virou dependência: o m
 sem personagem, o `Binds to Warband`, o `Use:` do cosmético e a linha
 `Classes: %s` saem todos dele.
 
-### Extraídas e ainda sem uso
+### Mantidas apesar de não usadas — e o motivo é o tamanho, não a esperança
 
-`ItemBonusTree` e `ItemBonusTreeGroupEntry` (a navegação usa só o
-`ItemBonusTreeNode`), `ItemSubClassMask`, `ItemLevelSelector` e
-`ItemLevelSelectorQuality`, `ItemBonusListLevelDelta`,
-`ItemBonusSeasonBonusListGroup`, `ItemBonusSequenceSpell`, `ContentTuning`,
-`SpellScaling` e `ExpectedStat`.
+Três tabelas ficam na lista de extração sem estarem no caminho de renderização
+nenhum. Somam **0,11 MB**, então cortá-las não paga o risco de virarem lacuna:
 
-Elas ficam extraídas de propósito: cada uma foi hipótese em alguma rodada, e
-apagar da lista faria a próxima pessoa refazer a mesma busca. **`ExpectedStat` é
-indexada por nível de personagem**, não por item level — foi por isso que não
-serviu para escala de efeito.
+| tabela                                           | por que fica                                                                                                      |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `ItemLevelSelector` + `ItemLevelSelectorQuality` | `ChildItemLevelSelectorID` é não-zero em **2.234 nós** da árvore. Nenhum item nosso passou por lá — ainda         |
+| `ItemBonusTree`                                  | a travessia usa só o `ItemBonusTreeNode`, mas ela tem `InventoryTypeSlotMask` não-zero em **422 de 4.785** linhas |
+
+**Isto é exatamente o formato da árvore de bônus**: alcançável, nunca alcançada,
+e invisível se estiver errado. A diferença é que agora está escrito.
+
+### Deixaram de ser extraídas (20/08/2026)
+
+Dez tabelas saíram da lista, cada uma com o motivo medido — para ninguém
+reextrair "por via das dúvidas" no próximo patch:
+
+| tabela                                                                               | por que sai                                                                                            |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `SpellName` (12,7 MB)                                                                | `Spell` não tem `Name_lang`, mas **nenhuma linha de tooltip mostra nome de spell**. É apoio de análise |
+| `SpellDescriptionVariables`                                                          | **inalcançável por construção** — o link é `Spell.DescriptionVariablesID`, coluna que nem é extraída   |
+| `ItemBonusListLevelDelta`                                                            | redundante: as 3 listas nossas que estão nela trazem o mesmo delta pelo `Type 1`                       |
+| `ExpectedStat`                                                                       | indexada por **nível de personagem**, não por item level — eixo errado                                 |
+| `SpellScaling`, `ContentTuning`                                                      | nada no caminho aponta para elas                                                                       |
+| `ItemSubClassMask`                                                                   | a máscara de classe dos tokens sai do `AllowableClass`, não daqui                                      |
+| `ItemBonusSequenceSpell`, `ItemBonusSeasonBonusListGroup`, `ItemBonusTreeGroupEntry` | sem referência a partir de nada que usamos                                                             |
+
+> **O corte vale por quantidade, não por tamanho.** As dez somam 13,3 MB de
+> 282 MB — 4,7%, irrelevante. O que elas custam é **um export manual cada, a cada
+> patch**: sair de 51 para 41 arquivos é ~20% menos passos no `wow.export`.
+>
+> E o volume nunca foi problema do lado da app: medido com 61 itens, o filtro do
+> caminho de ops devolve 61 linhas de `ItemSparse`, 22 de `SpellEffect` e 15 de
+> `SpellMisc`. **Os 282 MB são custo de extração, não de carga.**
 
 ## O tamanho não é obstáculo, desde que o filtro seja o certo
 
@@ -212,6 +329,37 @@ O `ItemSparse` bruto tem ~59 MB, contra o teto de 2mb do `/internal/ops`.
 
 E, dentro disso, **cortar coluna antes de cortar linha**: o `ItemSparse` tem 68
 colunas e a fórmula usa ~13.
+
+Medido com os 61 itens dos espécimes, o filtro devolve isto:
+
+| tabela        | linhas cheias | filtradas | por item |
+| ------------- | ------------: | --------: | -------: |
+| `ItemSparse`  |       175.174 |    **61** |      1,0 |
+| `Item`        |       213.345 |    **61** |      1,0 |
+| `SpellEffect` |       629.143 |    **22** |      0,4 |
+| `SpellMisc`   |       417.506 |    **15** |      0,2 |
+| `Spell`       |       413.913 |    **15** |      0,2 |
+
+Cerca de uma linha por item, e menos de meia linha de spell por item.
+
+### Mas o filtro de spell precisa do FECHO, não só dos spells do item
+
+O texto de efeito **referencia outros spells por id**, e o cliente resolve essas
+referências na hora de montar o tooltip:
+
+```
+$@spelldesc1305830   → a descrição inteira do spell 1305830
+$1291885s1           → o valor do efeito 1 do spell 1291885
+$1295582d            → a duração do spell 1295582
+```
+
+Filtrar `Spell`, `SpellEffect` e `SpellMisc` por "os spells que os nossos itens
+apontam" **não basta**: os ids citados no texto precisam entrar junto, e depois
+os ids citados _neles_, até fechar.
+
+Medido na amostra: **15 spells diretos viram 20**, fator `1,33x`, e cinco deles
+nenhum item nosso aponta. O fecho é raso — parou na profundidade 1 — mas não é
+vazio, e sem ele o tooltip mostra `$@spelldesc1305830` literalmente na tela.
 
 ## Como analisar: banco local, descartável
 
@@ -1318,6 +1466,24 @@ O caso da luva mostra por que a ordem importa: a árvore oferece **três** grupo
 `Type 34` do `itemString`, que aponta `611`. No escudo a árvore oferece **um**
 grupo, e o padrão é inequívoco.
 
+#### A ambiguidade da luva tem nome: é banda de keystone
+
+Os três nós da luva no `itemContext 110` **não** são um cardápio genérico — eles
+trazem `MinMythicPlusLevel`/`MaxMythicPlusLevel` preenchidos, nas faixas `4..5`,
+`6..7` e `8..11`. É o nível da chave que escolhe.
+
+| espécime           | ctx | faixas de M+ nos nós    |
+| ------------------ | --- | ----------------------- |
+| luva Devouring     | 110 | `4..5`, `6..7`, `8..11` |
+| cinto e elmo Rider | 35  | `0..9`, `10..0`         |
+
+**Isso não muda a regra** — o `Type 34` continua sendo quem desempata, e é o
+certo, porque o nível da chave não está em lugar nenhum do `itemString`. Muda a
+explicação: a versão anterior atribuía a ambiguidade a "a árvore é um cardápio",
+e a causa é mais específica. Os dois campos ficam registrados porque quem
+implementar vai encontrá-los preenchidos e precisa saber que **pode ignorá-los,
+desde que use o `Type 34`**.
+
 > **Por que os 19 espécimes anteriores fecharam sem isso:** neles o `itemString`
 > já trazia a lista que a árvore repetiria. O escudo é o primeiro que depende só
 > da árvore — e o modo de falha é o de sempre: sem ela, ele renderiza com o ilvl
@@ -1581,17 +1747,24 @@ espécime foi mostrado de passagem, sem relação com nenhuma pendência da list
 
 ### Aberto e conhecido
 
-| o quê                                                  | o que fecharia                                               |
-| ------------------------------------------------------ | ------------------------------------------------------------ |
-| seis `Type` sem decodificar (7, 9, 16, 26, 37, 47)     | achar um espécime em que um deles altere um valor conferível |
-| `DamageReplaceStat` / `DamageSecondary`: float ou INT? | um trinket de `ScalingClass −8` com tooltip transcrito       |
-| modificadores do `itemString` (28, 29, 30)             | nunca foram analisados — nem os que já estão na fixture      |
+| o quê                                                  | o que fecharia                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| seis `Type` sem decodificar (7, 9, 16, 26, 37, 47)     | achar um espécime em que um deles altere um valor conferível           |
+| `DamageReplaceStat` / `DamageSecondary`: float ou INT? | um trinket de `ScalingClass −8` com tooltip transcrito                 |
+| modificadores do `itemString` (28, 29, 30)             | nunca foram analisados — nem os que já estão na fixture                |
+| `ItemLevelSelector` pela árvore                        | um espécime cujo nó de contexto exato traga `ChildItemLevelSelectorID` |
 
-Nenhum dos três bloqueia a implementação: os seis `Type` não apareceram mexendo
-em valor conferido, a escolha de coluna afeta só efeito de trinket, e os
-modificadores nunca foram necessários para nenhuma linha reproduzida. **Mas isso
-é o mesmo formato de argumento que falhou com o `Type 50`** — "não vi mexer" não
-é "não mexe".
+Nenhum dos quatro bloqueia a implementação: os seis `Type` não apareceram mexendo
+em valor conferido, a escolha de coluna afeta só efeito de trinket, os
+modificadores nunca foram necessários para nenhuma linha reproduzida, e nenhum
+dos 69 pares (item, contexto) conferidos passou pelo `ItemLevelSelector`. **Mas
+isso é o mesmo formato de argumento que falhou com o `Type 50`** — "não vi
+mexer" não é "não mexe".
+
+O último da lista é o mais desconfortável dos quatro, porque é **literalmente a
+forma da árvore de bônus**: um caminho que existe no dado, que nenhum espécime
+nosso percorreu, e que erraria em silêncio. A diferença é que a árvore ninguém
+tinha olhado, e este está escrito.
 
 ### As pendências antigas terminaram assim
 
