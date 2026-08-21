@@ -1,8 +1,8 @@
 import type { LootCatalogRepository } from '../loot-catalog/loot-catalog.repository';
 import type { LootLinesService } from '../loot-lines/loot-lines.service';
 import type { LootSessionsService } from '../loot-sessions/loot-sessions.service';
-import type { WowBonusRepository } from './wow-bonus.repository';
-import { WowBonusReportService } from './wow-bonus-report.service';
+import type { WowDataRepository } from './wow-data.repository';
+import { WowDataReportService } from './wow-data-report.service';
 
 /** `itemString` real de raid (ver `item-string.spec.ts`), com bonus trocado. */
 function itemString(...bonusIds: number[]): string {
@@ -14,9 +14,13 @@ function montar(dados: {
   sessoes?: Array<{ itemId: number; itemString: string }>;
   idsConhecidos?: number[];
   itemIdsCatalogados?: number[];
+  buildAtivo?: string | null;
 }) {
-  const bonuses = {
-    findAllIds: jest.fn(() => Promise.resolve(new Set(dados.idsConhecidos ?? []))),
+  const wowData = {
+    buildAtivo: jest.fn(() =>
+      Promise.resolve(dados.buildAtivo === undefined ? '12.1.0.69299' : dados.buildAtivo),
+    ),
+    idsDeBonusConhecidos: jest.fn(() => Promise.resolve(new Set(dados.idsConhecidos ?? []))),
   };
   const lootLines = {
     listarItensParaRelatorioDeBonus: jest.fn(() => Promise.resolve(dados.historico ?? [])),
@@ -28,17 +32,17 @@ function montar(dados: {
     findExistingItemIds: jest.fn(() => Promise.resolve(dados.itemIdsCatalogados ?? [])),
   };
 
-  const service = new WowBonusReportService(
-    bonuses as unknown as WowBonusRepository,
+  const service = new WowDataReportService(
+    wowData as unknown as WowDataRepository,
     lootLines as unknown as LootLinesService,
     lootSessions as unknown as LootSessionsService,
     catalog as unknown as LootCatalogRepository,
   );
 
-  return { service, catalog };
+  return { service, catalog, wowData };
 }
 
-describe('WowBonusReportService.gerar', () => {
+describe('WowDataReportService.gerar', () => {
   it('bonus desconhecido some quando está no dicionário, e sobra o resto — ordenado por frequência', async () => {
     const { service } = montar({
       historico: [
@@ -115,5 +119,23 @@ describe('WowBonusReportService.gerar', () => {
     const { service } = montar({});
 
     await expect(service.gerar()).resolves.toEqual({ bonusIds: [], itemIds: [] });
+  });
+
+  /**
+   * Antes da primeira ativação (TIT-140) o banco não tem build ativo. O
+   * relatório dizendo "tudo desconhecido" é a verdade, e é exatamente o que se
+   * quer ver nesse momento — não um caso de borda a esconder.
+   */
+  it('sem build ativo, todo bonus do histórico aparece como desconhecido', async () => {
+    const { service, wowData } = montar({
+      historico: [{ itemId: 1, itemString: itemString(40, 12806) }],
+      idsConhecidos: [40, 12806],
+      buildAtivo: null,
+    });
+
+    const relatorio = await service.gerar();
+
+    expect(wowData.idsDeBonusConhecidos).not.toHaveBeenCalled();
+    expect(relatorio.bonusIds.map((b) => b.bonusId).sort((a, b) => a - b)).toEqual([40, 12806]);
   });
 });

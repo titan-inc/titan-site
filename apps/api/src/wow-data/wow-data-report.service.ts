@@ -3,7 +3,7 @@ import { parseItemString } from '@titan/shared';
 import { LootCatalogRepository } from '../loot-catalog/loot-catalog.repository';
 import { LootLinesService } from '../loot-lines/loot-lines.service';
 import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
-import { WowBonusRepository } from './wow-bonus.repository';
+import { WowDataRepository } from './wow-data.repository';
 
 export interface RelatorioDeDesconhecidos {
   /** Bonus IDs fora do dicionário, mais frequente primeiro. */
@@ -27,9 +27,9 @@ interface LinhaComItemString {
  * em lista de trabalho priorizada — Regra 7.
  */
 @Injectable()
-export class WowBonusReportService {
+export class WowDataReportService {
   constructor(
-    private readonly bonuses: WowBonusRepository,
+    private readonly dados: WowDataRepository,
     private readonly lootLines: LootLinesService,
     private readonly lootSessions: LootSessionsService,
     private readonly catalog: LootCatalogRepository,
@@ -37,10 +37,17 @@ export class WowBonusReportService {
 
   /** Lê as duas fontes, gera as duas listas. Cada uma tem o executor dela. */
   async gerar(): Promise<RelatorioDeDesconhecidos> {
+    const buildAtivo = await this.dados.buildAtivo();
+
     const [doHistorico, dasSessoes, idsConhecidos] = await Promise.all([
       this.lootLines.listarItensParaRelatorioDeBonus(),
       this.lootSessions.listarItensParaRelatorioDeBonus(),
-      this.bonuses.findAllIds(),
+      // SEM BUILD ATIVO, NADA É CONHECIDO — e o relatório dizendo "todos
+      // desconhecidos" é a resposta certa, não um caso de borda a esconder. É
+      // exatamente o que se quer ver antes da primeira carga.
+      buildAtivo === null
+        ? Promise.resolve(new Set<number>())
+        : this.dados.idsDeBonusConhecidos(buildAtivo),
     ]);
 
     const linhas = [...doHistorico, ...dasSessoes];

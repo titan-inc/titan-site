@@ -7,7 +7,7 @@ import { LootLinesModule } from '../loot-lines/loot-lines.module';
 import { LootSessionsModule } from '../loot-sessions/loot-sessions.module';
 import { RaidProgressModule } from '../raidprogress/raidprogress.module';
 import { SnapshotsModule } from '../snapshots/snapshots.module';
-import { WowBonusModule } from '../wow-bonus/wow-bonus.module';
+import { WowDataModule } from '../wow-data/wow-data.module';
 import { OpsController } from './ops.controller';
 import { OpsService } from './ops.service';
 
@@ -30,7 +30,7 @@ import { OpsService } from './ops.service';
     LootLinesModule,
     LootSessionsModule,
     RaidProgressModule,
-    WowBonusModule,
+    WowDataModule,
   ],
   controllers: [OpsController],
   providers: [OpsService],

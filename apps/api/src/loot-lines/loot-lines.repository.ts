@@ -314,7 +314,7 @@ export class LootLinesRepository {
    * `itemId` + `itemString` de toda linha do histórico.
    *
    * Usado pelo relatório de "o que ainda não conhecemos" (TIT-82) — quem
-   * extrai os `bonusIds` e agrega por frequência é o `WowBonusReportService`,
+   * extrai os `bonusIds` e agrega por frequência é o `WowDataReportService`,
    * não este repository: a mesma consulta crua alimenta a mesma extração para
    * `LootSessionItem`, e a leitura fica igual nos dois lados.
    */

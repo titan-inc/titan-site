@@ -50,13 +50,6 @@ de segredos do `CLAUDE.md`: **este repositório é público**.
     JSON** (objeto), não uma string, então `fs.readFile()` sozinho já
     produz JSON válido — sem precisar de `pnpm dump:escape` nem de nenhum
     outro tratamento.
-  - `bonus_dictionary_path` — caminho absoluto, na sua máquina, do `.json`
-    do dicionário de bonus IDs (TIT-82) — ver "Dicionário de bonus IDs —
-    carregar" em `docs/ops.md` para como montar o arquivo. Usado pelo
-    request `internal/ops/Bonus load` via
-    `${[ fs.readFile(path=bonus_dictionary_path) ]}`. Mesmo caso do
-    `catalog_json_path`: `dictionary` no corpo é um valor JSON, sem
-    precisar de `pnpm dump:escape`.
 - **`Prod`** — sub-environment irmã de `Local`, também **não marcada
   `public`**. Contra produção, por túnel SSH — nunca direto: o Caddy
   bloqueia `/internal/ops/*` no domínio público, e o resto da área interna

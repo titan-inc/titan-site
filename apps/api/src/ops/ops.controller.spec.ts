@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { BONUS_KINDS, type BonusDictionaryFile, type CatalogFile } from '@titan/shared';
+import type { CatalogFile } from '@titan/shared';
 import type { AttendanceService } from '../attendance/attendance.service';
 import type { BlizzardService } from '../blizzard/blizzard.service';
 import type { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
@@ -15,9 +15,8 @@ import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
 import type {
   RelatorioDeDesconhecidos,
-  WowBonusReportService,
-} from '../wow-bonus/wow-bonus-report.service';
-import type { ResultadoDaCargaDeBonus, WowBonusService } from '../wow-bonus/wow-bonus.service';
+  WowDataReportService,
+} from '../wow-data/wow-data-report.service';
 import { OpsController } from './ops.controller';
 import type { FixCharacterIdsResult, OpsService } from './ops.service';
 
@@ -77,12 +76,7 @@ describe('OpsController', () => {
       Promise.resolve({ dummies: [{ name: 'Dummy1', realm: 'TestDummy' }], killSwitchAt: 'x' }),
     ),
   };
-  const wowBonus = {
-    carregarArquivo: jest.fn<Promise<ResultadoDaCargaDeBonus>, [BonusDictionaryFile]>(() =>
-      Promise.resolve({ lidos: 3, porKind: { tertiary: 2, socket: 1 } }),
-    ),
-  };
-  const wowBonusReport = {
+  const wowDataReport = {
     gerar: jest.fn<Promise<RelatorioDeDesconhecidos>, []>(() =>
       Promise.resolve({ bonusIds: [], itemIds: [] }),
     ),
@@ -104,8 +98,7 @@ describe('OpsController', () => {
       pasteGenerator as unknown as LootCatalogPasteGeneratorService,
       dummies as unknown as LootSessionDummiesService,
       ops as unknown as OpsService,
-      wowBonus as unknown as WowBonusService,
-      wowBonusReport as unknown as WowBonusReportService,
+      wowDataReport as unknown as WowDataReportService,
     );
   });
 
@@ -244,20 +237,8 @@ describe('OpsController', () => {
     expect(resultado).toEqual({ paste: 'TILC/1\tencounter=1' });
   });
 
-  it('bonus-load repassa o dicionário e devolve o resultado da carga', async () => {
-    const dictionary: BonusDictionaryFile = {
-      version: 1,
-      bonuses: [{ bonusId: 40, kind: BONUS_KINDS.TERTIARY, tertiary: 'avoidance' }],
-    };
-
-    const resultado = await controller.bonusLoad({ dictionary });
-
-    expect(wowBonus.carregarArquivo).toHaveBeenCalledWith(dictionary);
-    expect(resultado).toEqual({ lidos: 3, porKind: { tertiary: 2, socket: 1 } });
-  });
-
   it('bonus-unknown-report devolve o relatório do service', async () => {
-    wowBonusReport.gerar.mockResolvedValueOnce({
+    wowDataReport.gerar.mockResolvedValueOnce({
       bonusIds: [{ bonusId: 9999, ocorrencias: 5 }],
       itemIds: [],
     });
