@@ -12,12 +12,12 @@
  *                                        [--saida localdocs/wow-data-<build>.json]
  *                                        [--api http://localhost:3001]
  */
-import path from 'node:path';
 import { abrirWowExportDb } from './wow-export-db.js';
 import { lerGameTables } from './game-tables.js';
 import { buscarItemIdsDoCatalogo } from './catalogo.js';
 import { carregarOpsTokenDoEnv } from './ambiente.js';
 import { lerArgs } from './cli.js';
+import { resolverArvoreDeBonus } from './resolucao-bonus.js';
 
 async function main(): Promise<void> {
   const args = lerArgs(process.argv.slice(2));
@@ -43,6 +43,18 @@ async function main(): Promise<void> {
     total: number;
   };
   console.log(`ItemSparse no dump: ${total} linhas`);
+
+  const arvore = resolverArvoreDeBonus(db, itemIdsCatalogo);
+  console.log(
+    `árvore de bônus: ${arvore.contextosPorItem.size} itens do catálogo têm árvore, ` +
+      `${arvore.bonusIdsAlcancados.size} bonusIds alcançados`,
+  );
+  if (arvore.avisosItemLevelSelector.length > 0) {
+    console.log(
+      `aviso: ${arvore.avisosItemLevelSelector.length} nós aplicados carregam ` +
+        'ChildItemLevelSelectorID, não resolvido (ver docs/db2-do-cliente.md)',
+    );
+  }
 
   db.close();
 }
