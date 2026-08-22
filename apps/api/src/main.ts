@@ -29,10 +29,13 @@ async function bootstrap() {
   // memória demais numa instância de 1GB e derrubou a app inteira. Com teto
   // isso vira 413.
   //
-  // 2mb dá ~6x sobre a maior carga legítima de hoje (o export do RC, 304 KB;
-  // o maior catálogo tem 91 KB). Não há setGlobalPrefix — o caminho no Nest é
-  // este mesmo, o `/api` é o Caddy que tira.
-  app.use('/internal/ops', json({ limit: '2mb' }));
+  // 20mb — subido de 2mb (TIT-139) depois de o dado do cliente do WoW sair
+  // maior que o teto antigo: 4,9 MB pro build 12.1.0, e cresce a cada patch
+  // (mais bônus, mais itens catalogados). 20mb ainda é um teto de verdade
+  // (~4x a carga de hoje), não ausência de um — o ponto da regra continua
+  // valendo. Não há setGlobalPrefix — o caminho no Nest é este mesmo, o
+  // `/api` é o Caddy que tira.
+  app.use('/internal/ops', json({ limit: '20mb' }));
 
   // Limita o corpo antes do Zod para que JSONs gigantes não consumam memória.
   // Vale para tudo que não é ops, incluindo o /applications público — que é
