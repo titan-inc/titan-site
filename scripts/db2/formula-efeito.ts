@@ -18,6 +18,14 @@ import type { LinhaEscala } from './montar-escalas.js';
  * lista de extração de `docs/db2-do-cliente.md`. Registrado como aberto — a
  * fixture confere os quatro placeholders que TÊM fonte (`$s1`, `$s2`, `$d`,
  * `$u`), não o texto inteiro.
+ *
+ * **Sobre o "fecho de spells":** este gerador lê o `wow.db` inteiro, sem
+ * filtro prévio — diferente do caminho de ops (que filtra pra caber em
+ * 2mb), aqui todo `SpellID` citado é sempre resolvível na hora, não existe
+ * "spell fora do extraído". O que vai pra `WowItemData.effects` é só a
+ * receita do PRÓPRIO spell do item (`$sN`/`$d`/`$u` já resolvíveis); um
+ * `$@spelldescN` que cite outro spell fica como placeholder cru no
+ * template — nenhum espécime da fixture exercita essa referência cruzada.
  */
 
 export interface SpellEfeitoBruto {

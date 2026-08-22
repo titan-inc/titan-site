@@ -12,14 +12,31 @@
  *                                        [--saida localdocs/wow-data-<build>.json]
  *                                        [--api http://localhost:3001]
  */
+import fs from 'node:fs';
 import { abrirWowExportDb } from './wow-export-db.js';
 import { lerGameTables } from './game-tables.js';
 import { buscarItemIdsDoCatalogo } from './catalogo.js';
 import { carregarOpsTokenDoEnv } from './ambiente.js';
 import { lerArgs } from './cli.js';
 import { resolverArvoreDeBonus } from './resolucao-bonus.js';
-import { montarEscalasPorIlvl } from './montar-escalas.js';
+import { montarEscalasPorIlvl, montarTabelaEscalas } from './montar-escalas.js';
 import { rodarAutoConferencia } from './auto-conferencia.js';
+import { ResolvedorItemLevel } from './item-level.js';
+import { ResolvedorTrack } from './formula-track.js';
+import { ResolvedorEfeito } from './formula-efeito.js';
+import { montarItens, montarBonuses, montarContextos } from './montar-tabelas.js';
+import { listarTypesDesconhecidos, imprimirRelatorio } from './relatorio.js';
+import {
+  carregarItemSparse,
+  carregarMaterialPorItem,
+  carregarArmorLocation,
+  carregarStatsAdicionaisPorBonus,
+  carregarQualidadeExtraPorBonus,
+  carregarBonusComSocket,
+  carregarBindingPorBonus,
+  carregarDescritorPorBonus,
+} from './carregadores.js';
+import { wowDataFileSchema, WOW_DATA_FILE_VERSION } from '../../packages/shared/dist/index.mjs';
 
 const CAMINHO_FIXTURE = 'docs/db2-fixture-de-itens.json';
 
@@ -35,36 +52,19 @@ async function main(): Promise<void> {
   const db = abrirWowExportDb(args.pastaWowExport);
   const gameTables = lerGameTables(args.pastaWowExport);
   const itemIdsCatalogo = await buscarItemIdsDoCatalogo(args.apiBaseUrl, opsToken);
-
   console.log(`catálogo: ${itemIdsCatalogo.length} itemIds`);
-  console.log(
-    `GameTables: combat=${gameTables.combatRatingsMultByILvl.size} linhas, ` +
-      `stamina=${gameTables.staminaMultByILvl.size} linhas, ` +
-      `socket=${gameTables.itemSocketCostPerLevel.size} linhas`,
-  );
-
-  const { total } = db.prepare('SELECT count(*) as total FROM ItemSparse').get() as {
-    total: number;
-  };
-  console.log(`ItemSparse no dump: ${total} linhas`);
 
   const arvore = resolverArvoreDeBonus(db, itemIdsCatalogo);
   console.log(
     `árvore de bônus: ${arvore.contextosPorItem.size} itens do catálogo têm árvore, ` +
       `${arvore.bonusIdsAlcancados.size} bonusIds alcançados`,
   );
-  if (arvore.avisosItemLevelSelector.length > 0) {
-    console.log(
-      `aviso: ${arvore.avisosItemLevelSelector.length} nós aplicados carregam ` +
-        'ChildItemLevelSelectorID, não resolvido (ver docs/db2-do-cliente.md)',
-    );
-  }
 
-  const escalas = montarEscalasPorIlvl(db, gameTables);
-  console.log(`escalas: ${escalas.size} linhas de item level`);
+  const escalasPorIlvl = montarEscalasPorIlvl(db, gameTables);
+  console.log(`escalas: ${escalasPorIlvl.size} linhas de item level`);
 
   console.log('\n--- auto-conferência ---');
-  const conferencia = rodarAutoConferencia(db, escalas, CAMINHO_FIXTURE);
+  const conferencia = rodarAutoConferencia(db, escalasPorIlvl, CAMINHO_FIXTURE);
   if (conferencia.divergencias.length > 0) {
     console.error(
       `${conferencia.divergencias.length} divergência(s) contra a fixture — arquivo NÃO emitido:\n`,
@@ -81,6 +81,65 @@ async function main(): Promise<void> {
   console.log(
     `fixture fechou: ${conferencia.valoresConferidos} valores conferidos, 0 divergências`,
   );
+
+  // --- montagem final ---
+  const itemSparsePorId = carregarItemSparse(db, itemIdsCatalogo);
+  const materialPorItem = carregarMaterialPorItem(db, itemIdsCatalogo);
+  const armorLocationPorSlot = carregarArmorLocation(db);
+  const efeitoResolver = new ResolvedorEfeito(db);
+
+  const { tabela: itens, itemIdsSemDado } = montarItens(
+    itemIdsCatalogo,
+    itemSparsePorId,
+    materialPorItem,
+    armorLocationPorSlot,
+    efeitoResolver,
+  );
+
+  const bonuses = montarBonuses(arvore.bonusIdsAlcancados, {
+    itemLevelResolver: new ResolvedorItemLevel(db),
+    trackResolver: new ResolvedorTrack(db),
+    statsExtrasPorBonus: carregarStatsAdicionaisPorBonus(db),
+    qualidadeExtraPorBonus: carregarQualidadeExtraPorBonus(db),
+    bonusComSocket: carregarBonusComSocket(db),
+    bindingPorBonus: carregarBindingPorBonus(db),
+    descritorPorBonus: carregarDescritorPorBonus(db),
+  });
+
+  const contextos = montarContextos(arvore.contextosPorItem);
+  const escalas = montarTabelaEscalas(escalasPorIlvl);
+
+  const arquivo = {
+    version: WOW_DATA_FILE_VERSION,
+    build: args.build,
+    itens,
+    bonuses,
+    contextos,
+    escalas,
+  };
+
+  const validacao = wowDataFileSchema.safeParse(arquivo);
+  if (!validacao.success) {
+    console.error(
+      '\narquivo montado NÃO valida contra wowDataFileSchema — bug do gerador, NÃO emitido:',
+    );
+    console.error(validacao.error.format());
+    db.close();
+    process.exitCode = 1;
+    return;
+  }
+
+  const conteudo = JSON.stringify(validacao.data);
+  fs.writeFileSync(args.arquivoSaida, conteudo);
+
+  imprimirRelatorio({
+    itemIdsSemDado,
+    typesDesconhecidos: listarTypesDesconhecidos(db, arvore.bonusIdsAlcancados),
+    avisosItemLevelSelector: arvore.avisosItemLevelSelector.length,
+    tamanhoBytes: Buffer.byteLength(conteudo),
+  });
+
+  console.log(`\nescrito: ${args.arquivoSaida}`);
 
   db.close();
 }
