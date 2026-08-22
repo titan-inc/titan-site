@@ -13,17 +13,21 @@ variables:
 - enabled: true
   name: base_url
   value: http://localhost:3001
-  id: QxFyw4I9c8
+  id: null
 - enabled: true
   name: session_cookie
   value: ''
-  id: 8TTI00bTeZ
+  id: null
 - enabled: true
   name: ops_token
   value: ''
-  id: uArE33eIgH
+  id: null
 - enabled: true
   name: catalog_json_path
+  value: ''
+  id: null
+- enabled: true
+  name: wow_data_json_path
   value: ''
   id: null
 color: null

@@ -14,6 +14,11 @@ import type { LootSessionsService } from '../loot-sessions/loot-sessions.service
 import type { RaidProgressService } from '../raidprogress/raidprogress.service';
 import type { SnapshotsService } from '../snapshots/snapshots.service';
 import type {
+  WowDataActivateResult,
+  WowDataLoaderService,
+  WowDataLoadResult,
+} from '../wow-data/wow-data-loader.service';
+import type {
   RelatorioDeDesconhecidos,
   WowDataReportService,
 } from '../wow-data/wow-data-report.service';
@@ -77,8 +82,21 @@ describe('OpsController', () => {
     ),
   };
   const wowDataReport = {
-    gerar: jest.fn<Promise<RelatorioDeDesconhecidos>, []>(() =>
-      Promise.resolve({ bonusIds: [], itemIds: [] }),
+    gerar: jest.fn<Promise<RelatorioDeDesconhecidos>, [string | undefined]>(() =>
+      Promise.resolve({ build: null, bonusIds: [], itemIds: [], itensSemDadoNoBuild: [] }),
+    ),
+  };
+  const wowDataLoader = {
+    carregar: jest.fn<Promise<WowDataLoadResult>, [unknown]>(() =>
+      Promise.resolve({
+        build: '12.1.0.69299',
+        novo: true,
+        ativo: false,
+        linhas: { itens: 963, bonuses: 10085, contextos: 163207, escalas: 1300 },
+      }),
+    ),
+    ativar: jest.fn<Promise<WowDataActivateResult>, [string]>(() =>
+      Promise.resolve({ build: '12.1.0.69299', anterior: null }),
     ),
   };
 
@@ -99,6 +117,7 @@ describe('OpsController', () => {
       dummies as unknown as LootSessionDummiesService,
       ops as unknown as OpsService,
       wowDataReport as unknown as WowDataReportService,
+      wowDataLoader as unknown as WowDataLoaderService,
     );
   });
 
@@ -239,13 +258,45 @@ describe('OpsController', () => {
 
   it('bonus-unknown-report devolve o relatório do service', async () => {
     wowDataReport.gerar.mockResolvedValueOnce({
+      build: '12.1.0.69299',
       bonusIds: [{ bonusId: 9999, ocorrencias: 5 }],
       itemIds: [],
+      itensSemDadoNoBuild: [249276],
     });
 
     const resultado = await controller.bonusUnknownReport();
 
+    expect(wowDataReport.gerar).toHaveBeenCalledWith(undefined);
     expect(resultado.bonusIds).toEqual([{ bonusId: 9999, ocorrencias: 5 }]);
+    expect(resultado.itensSemDadoNoBuild).toEqual([249276]);
+  });
+
+  it('bonus-unknown-report com ?build= repassa o parâmetro — confere o PTR antes de ativar', async () => {
+    await controller.bonusUnknownReport('12.2.0.70000');
+    expect(wowDataReport.gerar).toHaveBeenCalledWith('12.2.0.70000');
+  });
+
+  it('wow-data-load repassa o arquivo pro loader', async () => {
+    const arquivo = { build: '12.1.0.69299' } as unknown as Parameters<
+      typeof controller.wowDataLoad
+    >[0];
+
+    const resultado = await controller.wowDataLoad(arquivo);
+
+    expect(wowDataLoader.carregar).toHaveBeenCalledWith(arquivo);
+    expect(resultado.linhas.contextos).toBe(163207);
+  });
+
+  it('wow-data-activate exige ?build=', async () => {
+    await expect(controller.wowDataActivate(undefined)).rejects.toThrow(BadRequestException);
+    expect(wowDataLoader.ativar).not.toHaveBeenCalled();
+  });
+
+  it('wow-data-activate repassa o build pro loader', async () => {
+    const resultado = await controller.wowDataActivate('12.1.0.69299');
+
+    expect(wowDataLoader.ativar).toHaveBeenCalledWith('12.1.0.69299');
+    expect(resultado.build).toBe('12.1.0.69299');
   });
 
   describe('rodar-dummies', () => {

@@ -326,11 +326,8 @@ devolve `corrigidos: 0`.
 
 ## O dado do cliente do WoW — gerar (TIT-137/TIT-139)
 
-O modelo no banco está pronto (TIT-137) e o gerador também (TIT-139). **A
-carga ainda não existe** — quem lê o arquivo e ativa o build é a TIT-140, e
-até ela chegar as tabelas `WowDataBuild`, `WowItemData`, `WowBonus`,
-`WowItemContextBonus` e `WowItemLevelScaling` ficam **vazias**. Isso é
-invisível para a guilda, porque nenhuma tela lê delas ainda.
+O modelo no banco está pronto (TIT-137), o gerador também (TIT-139), e a
+carga/ativação/conferência fecham a corrente (TIT-140, seção logo abaixo).
 
 **Não é rota de ops** — diferente do `catalog-generate`, que depende das
 APIs da Blizzard já configuradas na app. O gerador lê ~282 MB de arquivo
@@ -385,6 +382,70 @@ para o porquê disso ser mais forte que teste de CI.
 dado extraído do cliente, e o repositório é público (mesma regra do
 `wow.export` bruto).
 
+## O dado do cliente do WoW — carregar, ativar e conferir (TIT-140)
+
+Três rotas, e a separação entre elas é o ponto: **carregar é inofensivo,
+ativar é o que a guilda enxerga.**
+
+### Carregar
+
+Sobe o `.json` que o gerador emitiu — mesmo padrão do `catalog-load`/
+`loot-import-rc`, o arquivo vai no corpo porque o container não tem o
+arquivo e é efêmero. Valida contra `wowDataFileSchema` e grava tudo numa
+transação, em lotes (`contextos` sozinho passa de 650 mil parâmetros, acima
+do limite de 65.535 por statement do Postgres).
+
+**NUNCA ativa.** Recarregar o MESMO build apaga as linhas dele e regrava do
+zero — não faz merge. Se o build recarregado for o que está ativo agora, o
+campo `aviso` da resposta avisa em voz alta.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/wow-data-load" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @localdocs/wow-data-12.1.0.69299.json
+```
+
+```json
+{
+  "build": "12.1.0.69299",
+  "novo": true,
+  "ativo": false,
+  "linhas": { "itens": 963, "bonuses": 10085, "contextos": 163207, "escalas": 1300 }
+}
+```
+
+### Conferir (antes de ativar)
+
+Estende o `bonus-unknown-report` (seção abaixo) com `?build=` — dá para
+validar um build recém-carregado, do PTR, **antes** de ativá-lo. Confere →
+ativa, nessa ordem.
+
+```bash
+curl "http://localhost:3001/internal/ops/bonus-unknown-report?build=12.1.0.69299" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+### Ativar
+
+Rota própria — nunca um flag escondido dentro da carga. Troca qual build a
+guilda enxerga: desativa o atual e ativa o pedido na MESMA transação (o
+índice parcial único do `WowDataBuild` recusa dois builds ativos ao mesmo
+tempo, e fazer isso em dois comandos separados abriria uma janela com ZERO
+builds ativos).
+
+Recusa (404) build que nunca foi carregado. Voltar atrás é a MESMA chamada,
+com o build anterior — instantâneo, sem regerar nada.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/wow-data-activate?build=12.1.0.69299" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "build": "12.1.0.69299", "anterior": "12.0.5.68201" }
+```
+
 > **O `POST /internal/ops/bonus-load` foi REMOVIDO** (TIT-137). Ele subia um
 > dicionário `bonusId -> significado` curado à mão a partir do wago.tools, com
 > um campo `kind` singular — e medido no build 12.1.0, **19% dos bonus ids
@@ -397,37 +458,50 @@ dado extraído do cliente, e o repositório é público (mesma regra do
 > hoje eles estão decodificados contra o SimulationCraft e 21 espécimes reais,
 > um a um, em `docs/db2-do-cliente.md`.
 
-## Dicionário de bonus IDs — relatório de desconhecidos (TIT-82)
+## Dicionário de bonus IDs — relatório de desconhecidos (TIT-82/TIT-140)
 
 Sem script antigo equivalente. Consulta sobre dado que **já temos
 guardado** — não faz chamada externa nenhuma:
 
 - **bônus desconhecidos**: varre os `itemString` de `LootLine` e
   `LootSessionItem`, extrai os `bonusIds` com o `parseItemString()` do
-  shared, e subtrai o que o **build ativo** conhece.
+  shared, e subtrai o que o build conferido conhece.
 - **itens não catalogados**: `itemId` que aparece no histórico/sessões e
-  não tem `WowItem` cadastrado.
+  não tem `WowItem` cadastrado — falha de CATALOGAÇÃO.
+- **itens sem dado no build**: `itemId` que **está** no catálogo mas o build
+  conferido não trouxe `WowItemData` dele — falha de CARGA (TIT-136). Pergunta
+  diferente da anterior: aquela é sobre o que a liderança nunca cadastrou,
+  esta é sobre o que já foi cadastrado e o build não cobre.
 
-As duas listas vêm **ordenadas por frequência** — quantas linhas cada id
-afeta. É o que transforma "a exibição está incompleta" em lista de trabalho
-priorizada: vale rodar depois de todo patch.
+`?build=` escolhe qual build conferir — sem ele, cai no **ativo**. É o que
+deixa validar um build recém-carregado (o PTR) antes de `wow-data-activate`.
 
-**Sem build ativo, todo bônus aparece como desconhecido** — e isso é a
-verdade, não um caso de borda. É o estado antes da primeira carga (TIT-140),
-e é exatamente o que se quer ver nesse momento.
+As listas de bonus/item **não catalogado** vêm ordenadas por frequência —
+quantas linhas cada id afeta. `itensSemDadoNoBuild` não tem frequência (cada
+item só existe uma vez no catálogo), vem ordenada por `itemId`.
+
+**Sem build para conferir (nem `?build=`, nem ativo), tudo aparece como
+desconhecido/sem dado** — e isso é a verdade, não um caso de borda. É o
+estado antes da primeira carga.
 
 ```bash
 curl "http://localhost:3001/internal/ops/bonus-unknown-report" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+
+# conferindo um build específico, antes de ativá-lo:
+curl "http://localhost:3001/internal/ops/bonus-unknown-report?build=12.1.0.69299" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
 ```
 
 ```json
 {
+  "build": "12.1.0.69299",
   "bonusIds": [
     { "bonusId": 9226, "ocorrencias": 38 },
     { "bonusId": 1485, "ocorrencias": 12 }
   ],
-  "itemIds": [{ "itemId": 249999, "ocorrencias": 3 }]
+  "itemIds": [{ "itemId": 249999, "ocorrencias": 3 }],
+  "itensSemDadoNoBuild": [249276]
 }
 ```
 

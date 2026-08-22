@@ -50,6 +50,13 @@ de segredos do `CLAUDE.md`: **este repositório é público**.
     JSON** (objeto), não uma string, então `fs.readFile()` sozinho já
     produz JSON válido — sem precisar de `pnpm dump:escape` nem de nenhum
     outro tratamento.
+  - `wow_data_json_path` — caminho absoluto, na sua máquina, do
+    `wow-data-<build>.json` que `pnpm gerar-db2` emitiu (TIT-139) — ver
+    `docs/ops.md`, seção "O dado do cliente do WoW — carregar, ativar e
+    conferir". Usado pelo request `internal/ops/Wow data load`. O arquivo
+    fica em `localdocs/`, fora do git (é dado extraído do cliente), então
+    o corpo salvo na collection aponta pro caminho de quem editou por
+    último — reaponte pro seu antes de enviar.
 - **`Prod`** — sub-environment irmã de `Local`, também **não marcada
   `public`**. Contra produção, por túnel SSH — nunca direto: o Caddy
   bloqueia `/internal/ops/*` no domínio público, e o resto da área interna
@@ -65,7 +72,8 @@ seletor antes de enviar (`-e ev_...` no CLI) — ela sobrescreve
 
 **`Prod` é destacada em vermelho no seletor do Yaak** de propósito. As
 rotas de `internal/ops/*` **escrevem** no banco (snapshot,
-attendance-sync, catalog-load...) — mandar uma dessas achando que está em
+attendance-sync, catalog-load, wow-data-load, wow-data-activate...) —
+mandar uma dessas achando que está em
 `Local` quando na verdade é `Prod` selecionada não é um teste ruim, é
 grava dado real errado. Confira a environment ativa antes de enviar
 qualquer coisa em `ops/`.
