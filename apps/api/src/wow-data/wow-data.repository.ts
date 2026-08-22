@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma, type WowBonding, type WowScalingType } from '@prisma/client';
 import {
-  Prisma,
-  type WowBonding,
-  type WowBonusTertiary,
-  type WowScalingType,
-} from '@prisma/client';
-import { COLS_BONUS, COLS_CONTEXT, COLS_ITEM, COLS_SCALING, type BonusFacets } from '@titan/shared';
+  COLS_BONUS,
+  COLS_CONTEXT,
+  COLS_ITEM,
+  COLS_SCALING,
+  COLS_SET,
+  type BonusFacets,
+} from '@titan/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 const facetasSelect = {
@@ -15,7 +17,9 @@ const facetasSelect = {
   trackMaxRank: true,
   trackScalingId: true,
   itemLevel: true,
-  tertiary: true,
+  itemLevelMarcador: true,
+  statIds: true,
+  statAllocs: true,
   hasSocket: true,
   binding: true,
   difficulty: true,
@@ -127,6 +131,7 @@ export class WowDataRepository {
       bonuses: LinhaBonus[];
       contextos: LinhaContexto[];
       escalas: LinhaEscala[];
+      sets: LinhaSet[];
     },
   ): Promise<ContagemDeLinhasGravadas> {
     return this.prisma.$transaction(
@@ -150,6 +155,7 @@ export class WowDataRepository {
         await tx.wowBonus.deleteMany({ where: { buildId } });
         await tx.wowItemContextBonus.deleteMany({ where: { buildId } });
         await tx.wowItemLevelScaling.deleteMany({ where: { buildId } });
+        await tx.wowItemSet.deleteMany({ where: { buildId } });
 
         await emLotes(tabelas.itens, COLS_ITEM.length, (lote) =>
           tx.wowItemData.createMany({ data: lote.map((linha) => paraItemData(buildId, linha)) }),
@@ -168,12 +174,17 @@ export class WowDataRepository {
           }),
         );
 
+        await emLotes(tabelas.sets, COLS_SET.length, (lote) =>
+          tx.wowItemSet.createMany({ data: lote.map((linha) => paraSet(buildId, linha)) }),
+        );
+
         return {
           novo: !jaExistia,
           itens: tabelas.itens.length,
           bonuses: tabelas.bonuses.length,
           contextos: tabelas.contextos.length,
           escalas: tabelas.escalas.length,
+          sets: tabelas.sets.length,
         };
       },
       { timeout: 120_000 },
@@ -205,6 +216,7 @@ export interface ContagemDeLinhasGravadas {
   bonuses: number;
   contextos: number;
   escalas: number;
+  sets: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -212,6 +224,7 @@ export interface ContagemDeLinhasGravadas {
 /* -------------------------------------------------------------------------- */
 
 type LinhaItem = Record<(typeof COLS_ITEM)[number], unknown>;
+type LinhaSet = Record<(typeof COLS_SET)[number], unknown>;
 type LinhaBonus = Record<(typeof COLS_BONUS)[number], unknown>;
 type LinhaContexto = Record<(typeof COLS_CONTEXT)[number], unknown>;
 type LinhaEscala = Record<(typeof COLS_SCALING)[number], unknown>;
@@ -256,6 +269,7 @@ function paraItemData(buildId: string, linha: LinhaItem): Prisma.WowItemDataCrea
     dmgVariance: linha.dmgVariance as number | null,
     flavor: linha.flavor as string | null,
     nameDescriptionId: linha.nameDescriptionId as number | null,
+    itemSetId: linha.itemSetId as number | null,
     budgetIndex: linha.budgetIndex as number,
     scalingType: linha.scalingType as WowScalingType,
     armorModifier: linha.armorModifier as number | null,
@@ -272,12 +286,26 @@ function paraBonus(buildId: string, linha: LinhaBonus): Prisma.WowBonusCreateMan
     trackMaxRank: linha.trackMaxRank as number | null,
     trackScalingId: linha.trackScalingId as number | null,
     itemLevel: linha.itemLevel as number | null,
-    tertiary: linha.tertiary as WowBonusTertiary | null,
+    itemLevelMarcador: linha.itemLevelMarcador as number | null,
+    statIds: linha.statIds as number[],
+    statAllocs: linha.statAllocs as number[],
     hasSocket: linha.hasSocket as boolean,
     binding: linha.binding as WowBonding | null,
     difficulty: linha.difficulty as string | null,
     difficultyColor: linha.difficultyColor as number | null,
     quality: linha.quality as number | null,
+  };
+}
+
+function paraSet(buildId: string, linha: LinhaSet): Prisma.WowItemSetCreateManyInput {
+  return {
+    buildId,
+    itemSetId: linha.itemSetId as number,
+    name: linha.name as string,
+    pieceItemIds: linha.pieceItemIds as number[],
+    // `bonuses` é NOT NULL: set sem bônus é lista vazia, nunca ausência —
+    // conjunto existe mesmo antes de a Blizzard publicar os efeitos dele.
+    bonuses: (linha.bonuses ?? []) as Prisma.InputJsonValue,
   };
 }
 

@@ -755,14 +755,9 @@ model EncounterDrop {
   @@index([itemId])
 }
 
-/// Os quatro terciários observados. Ver o comentário de `BONUS_TERTIARIES` no
-/// shared — lista fechada de propósito.
-enum WowBonusTertiary {
-  avoidance
-  leech
-  speed
-  indestructible
-}
+/// O vocabulário dos quatro terciários vive só no shared agora
+/// (`BONUS_TERTIARIES`), porque deixou de ser coluna: o terciário deriva de
+/// `WowBonus.statIds`, junto com o valor. Ver o comentário de `statIds`.
 
 /// Como a peça se vincula, quando um BÔNUS sobrescreve o vínculo do item base.
 ///
@@ -816,6 +811,7 @@ model WowDataBuild {
   bonuses      WowBonus[]
   contextos    WowItemContextBonus[]
   escalas      WowItemLevelScaling[]
+  sets         WowItemSet[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -881,6 +877,14 @@ model WowItemData {
   /// `ItemNameDescriptionID` — a segunda fonte do descritor de dificuldade,
   /// quando o bônus não traz `Type 4`.
   nameDescriptionId Int?
+
+  /// `ItemSparse.ItemSet` — a que conjunto esta peça pertence. Nulo na maioria.
+  ///
+  /// **Não é FK.** O `WowItemSet` é por build, e nem todo set alcançado pelo
+  /// catálogo tem linha lá se o item pertencer a um conjunto cujas outras
+  /// peças estão fora do nosso catálogo. Id sem linha correspondente é lacuna,
+  /// não erro — o tooltip omite a seção de set.
+  itemSetId Int?
 
   /// DERIVADOS PELO GERADOR, não recalculados no request.
   ///
@@ -948,7 +952,41 @@ model WowBonus {
   /// → curva + offset. Nulo quando o bonus não mexe em ilvl.
   itemLevel Int?
 
-  tertiary WowBonusTertiary?
+  /// O SEGUNDO valor do `Value` do `Type 49`/`51` — o desempate, quando duas
+  /// listas do mesmo `itemString` disputam o ilvl.
+  ///
+  /// O `Ancient Amani Greataxe` é o caso: `13844` traz `"449,1"` (ilvl 256) e
+  /// `13845` traz `"450,0"` (ilvl 263, que é o que o tooltip mostra). **O `0`
+  /// vence.** Sem esta coluna as duas linhas ficam indistinguíveis no banco, e
+  /// o resolvedor acerta ou erra conforme a ordem de iteração — que não é
+  /// regra, é sorte, e erra em silêncio arrastando todos os stats junto.
+  ///
+  /// Guardado **cru**, não como booleano `confiavel`: um espécime só não prova
+  /// o enum inteiro do campo (ver `docs/db2-do-cliente.md`). A regra "prefere
+  /// o 0" mora no shared, onde é testável e barata de revisar.
+  itemLevelMarcador Int?
+
+  /// Os stats que ESTE bonus acrescenta — o `Type 2`, pareado por posição
+  /// igual ao `WowItemData`.
+  ///
+  /// **Substituiu a coluna `tertiary`, que era um enum único.** Medido no
+  /// build 12.1.0: o `Type 2` acrescenta **qualquer** stat, e quase sempre
+  /// DOIS de uma vez — 740 listas com dois, 270 com um, 12 com três, 1 com
+  /// quatro. E os mais comuns são secundários (Versatility em 468 listas,
+  /// Haste 372, Mastery 368, Crit 353) contra 8 de cada terciário. Um enum
+  /// singular era o mesmo erro do antigo `kind`, numa faceta que passou
+  /// despercebida.
+  ///
+  /// **Fica no bônus e não no item porque o terciário é sorteado no drop:** o
+  /// `ItemSparse` do `Relentless Rider's Crown` traz `[74, 7, 36, 49]`, sem
+  /// leech nenhum — o leech vem do bonus `41` (`Type 2 = "62,3000"`). Gravar
+  /// isso no `WowItemData` faria TODO drop daquele elmo mostrar leech,
+  /// inclusive os que não têm.
+  ///
+  /// O terciário exibido deriva daqui (`statIds ∈ {61,62,63,64}`), e vem com o
+  /// valor junto — que é o que faltava.
+  statIds    Int[]
+  statAllocs Int[]
 
   /// `Type 6` — o bonus acrescenta um socket.
   hasSocket Boolean @default(false)
@@ -966,6 +1004,48 @@ model WowBonus {
 
   @@id([buildId, bonusId])
   @@index([bonusId])
+}
+
+/// Conjunto de itens (tier set), por build — TIT-141.
+///
+/// A pesquisa tinha isto resolvido desde a PR #89 (nome, peças, bônus por spec
+/// e por threshold, e o modo sem personagem), mas **nunca virou dado**: não
+/// havia coluna, o gerador não emitia, e a auto-conferência pulava a chave em
+/// silêncio porque ela não é número. Três espécimes da fixture trazem set e
+/// nenhum deles jamais foi verificado por caminho nenhum.
+///
+/// Volume pequeno: dos 975 itens do catálogo, **9 pertencem a set**, em **3
+/// conjuntos**. As peças de tier em geral não dropam — dropam os tokens, que
+/// não têm `ItemSet`.
+model WowItemSet {
+  buildId String
+  build   WowDataBuild @relation(fields: [buildId], references: [buildId], onDelete: Cascade)
+
+  /// `ItemSet.ID`, apontado por `WowItemData.itemSetId`.
+  itemSetId Int
+
+  /// `ItemSet.Name_lang` — e ele **não é o nome de nenhuma das peças**.
+  name String
+
+  /// Os `ItemID` das peças, na ordem do `ItemSet`.
+  ///
+  /// Guardado inteiro mesmo quando parte das peças está fora do catálogo: o
+  /// tooltip lista as cinco, e omitir as que a gente não catalogou faria o
+  /// conjunto parecer menor do que é.
+  pieceItemIds Int[]
+
+  /// Os bônus, por spec e por threshold — do `ItemSetSpell`.
+  ///
+  /// JSON pela mesma régua do `WowItemData.effects`: é lista de
+  /// `{ specs, threshold, descricao }`, particular do conjunto, e não vira
+  /// filtro nem coluna de relatório.
+  ///
+  /// **A contagem `(4/5)` NÃO se guarda aqui** — ela não existe sem
+  /// personagem, e o popover renderiza sem um. Guarda-se o total; o numerador
+  /// é omitido, que é a mesma honestidade do `null` em stat que não fecha.
+  bonuses Json
+
+  @@id([buildId, itemSetId])
 }
 
 /// A árvore de bônus, JÁ RESOLVIDA pelo gerador — TIT-137.

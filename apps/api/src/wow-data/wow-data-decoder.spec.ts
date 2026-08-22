@@ -13,7 +13,9 @@ function facetas(over: Partial<BonusFacets> & { bonusId: number }): BonusFacets 
     trackMaxRank: null,
     trackScalingId: null,
     itemLevel: null,
-    tertiary: null,
+    itemLevelMarcador: null,
+    statIds: [],
+    statAllocs: [],
     hasSocket: false,
     binding: null,
     difficulty: null,
@@ -41,8 +43,8 @@ const HERO_2 = facetas({
   trackMaxRank: 6,
   trackScalingId: 12,
 });
-const AVOIDANCE = facetas({ bonusId: 40, tertiary: 'avoidance' });
-const LEECH = facetas({ bonusId: 41, tertiary: 'leech' });
+const AVOIDANCE = facetas({ bonusId: 40, statIds: [63], statAllocs: [3000] });
+const LEECH = facetas({ bonusId: 41, statIds: [62], statAllocs: [3000] });
 const SOCKET = facetas({ bonusId: 13534, hasSocket: true });
 const SOCKET_2 = facetas({ bonusId: 13668, hasSocket: true });
 
@@ -57,7 +59,8 @@ describe('decodeBonuses', () => {
       itemLevel: null,
       track: { nome: 'Myth', rank: 4, de: 6, scalingId: 12 },
       sockets: 1,
-      terciarios: ['avoidance'],
+      terciarios: [{ tipo: 'avoidance', alocacao: 3000 }],
+      statsAdicionados: [{ statId: 63, alocacao: 3000 }],
       binding: null,
       dificuldade: null,
       desconhecidos: [],
@@ -118,7 +121,7 @@ describe('decodeBonuses', () => {
 
     expect(resultado.desconhecidos).toEqual([999999]);
     expect(resultado.track).toEqual({ nome: 'Myth', rank: 4, de: 6, scalingId: 12 });
-    expect(resultado.terciarios).toEqual(['avoidance']);
+    expect(resultado.terciarios).toEqual([{ tipo: 'avoidance', alocacao: 3000 }]);
   });
 
   it('bonusIds vazio devolve a estrutura zerada, sem estourar', () => {
@@ -127,6 +130,7 @@ describe('decodeBonuses', () => {
       track: null,
       sockets: 0,
       terciarios: [],
+      statsAdicionados: [],
       binding: null,
       dificuldade: null,
       desconhecidos: [],
@@ -152,7 +156,10 @@ describe('decodeBonuses', () => {
       dicionario(AVOIDANCE, LEECH),
     );
 
-    expect(resultado.terciarios).toEqual(['leech', 'avoidance']);
+    expect(resultado.terciarios).toEqual([
+      { tipo: 'leech', alocacao: 3000 },
+      { tipo: 'avoidance', alocacao: 3000 },
+    ]);
   });
 
   it('dois bonus de track no mesmo itemString: o último vence, sem estourar', () => {
@@ -168,7 +175,10 @@ describe('decodeBonuses', () => {
     );
 
     expect(resultado.sockets).toBe(2);
-    expect(resultado.terciarios).toEqual(['leech', 'leech']);
+    expect(resultado.terciarios).toEqual([
+      { tipo: 'leech', alocacao: 3000 },
+      { tipo: 'leech', alocacao: 3000 },
+    ]);
   });
 
   /**

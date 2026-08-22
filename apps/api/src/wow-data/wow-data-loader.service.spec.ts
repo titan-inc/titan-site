@@ -10,6 +10,7 @@ function arquivoMinimo(build: string): WowDataFile {
     bonuses: { cols: [], rows: [] },
     contextos: { cols: [], rows: [] },
     escalas: { cols: [], rows: [] },
+    sets: { cols: [], rows: [] },
   } as unknown as WowDataFile;
 }
 
@@ -20,6 +21,7 @@ function montar(dados: { buildAtivo?: string | null; buildExiste?: boolean } = {
     bonuses: 10085,
     contextos: 163207,
     escalas: 1300,
+    sets: 0,
   };
 
   const repo = {
@@ -45,6 +47,7 @@ describe('WowDataLoaderService.carregar', () => {
       bonuses: 10085,
       contextos: 163207,
       escalas: 1300,
+      sets: 0,
     });
   });
 
@@ -80,7 +83,7 @@ describe('WowDataLoaderService.carregar', () => {
 
     expect(repo.regravarBuild).toHaveBeenCalledWith(
       '12.1.0.69299',
-      expect.objectContaining({ itens: [], bonuses: [], contextos: [], escalas: [] }),
+      expect.objectContaining({ itens: [], bonuses: [], contextos: [], escalas: [], sets: [] }),
     );
   });
 });

@@ -46,7 +46,24 @@ export const decodedBonusesSchema = z.object({
   /** Quantos bonus de socket apareceram. Zero é o caso comum. */
   sockets: z.number().int().nonnegative(),
 
-  terciarios: bonusTertiarySchema.array(),
+  /**
+   * Os terciários, **com a alocação** — o número final ainda depende do
+   * orçamento do ilvl, que é da TIT-136.
+   *
+   * A alocação não é constante (Speed de 1925 a 5973, Leech de 3000 a 23892):
+   * ela vem do `Type 2` do bonus, nunca de constante no código.
+   */
+  terciarios: z.object({ tipo: bonusTertiarySchema, alocacao: z.number().int() }).array(),
+
+  /**
+   * TODOS os stats que os bônus acrescentam, terciário ou não.
+   *
+   * Existe porque o `Type 2` acrescenta **secundário** muito mais do que
+   * terciário — Versatility em 468 listas, Haste 372, Mastery 368, Crit 353,
+   * contra 8 de cada terciário. A versão anterior só guardava o terciário e
+   * perdia todo o resto em silêncio.
+   */
+  statsAdicionados: z.object({ statId: z.number().int(), alocacao: z.number().int() }).array(),
 
   /**
    * Vínculo imposto por bônus, quando existe — sobrescreve o do item base.
