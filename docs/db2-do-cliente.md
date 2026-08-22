@@ -885,8 +885,21 @@ ilvl. Foi assim que se descobriu que o trinket estava em 292/295.
 
 ## Terciários, e uma regra de exibição
 
-Terciário entra como stat comum: o bônus traz `Type 2` com alocação **3000**, e o
-valor sai da mesma fórmula dos secundários.
+Terciário entra como stat comum: o bônus traz `Type 2`, e o valor sai da mesma
+fórmula dos secundários.
+
+> **A alocação NÃO é 3000 — os quatro bônus da tabela abaixo é que são.**
+> Medido no build inteiro (TIT-141): Speed vai de **1925 a 5973**, Leech de
+> **3000 a 23892**, Avoidance de **1925 a 11946**. Só `indestructible` é sempre
+> 3000, e ele é flag.
+>
+> E o `Type 2` **não é sobre terciário**: ele acrescenta qualquer stat, e quase
+> sempre **dois de uma vez** — 740 listas com dois, 270 com um, 12 com três, 1
+> com quatro. Os mais comuns são **secundários**: Versatility em 468 listas,
+> Haste 372, Mastery 368, Crit 353, contra 8 de cada terciário.
+>
+> Por isso o `WowBonus` guarda `statIds`/`statAllocs` pareados, e não um rótulo
+> de terciário: o rótulo perdia o valor **e** os 1.361 casos de secundário.
 
 | bônus | stat                | verificado                                      |
 | ----- | ------------------- | ----------------------------------------------- |

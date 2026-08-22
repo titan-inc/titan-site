@@ -305,7 +305,7 @@ function paraSet(buildId: string, linha: LinhaSet): Prisma.WowItemSetCreateManyI
     pieceItemIds: linha.pieceItemIds as number[],
     // `bonuses` é NOT NULL: set sem bônus é lista vazia, nunca ausência —
     // conjunto existe mesmo antes de a Blizzard publicar os efeitos dele.
-    bonuses: (linha.bonuses ?? []) as Prisma.InputJsonValue,
+    bonuses: linha.bonuses ?? [],
   };
 }
 

@@ -20,8 +20,10 @@ import {
   carregarArmorLocation,
   carregarStatsAdicionaisPorBonus,
   carregarQualidadeExtraPorBonus,
+  carregarConjuntos,
   type ItemSparseResumo,
   type StatAdicional,
+  type ConjuntoDeItens,
 } from './carregadores.js';
 
 /**
@@ -30,8 +32,13 @@ import {
  * flag de pular. Ver "Como ele se confere" na issue.
  *
  * Escopo: item level, os valores de stat (primário, secundários,
- * terciários), armadura, `Block` e dano de arma. Track, set e texto de
- * efeito entram em checkpoints seguintes.
+ * terciários), armadura, `Block`, dano de arma, track, texto de efeito e o
+ * conjunto.
+ *
+ * **Chave da fixture que ninguém confere é DIVERGÊNCIA, nunca `continue`**
+ * (TIT-141). Foi um `continue` silencioso em cima de `typeof !== 'number'`
+ * que deixou o `set` de três espécimes atravessar a fixture inteira sem
+ * nunca ser olhado.
  */
 
 /** statId → nome canônico. Primário flexível (71-74) fica de fora — não tem
@@ -81,6 +88,13 @@ export function rodarAutoConferencia(
   const qualidadeExtraPorBonus = carregarQualidadeExtraPorBonus(db);
   const trackResolver = new ResolvedorTrack(db);
   const efeitoResolver = new ResolvedorEfeito(db);
+
+  const itemSetIds = [
+    ...new Set(
+      [...itemSparsePorId.values()].map((i) => i.itemSet).filter((id): id is number => id !== 0),
+    ),
+  ];
+  const conjuntosPorId = new Map(carregarConjuntos(db, itemSetIds).map((c) => [c.itemSetId, c]));
 
   const divergencias: DivergenciaFixture[] = [];
   let valoresConferidos = 0;
@@ -139,6 +153,7 @@ export function rodarAutoConferencia(
     valoresConferidos += conferirDanoDeArma(divergencias, especime, item, qualidade, escala);
     valoresConferidos += conferirTrack(divergencias, especime, bonusAplicados, trackResolver);
     valoresConferidos += conferirEfeito(divergencias, especime, escala, efeitoResolver);
+    valoresConferidos += conferirSet(divergencias, especime, item.itemSet, conjuntosPorId);
   }
 
   return { valoresConferidos, divergencias };
@@ -274,15 +289,23 @@ function conferirStats(
   let conferidos = 0;
   const { esperado } = especime;
 
-  // Chaves que pertencem a checkpoints futuros (track, set, texto) —
-  // ignoradas aqui de propósito, não são "não encontradas". armadura,
-  // danoMin/danoMax/dps/speed(arma) e block são conferidos à parte, por
-  // helpers dedicados — não são "stat" no sentido do ItemSparse.
-  const FORA_DE_ESCOPO = new Set(['armadura', 'danoMin', 'danoMax', 'dps', 'block']);
+  // Chaves conferidas por helpers dedicados, fora desta função — armadura,
+  // dano e block não são "stat" no sentido do `ItemSparse`.
+  const CONFERIDO_EM_OUTRO_LUGAR = new Set([
+    'armadura',
+    'danoMin',
+    'danoMax',
+    'dps',
+    'block',
+    'track',
+    // Os dois abaixo têm conferidor próprio — `conferirEfeito` e `conferirSet`.
+    'efeito',
+    'set',
+  ]);
   const ehArma = 'danoMin' in esperado;
 
   for (const [campo, valorEsperado] of Object.entries(esperado)) {
-    if (FORA_DE_ESCOPO.has(campo)) continue;
+    if (CONFERIDO_EM_OUTRO_LUGAR.has(campo)) continue;
     if (campo === 'speed' && ehArma) continue; // "speed" de arma é velocidade, conferido em conferirDanoDeArma.
 
     if (campo === 'primario') {
@@ -296,7 +319,39 @@ function conferirStats(
       continue;
     }
 
-    if (typeof valorEsperado !== 'number') continue; // não é stat (set, track, notas...)
+    // `Indestructible` é FLAG: a fórmula calcula um número (68 no espécime) e
+    // o jogo mostra só a palavra. Conferir o valor seria conferir algo que a
+    // tela nunca imprime — o que se prova é que o terciário está PRESENTE.
+    if (campo === 'indestructible') {
+      conferir(
+        divergencias,
+        especime.nome,
+        'indestructible',
+        valorEsperado,
+        computado.porNome.has('indestructible'),
+      );
+      conferidos++;
+      continue;
+    }
+
+    // CHAVE QUE NINGUÉM CONFERE É DIVERGÊNCIA, NUNCA `continue` — TIT-141.
+    //
+    // A versão anterior fazia `if (typeof valorEsperado !== 'number') continue`,
+    // e foi assim que o `set` dos três espécimes atravessou a fixture inteira
+    // sem NUNCA ser verificado: ele é objeto, então o laço o pulava calado.
+    // Auto-conferência que ignora o que não entende dá falsa segurança — o
+    // "199/199" contava só o que ela topava conferir.
+    if (typeof valorEsperado !== 'number') {
+      divergencias.push({
+        especime: especime.nome,
+        campo,
+        esperado: valorEsperado,
+        calculado:
+          '(nenhum conferidor cobre esta chave — acrescente um, ou liste em CONFERIDO_EM_OUTRO_LUGAR)',
+      });
+      continue;
+    }
+
     conferir(divergencias, especime.nome, campo, valorEsperado, computado.porNome.get(campo));
     conferidos++;
   }
@@ -465,5 +520,61 @@ function conferirEfeito(
     conferidos++;
   }
 
+  return conferidos;
+}
+
+/**
+ * O conjunto: nome e número de peças — TIT-141.
+ *
+ * **Antes desta função a chave `set` da fixture atravessava a conferência sem
+ * ser olhada**, porque o laço de stats pulava tudo que não fosse número. Três
+ * espécimes trazem set e nenhum era verificado por caminho nenhum.
+ *
+ * O TEXTO dos bônus não é conferido aqui: ele depende de renderizar spell com
+ * placeholder e de saber a spec, o que é da TIT-136. O que se prova agora é
+ * que o conjunto existe, tem o nome certo e o número certo de peças — e isso
+ * já pega o erro que importa: item apontando para conjunto errado.
+ */
+function conferirSet(
+  divergencias: DivergenciaFixture[],
+  especime: EspecimeFixture,
+  itemSet: number,
+  conjuntosPorId: Map<number, ConjuntoDeItens>,
+): number {
+  // NO TOPO do espécime, não em `esperado` — ver o comentário do campo em
+  // `fixture.ts`. Lia do lugar errado e devolvia zero calado.
+  const esperado = especime.set;
+  if (!esperado) return 0;
+
+  const conjunto = conjuntosPorId.get(itemSet);
+  if (!conjunto) {
+    divergencias.push({
+      especime: especime.nome,
+      campo: 'set',
+      esperado: esperado.nome ?? '(conjunto)',
+      calculado: `ItemSparse.ItemSet = ${itemSet}, sem linha em ItemSet`,
+    });
+    return 0;
+  }
+
+  let conferidos = 0;
+  if (esperado.itemSetId !== undefined) {
+    conferir(divergencias, especime.nome, 'set.itemSetId', esperado.itemSetId, conjunto.itemSetId);
+    conferidos++;
+  }
+  if (esperado.nome !== undefined) {
+    conferir(divergencias, especime.nome, 'set.nome', esperado.nome, conjunto.name);
+    conferidos++;
+  }
+  if (esperado.pecas !== undefined) {
+    conferir(
+      divergencias,
+      especime.nome,
+      'set.pecas',
+      esperado.pecas,
+      conjunto.pieceItemIds.length,
+    );
+    conferidos++;
+  }
   return conferidos;
 }

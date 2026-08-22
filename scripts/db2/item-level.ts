@@ -134,7 +134,7 @@ export class ResolvedorItemLevel {
   resolverComConfianca(
     bonusId: number,
     visitados = new Set<number>(),
-  ): { ilvl: number; confiavel: boolean } | null {
+  ): { ilvl: number; confiavel: boolean; marcador: number } | null {
     if (visitados.has(bonusId)) return null;
     visitados.add(bonusId);
 
@@ -152,7 +152,12 @@ export class ResolvedorItemLevel {
       // config" em vez de falha dura — diferente de um id positivo ausente,
       // que continua sendo extração incompleta.
       if (configId === 0) return null;
-      return { ilvl: this.resolverPelaConfig(configId!), confiavel: (marcador ?? 0) === 0 };
+
+      // `marcador` vai CRU para o banco, além do booleano derivado: um
+      // espécime só não prova o enum inteiro do campo, e um `2` que apareça
+      // amanhã seria achatado em `1` se só o booleano sobrevivesse.
+      const cru = marcador ?? 0;
+      return { ilvl: this.resolverPelaConfig(configId!), confiavel: cru === 0, marcador: cru };
     }
 
     const type50 = linhas.find((l) => l.Type === 50);

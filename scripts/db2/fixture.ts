@@ -24,6 +24,20 @@ export interface EspecimeFixture {
   /** Cru — o comparador de cada checkpoint decide quais chaves usar. */
   esperado: Record<string, unknown>;
   track?: TrackEsperado;
+  /**
+   * O conjunto esperado — mora no TOPO do espécime, não dentro de `esperado`.
+   *
+   * Estava sendo lido do lugar errado, e o conferidor devolvia zero em
+   * silêncio (TIT-141) — a mesma classe de buraco que a issue conserta, um
+   * nível acima. Fica tipado aqui para o erro virar de compilação.
+   */
+  set?: SetEsperado;
+}
+
+export interface SetEsperado {
+  nome?: string;
+  pecas?: number;
+  itemSetId?: number;
 }
 
 export function carregarFixture(caminho: string): EspecimeFixture[] {
@@ -44,6 +58,7 @@ export function carregarFixture(caminho: string): EspecimeFixture[] {
             rank.esperado,
             false,
             rank.track,
+            item.set,
           ),
         );
       }
@@ -57,6 +72,7 @@ export function carregarFixture(caminho: string): EspecimeFixture[] {
           item.esperado!,
           item.CONTAMINADO ?? false,
           item.track,
+          item.set,
         ),
       );
     }
@@ -72,6 +88,7 @@ interface RawItem {
   esperado?: Record<string, unknown>;
   CONTAMINADO?: boolean;
   track?: TrackEsperado;
+  set?: SetEsperado;
   ranks?: Array<{
     itemString: string;
     itemLevel: number;
@@ -88,6 +105,7 @@ function normalizar(
   esperado: Record<string, unknown>,
   contaminado: boolean,
   track: TrackEsperado | undefined,
+  set: SetEsperado | undefined,
 ): EspecimeFixture {
   const { itemContext, bonusIds } = parsearItemString(itemString);
   return {
@@ -100,6 +118,7 @@ function normalizar(
     contaminado,
     esperado,
     track,
+    set,
   };
 }
 
