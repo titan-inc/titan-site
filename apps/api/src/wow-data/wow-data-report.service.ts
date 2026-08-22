@@ -6,10 +6,25 @@ import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import { WowDataRepository } from './wow-data.repository';
 
 export interface RelatorioDeDesconhecidos {
+  /**
+   * O build contra o qual este relatório rodou — o parâmetro `build`, ou o
+   * ativo quando ele não vem. `null` só no estado antes da primeira carga.
+   */
+  build: string | null;
   /** Bonus IDs fora do dicionário, mais frequente primeiro. */
   bonusIds: Array<{ bonusId: number; ocorrencias: number }>;
   /** `itemId` sem `WowItem` cadastrado, mais frequente primeiro. */
   itemIds: Array<{ itemId: number; ocorrencias: number }>;
+  /**
+   * `itemId` cadastrado no catálogo mas SEM `WowItemData` no build
+   * conferido — TIT-136 precisa saber disso antes de ativar um PTR.
+   *
+   * Pergunta diferente de `itemIds`: aquela é falha de CATALOGAÇÃO (item no
+   * histórico que ninguém cadastrou); esta é falha de CARGA (item que a
+   * liderança já cadastrou, mas o build não trouxe dado nenhum dele — patch
+   * que removeu o item, ou catálogo na frente do build carregado).
+   */
+  itensSemDadoNoBuild: number[];
 }
 
 /** Uma linha crua: o que os dois repositórios de origem devolvem em comum. */
@@ -35,26 +50,41 @@ export class WowDataReportService {
     private readonly catalog: LootCatalogRepository,
   ) {}
 
-  /** Lê as duas fontes, gera as duas listas. Cada uma tem o executor dela. */
-  async gerar(): Promise<RelatorioDeDesconhecidos> {
-    const buildAtivo = await this.dados.buildAtivo();
+  /**
+   * Lê as fontes, gera as três listas. Cada uma tem o executor dela.
+   *
+   * `build` deixa conferir um build que ainda não foi ativado — o PTR antes
+   * da virada (TIT-140). Omitido, cai no ativo; sem ativo nenhum, vira o
+   * mesmo estado de "nada conhecido" de antes da primeira carga.
+   */
+  async gerar(build?: string): Promise<RelatorioDeDesconhecidos> {
+    const buildAlvo = build ?? (await this.dados.buildAtivo());
 
-    const [doHistorico, dasSessoes, idsConhecidos] = await Promise.all([
-      this.lootLines.listarItensParaRelatorioDeBonus(),
-      this.lootSessions.listarItensParaRelatorioDeBonus(),
-      // SEM BUILD ATIVO, NADA É CONHECIDO — e o relatório dizendo "todos
-      // desconhecidos" é a resposta certa, não um caso de borda a esconder. É
-      // exatamente o que se quer ver antes da primeira carga.
-      buildAtivo === null
-        ? Promise.resolve(new Set<number>())
-        : this.dados.idsDeBonusConhecidos(buildAtivo),
-    ]);
+    const [doHistorico, dasSessoes, idsBonusConhecidos, idsItemComDado, itemIdsCatalogados] =
+      await Promise.all([
+        this.lootLines.listarItensParaRelatorioDeBonus(),
+        this.lootSessions.listarItensParaRelatorioDeBonus(),
+        // SEM BUILD PARA CONFERIR, NADA É CONHECIDO — e o relatório dizendo
+        // "todos desconhecidos" é a resposta certa, não um caso de borda a
+        // esconder. É exatamente o que se quer ver antes da primeira carga.
+        buildAlvo === null
+          ? Promise.resolve(new Set<number>())
+          : this.dados.idsDeBonusConhecidos(buildAlvo),
+        buildAlvo === null
+          ? Promise.resolve(new Set<number>())
+          : this.dados.idsDeItemNoBuild(buildAlvo),
+        this.catalog.findAllItemIds(),
+      ]);
 
     const linhas = [...doHistorico, ...dasSessoes];
 
     return {
-      bonusIds: this.bonusDesconhecidos(linhas, idsConhecidos),
+      build: buildAlvo,
+      bonusIds: this.bonusDesconhecidos(linhas, idsBonusConhecidos),
       itemIds: await this.itensNaoCatalogados(linhas),
+      itensSemDadoNoBuild: itemIdsCatalogados
+        .filter((itemId) => !idsItemComDado.has(itemId))
+        .sort((a, b) => a - b),
     };
   }
 

@@ -12,9 +12,11 @@ import {
   catalogFileSchema,
   parseJournalDump,
   rcExportSchema,
+  wowDataFileSchema,
   type CatalogFile,
   type RaidProgressReport,
   type RcExport,
+  type WowDataFile,
 } from '@titan/shared';
 import { z } from 'zod';
 import { AttendanceService, type SyncResult } from '../attendance/attendance.service';
@@ -31,6 +33,11 @@ import {
 import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
+import {
+  WowDataLoaderService,
+  type WowDataActivateResult,
+  type WowDataLoadResult,
+} from '../wow-data/wow-data-loader.service';
 import {
   WowDataReportService,
   type RelatorioDeDesconhecidos,
@@ -115,6 +122,7 @@ export class OpsController {
     private readonly dummies: LootSessionDummiesService,
     private readonly ops: OpsService,
     private readonly wowDataReport: WowDataReportService,
+    private readonly wowDataLoader: WowDataLoaderService,
   ) {}
 
   /** Era `pnpm --filter api probe:snapshot [--backfill]`. */
@@ -250,20 +258,56 @@ export class OpsController {
 
   /**
    * "O que ainda não conhecemos" — TIT-82, agora respondendo pelo build ativo
-   * (TIT-137). Sem corpo, sem parâmetro: varre o histórico e as sessões já
-   * gravados, ordenado por frequência.
+   * (TIT-137) ou por qualquer build carregado (TIT-140).
    *
-   * SEM BUILD ATIVO responde "tudo desconhecido", que é a verdade — e é
-   * exatamente o que se quer ver antes da primeira carga.
+   * `?build=` deixa conferir um build ANTES de ativá-lo — valida o PTR sem
+   * ele estar no ar. Omitido, cai no build ativo, mesmo comportamento de
+   * sempre.
+   *
+   * SEM BUILD (nem `?build=`, nem ativo) responde "tudo desconhecido", que é
+   * a verdade — e é exatamente o que se quer ver antes da primeira carga.
    *
    * A carga que populava a tabela (`POST bonus-load`) FOI REMOVIDA junto com o
    * `kind`: ela subia um dicionário curado à mão, e o modelo que ela preenchia
    * deixou de existir. Quem repõe é a TIT-139 (gerador) mais a TIT-140
-   * (carga e ativação).
+   * (carga e ativação, logo abaixo).
    */
   @Get('bonus-unknown-report')
-  async bonusUnknownReport(): Promise<RelatorioDeDesconhecidos> {
-    return this.wowDataReport.gerar();
+  async bonusUnknownReport(@Query('build') build?: string): Promise<RelatorioDeDesconhecidos> {
+    return this.wowDataReport.gerar(build);
+  }
+
+  /**
+   * Sobe um build inteiro do gerador (TIT-139) — arquivo no corpo, mesmo
+   * padrão do `catalog-load`/`loot-import-rc` (o container não tem o
+   * arquivo, e é efêmero).
+   *
+   * **NUNCA ativa.** Carregar não muda o que a guilda vê — é o que permite
+   * preparar o PTR com calma antes da virada de patch. Recarregar o MESMO
+   * build regrava as linhas dele do zero; se for o build ativo, a resposta
+   * grita isso no campo `aviso`.
+   */
+  @Post('wow-data-load')
+  async wowDataLoad(
+    @Body(new ZodValidationPipe(wowDataFileSchema)) arquivo: WowDataFile,
+  ): Promise<WowDataLoadResult> {
+    return this.wowDataLoader.carregar(arquivo);
+  }
+
+  /**
+   * Troca qual build a guilda enxerga — TIT-140. Rota PRÓPRIA, separada da
+   * carga: carregar é inofensivo, ativar é o que estraga uma noite de raid se
+   * sair errado.
+   *
+   * Voltar atrás é a MESMA chamada, com o build anterior — instantâneo, sem
+   * regerar nada.
+   */
+  @Post('wow-data-activate')
+  async wowDataActivate(@Query('build') build?: string): Promise<WowDataActivateResult> {
+    if (!build) {
+      throw new BadRequestException('build é obrigatório');
+    }
+    return this.wowDataLoader.ativar(build);
   }
 
   /**

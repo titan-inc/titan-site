@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'TIT-82. "O que ainda não conhecemos": varre LootLine e LootSessionItem já gravados, extrai os bonusIds que não estão no dicionário e os itemId sem WowItem cadastrado, ordenados por frequência. Sem chamada externa — só o que já está no banco. Vale rodar depois de todo patch.'
+description: 'TIT-82/TIT-140. "O que ainda não conhecemos": varre LootLine e LootSessionItem já gravados, extrai os bonusIds que não estão no dicionário e os itemId sem WowItem cadastrado, ordenados por frequência — mais itensSemDadoNoBuild (item no catálogo sem WowItemData no build conferido, TIT-136). ?build= escolhe qual build conferir; sem ele, cai no ativo — dá para validar um build recém-carregado antes de wow-data-activate. Sem chamada externa — só o que já está no banco. Vale rodar depois de todo patch.'
 headers:
 - enabled: true
   name: X-Ops-Token
@@ -19,7 +19,11 @@ method: GET
 name: Bonus unknown report
 sortPriority: 4600.0
 url: ${[ base_url ]}/internal/ops/bonus-unknown-report
-urlParameters: []
+urlParameters:
+- enabled: false
+  name: build
+  value: 12.1.0.69299
+  id: null
 settingSendCookies:
   enabled: false
   value: true

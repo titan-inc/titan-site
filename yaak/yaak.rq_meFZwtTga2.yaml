@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_meFZwtTga2
+createdAt: 2026-08-22T05:39:30.091404200
+updatedAt: 2026-08-22T05:39:30.091407400
+workspaceId: wk_8LmjjnEbam
+folderId: fl_FknhcmhGXn
+authentication: {}
+authenticationType: null
+body:
+  text: ${[ fs.readFile(path=b64'QzpcVXNlcnNcYW5kcmVcd29ya3NwYWNlXHRpdGFuLXNpdGVcbG9jYWxkb2NzXHdvdy1kYXRhLTEyLjEuMC42OTI5OS5qc29u', encoding='utf8') ]}
+bodyType: application/json
+description: 'TIT-140. Corpo é o wow-data-<build>.json que o gerador (TIT-139) emitiu — valida contra wowDataFileSchema e grava numa transação, em lotes. NUNCA ativa: recarregar o mesmo build regrava as linhas dele, e se for o build ativo a resposta avisa em voz alta (campo aviso). Aponte a variável wow_data_json_path (Local) para o seu arquivo gerado.'
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Wow data load
+sortPriority: 4550.0
+url: ${[ base_url ]}/internal/ops/wow-data-load
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

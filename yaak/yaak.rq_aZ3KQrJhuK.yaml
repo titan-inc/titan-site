@@ -1,0 +1,41 @@
+type: http_request
+model: http_request
+id: rq_aZ3KQrJhuK
+createdAt: 2026-08-22T05:39:39.645890300
+updatedAt: 2026-08-22T05:39:39.645893500
+workspaceId: wk_8LmjjnEbam
+folderId: fl_FknhcmhGXn
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'TIT-140. Troca qual build a guilda enxerga: desativa o ativo atual e ativa o pedido na MESMA transação. Recusa (404) build que nunca foi carregado. Voltar atrás é a MESMA chamada, com o build anterior.'
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+method: POST
+name: Wow data activate
+sortPriority: 4650.0
+url: ${[ base_url ]}/internal/ops/wow-data-activate
+urlParameters:
+- enabled: true
+  name: build
+  value: 12.1.0.69299
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
