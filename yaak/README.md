@@ -13,6 +13,31 @@ Se preferir o CLI (`npm install -g @yaakapp/cli`, depois `yaak agent
 install` pra instalar a skill de agente), ele lê e escreve na mesma base
 local do app — o que um faz aparece no outro.
 
+## Onde uma request nova vai
+
+A regra do `CLAUDE.md` é **uma pasta por controller/módulo, espelhando
+`apps/api/src/*`**. Ela continua valendo, com um refinamento no `ops`.
+
+`internal/ops` é **um controller só com mais de quinze rotas**, de domínios
+que não têm nada a ver entre si — snapshot de personagem, catálogo de raid,
+dado do cliente do WoW, sessão de loot. Uma lista plana com tudo junto para
+de ajudar a achar, que é a única coisa que a collection existe para fazer.
+
+Por isso ele tem sub-pastas, por assunto (22/08/2026):
+
+```
+internal/ops/
+├─ catalog/       generate, load, instances, item ids
+├─ wow-data/      load, activate, bonus unknown report
+├─ loot-council/  import do RC, colagem de teste, dummies
+└─ (raiz)         snapshot, attendance sync, raid progress,
+                  roster probe, oauth check, e os consertos pontuais
+```
+
+**Rota nova de ops vai na sub-pasta do assunto**; se não couber em nenhuma,
+fica na raiz do `ops` — sub-pasta nova só quando um terceiro irmão aparecer,
+não na antecipação dele.
+
 ## Environments — por que três, e por que só uma vai pro git
 
 O workspace tem três environments, e a separação existe por causa da Regra
@@ -42,7 +67,7 @@ de segredos do `CLAUDE.md`: **este repositório é público**.
     porque o caminho é específico da sua máquina, não porque precisa ficar
     escondido.
   - `catalog_json_path` — caminho absoluto, na sua máquina, do `.json` de
-    um catálogo já gerado (ex.: `apps/api/catalogo/the-voidspire.json`, ou
+    um catálogo já gerado (ex.: `../apps/api/catalogo/1307_the-voidspire.json`, ou
     a saída salva de `internal/ops/Catalog generate`). Usado pelo request
     `internal/ops/Catalog load` via
     `${[ fs.readFile(path=catalog_json_path) ]}`. Mais simples que o

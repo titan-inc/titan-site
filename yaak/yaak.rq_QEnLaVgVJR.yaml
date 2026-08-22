@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_QEnLaVgVJR
 createdAt: 2026-08-15T00:16:29.133651900
-updatedAt: 2026-08-15T02:06:14.292205100
+updatedAt: 2026-08-22T13:40:17.818145900
 workspaceId: wk_8LmjjnEbam
 folderId: fl_FknhcmhGXn
 authentication: {}
@@ -17,7 +17,7 @@ headers:
   id: null
 method: GET
 name: OAuth check
-sortPriority: 8000.0
+sortPriority: 13000.0
 url: ${[ base_url ]}/internal/ops/oauth-check
 urlParameters:
 - enabled: false

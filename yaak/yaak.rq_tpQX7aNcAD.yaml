@@ -2,9 +2,9 @@ type: http_request
 model: http_request
 id: rq_tpQX7aNcAD
 createdAt: 2026-08-15T00:16:27.808458900
-updatedAt: 2026-08-15T02:06:14.290317100
+updatedAt: 2026-08-22T13:41:07.573143300
 workspaceId: wk_8LmjjnEbam
-folderId: fl_FknhcmhGXn
+folderId: fl_JCWQzsozJU
 authentication: {}
 authenticationType: null
 body: {}
@@ -17,7 +17,7 @@ headers:
   id: null
 method: GET
 name: Catalog instances
-sortPriority: 3000.0
+sortPriority: 0.0
 url: ${[ base_url ]}/internal/ops/catalog-instances
 urlParameters:
 - enabled: false

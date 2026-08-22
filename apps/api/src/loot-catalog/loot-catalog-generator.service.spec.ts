@@ -275,7 +275,7 @@ describe('LootCatalogGeneratorService', () => {
 
     it('não repete o item que o journal lista duas vezes no mesmo boss', async () => {
       // Caso real: receita com múltiplas entradas na loot table do mesmo boss
-      // (liberation-of-undermine.json, Chrome King Gallywix, item 223144 4x).
+      // (1296_liberation-of-undermine.json, Chrome King Gallywix, item 223144 4x).
       // Sem deduplicar, `dropsDoBoss` gera a mesma (difficulty, itemId) mais de
       // uma vez e o `createMany` do carregador estoura a unique constraint.
       const { service } = montar({

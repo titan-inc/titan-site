@@ -2,16 +2,16 @@ type: http_request
 model: http_request
 id: rq_dMd4vuNmxa
 createdAt: 2026-08-15T00:16:28.050603100
-updatedAt: 2026-08-15T03:27:59.327020300
+updatedAt: 2026-08-22T16:11:16.445997
 workspaceId: wk_8LmjjnEbam
-folderId: fl_FknhcmhGXn
+folderId: fl_JCWQzsozJU
 authentication: {}
 authenticationType: null
 body:
   text: |-
     {
-      "journalInstanceId": 1302,
-      "journalDump": ${[ fs.readFile(path=b64'QzpcVXNlcnNcYW5kcmVcd29ya3NwYWNlXHRpdGFuLXNpdGVcbG9jYWxkb2NzXGV4dHJhY3Rpb25cMTMwMi5qc29u', encoding='utf8') ]}
+      "journalInstanceId": 1317,
+      "journalDump": ${[ fs.readFile(path=b64'QzpcVXNlcnNcYW5kcmVcd29ya3NwYWNlXHRpdGFuLXNpdGVcbG9jYWxkb2NzXGV4dHJhY3Rpb25cMTMxNy5qc29u', encoding='utf8') ]}
     }
 bodyType: application/json
 description: 'journalInstanceId de exemplo (Vault of the Incarnates) — pegar um id real em Catalog instances. journalDump é opcional: aponte a variável catalog_dump_path (Local) para o .json gerado por `pnpm dump:escape dump.txt` (ver docs/ops.md). Nunca aponte pro .txt cru: json.escape() não funciona na versão atual da CLI do Yaak (testado em 15/08/2026), então colar o dump cru direto aqui quebra o JSON em silêncio.'
@@ -26,7 +26,7 @@ headers:
   id: null
 method: POST
 name: Catalog generate
-sortPriority: 3333.3333333333335
+sortPriority: 2000.0
 url: ${[ base_url ]}/internal/ops/catalog-generate
 urlParameters:
 - enabled: false

@@ -1,15 +1,15 @@
 type: http_request
 model: http_request
 id: rq_gerColagem1
-createdAt: 2026-08-16T18:00:00.000000
-updatedAt: 2026-08-16T18:00:00.000000
+createdAt: 2026-08-16T18:00:00
+updatedAt: 2026-08-22T13:40:31.161610600
 workspaceId: wk_8LmjjnEbam
-folderId: fl_FknhcmhGXn
+folderId: fl_9Bmwti7obm
 authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'TIT-68, ferramenta de teste do realtime. Sorteia um boss REAL do catálogo (>= 3 drops cadastrados numa dificuldade) e devolve a colagem pronta para colar em "Iniciar sessão" — não cria a sessão sozinha. 400 se o catálogo não tiver boss suficiente.'
+description: TIT-68, ferramenta de teste do realtime. Sorteia um boss REAL do catálogo (>= 3 drops cadastrados numa dificuldade) e devolve a colagem pronta para colar em "Iniciar sessão" — não cria a sessão sozinha. 400 se o catálogo não tiver boss suficiente.
 headers:
 - enabled: true
   name: X-Ops-Token
@@ -17,7 +17,7 @@ headers:
   id: null
 method: GET
 name: Gerar colagem de teste
-sortPriority: 9000.0
+sortPriority: 0.0
 url: ${[ base_url ]}/internal/ops/loot-sessions/gerar-colagem
 urlParameters: []
 settingSendCookies:

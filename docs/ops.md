@@ -149,14 +149,22 @@ Era `pnpm --filter api catalog:generate <id> --saida <arquivo.json> [--slug <slu
 
 **Não escreve arquivo** — o container é efêmero. Devolve o JSON gerado no
 corpo da resposta; salva local e segue o mesmo fluxo de revisão + commit de
-antes:
+antes.
+
+> **O nome do arquivo é `<journalInstanceId>_<slug>.json`.** O prefixo existe
+> para o `ls` sair em ordem **cronológica**: o id do journal cresce com o
+> tempo, e o nome sozinho ordenava por alfabeto — `aberrus` antes de
+> `vault-of-the-incarnates`, que veio duas seasons depois.
+>
+> É o mesmo id que vai no corpo da requisição, então não há um segundo número
+> a descobrir. Renomeados em 22/08/2026.
 
 ```bash
 curl -X POST "http://localhost:3001/internal/ops/catalog-generate" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"journalInstanceId": 1307, "slug": "the-voidspire"}' \
-  -o catalogo/the-voidspire.json
+  -o catalogo/1307_the-voidspire.json
 ```
 
 Com a colagem do `/tilc journal` do addon (substitui `--journal <arquivo>` —
@@ -173,7 +181,7 @@ curl -X POST "http://localhost:3001/internal/ops/catalog-generate" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$(node -e 'console.log(JSON.stringify({journalInstanceId: 1307, journalDump: require("fs").readFileSync("dump.txt", "utf8")}))')" \
-  -o catalogo/the-voidspire.json
+  -o catalogo/1307_the-voidspire.json
 ```
 
 (o `curl` acima ainda escapa inline com `node -e` porque o body inteiro,
@@ -211,13 +219,13 @@ Era `pnpm --filter api catalog:load <arquivo.json> [--sem-conferencia]`.
 curl -X POST "http://localhost:3001/internal/ops/catalog-load" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/the-voidspire.json")}))')"
+  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/1307_the-voidspire.json")}))')"
 
 # sem conferência contra o Warcraft Logs (só se ele estiver fora do ar):
 curl -X POST "http://localhost:3001/internal/ops/catalog-load" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/the-voidspire.json"), semConferencia: true}))')"
+  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/1307_the-voidspire.json"), semConferencia: true}))')"
 ```
 
 Pelo Yaak: aponte a variável `catalog_json_path` (environment `Local`) pro
