@@ -321,15 +321,66 @@ fique órfã.
 rodar de novo depois de corrigido não acha mais nenhum id fora do padrão e
 devolve `corrigidos: 0`.
 
-## O dado do cliente do WoW — carregar (TIT-137/TIT-139/TIT-140)
+## O dado do cliente do WoW — gerar (TIT-137/TIT-139)
 
-**Ainda não existe rota.** O modelo no banco está pronto (TIT-137), mas quem
-produz o arquivo é o gerador (TIT-139) e quem o carrega e ativa é a TIT-140.
+O modelo no banco está pronto (TIT-137) e o gerador também (TIT-139). **A
+carga ainda não existe** — quem lê o arquivo e ativa o build é a TIT-140, e
+até ela chegar as tabelas `WowDataBuild`, `WowItemData`, `WowBonus`,
+`WowItemContextBonus` e `WowItemLevelScaling` ficam **vazias**. Isso é
+invisível para a guilda, porque nenhuma tela lê delas ainda.
 
-Enquanto as duas não existirem, as tabelas `WowDataBuild`, `WowItemData`,
-`WowBonus`, `WowItemContextBonus` e `WowItemLevelScaling` ficam **vazias** — e
-isso é invisível para a guilda, porque nenhuma tela lê delas ainda. O
-relatório abaixo responde honestamente "tudo desconhecido" nesse estado.
+**Não é rota de ops** — diferente do `catalog-generate`, que depende das
+APIs da Blizzard já configuradas na app. O gerador lê ~282 MB de arquivo
+local e não toca a app nenhuma; roda em `/scripts` da raiz, na sua máquina,
+nunca em produção. Ver "Onde mora, e por que não é rota de ops" na TIT-139.
+
+### A cada patch
+
+1. `/run print(GetBuildInfo())` no jogo — anota o build (`12.1.0.69299`).
+2. Extrai os 41 arquivos do `wow.export` para `localdocs/wow.export/` — a
+   lista e as palavras de busca do filtro estão em `docs/db2-do-cliente.md`.
+3. Carrega os `.sql` num SQLite local (`localdocs/wow.export/wow.db`) — o
+   procedimento está em "Como analisar: banco local, descartável" na mesma
+   doc. O gerador lê o `wow.db`, nunca reprocessa os `.sql`.
+4. Roda o gerador, com a API de pé (`pnpm dev:api`) e `OPS_TRIGGER_TOKEN` no
+   `.env`:
+
+   ```bash
+   pnpm gerar-db2 --build 12.1.0.69299
+   ```
+
+   Por padrão lê `localdocs/wow.export/` e escreve
+   `localdocs/wow-data-<build>.json` — os dois têm flag (`--pasta`,
+   `--saida`) se precisar apontar pra outro lugar. `--api` aponta pra API
+   (default `http://localhost:3001`).
+
+5. Confere o relatório no fim da saída: itens do catálogo sem linha no
+   `ItemSparse` (lacuna — verificar se o patch já lançou o item), `Type` do
+   `ItemBonus` sem decodificação alcançado (matéria-prima pra próxima rodada
+   de pesquisa em `docs/db2-do-cliente.md`), e o tamanho gerado.
+
+### A auto-conferência é o portão, sem flag de pular
+
+Antes de montar qualquer tabela, o gerador roda os espécimes de
+`docs/db2-fixture-de-itens.json` contra o `wow.db` e **recusa emitir o
+arquivo** se algum não fechar exatamente:
+
+```
+--- auto-conferência ---
+fixture fechou: 199 valores conferidos, 0 divergências
+```
+
+Divergência imprime `especime`/`campo`/`esperado`/`calculado` para cada
+valor que não bateu, e o processo sai com código 1 sem escrever nada. Não
+existe `--skip-check`: um item level ou um stat errado nunca chega ao
+arquivo, porque o arquivo não é gerado. Ver "Como ele se confere" na TIT-139
+para o porquê disso ser mais forte que teste de CI.
+
+### Não versionar o arquivo gerado
+
+`localdocs/` está no `.gitignore`. O `wow-data-<build>.json` fica lá — é
+dado extraído do cliente, e o repositório é público (mesma regra do
+`wow.export` bruto).
 
 > **O `POST /internal/ops/bonus-load` foi REMOVIDO** (TIT-137). Ele subia um
 > dicionário `bonusId -> significado` curado à mão a partir do wago.tools, com
