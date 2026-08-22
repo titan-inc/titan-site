@@ -99,10 +99,24 @@ export class ResolvedorTrack {
     this.scalingIdPorGrupo = new Map(grupos.map((g) => [g.ID, g.ItemGroupIlvlScalingID]));
   }
 
-  /** `null` quando o bônus não carrega `Type 34` — não é track. */
+  /**
+   * `null` quando o bônus não carrega `Type 34` (não é track) — OU quando o
+   * segundo valor do `Type 34` é `0`.
+   *
+   * Achado ao ampliar `bonuses` pra todo bonusId do build (ponto 1 da
+   * revisão da PR #98): **492 dos 696 `Type 34` do build inteiro têm
+   * `sharedStringId = 0`**, e `SharedString.ID` nunca é `0` (menor id é
+   * `740`) — não é lacuna de extração, é o campo dizendo "sem nome". Os
+   * grupos se dividem limpo: nenhum grupo mistura entrada com e sem nome, 52
+   * grupos são só-sem-nome e 26 são só-com-nome. Os sem nome têm
+   * `ItemLevelSelectorID`/`ItemExtendedCostID` na entrada do grupo — cheiro
+   * de upgrade comprado com moeda (crafting), não track de loot. Nenhum dos
+   * 21 espécimes da fixture passa por um `Type 34` sem nome, porque loot de
+   * raid sempre nomeia a track.
+   */
   resolver(bonusId: number): Track | null {
     const type34 = this.type34PorBonus.get(bonusId);
-    if (!type34) return null;
+    if (!type34 || type34.sharedStringId === 0) return null;
 
     const nome = this.nomePorSharedStringId.get(type34.sharedStringId);
     if (nome === undefined) {

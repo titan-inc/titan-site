@@ -110,10 +110,15 @@ const STAT_ID_PARA_TERCIARIO: Record<number, 'avoidance' | 'leech' | 'speed' | '
 };
 
 /**
- * `bonuses` (`WowBonus`) — uma linha por bonusId ALCANÇADO pela árvore de
- * QUALQUER item do catálogo (`resolucao-bonus.ts`), nunca "só os que
- * apareceram num itemString real" — é essa mudança que faz a season nova
- * funcionar sozinha na terça-feira (ver a issue).
+ * `bonuses` (`WowBonus`) — uma linha por bonusId que existe no `ItemBonus`
+ * DESTE BUILD, não só os alcançados pela árvore de algum item do catálogo.
+ *
+ * A árvore (`resolucao-bonus.ts`) responde "que bônus este item pode
+ * assumir por contexto" — é uma resposta MENOR que "que bônus pode aparecer
+ * num itemString real". Um modificador atribuído no sorteio do drop nunca
+ * passa por nó de árvore nem por entrada de grupo, e ainda assim aparece no
+ * `itemString`. Ver `carregarTodosBonusIds` em `carregadores.ts` pra a
+ * evidência (o escudo da fixture é um dos casos).
  */
 export function montarBonuses(bonusIds: Set<number>, fontes: FontesBonus): TabelaColunar {
   const rows: unknown[][] = [];

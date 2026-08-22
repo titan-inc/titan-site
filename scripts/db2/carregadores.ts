@@ -151,6 +151,33 @@ export function carregarQualidadeExtraPorBonus(db: DatabaseSync): Map<number, nu
   return new Map(linhas.map((l) => [l.ParentItemBonusListID, paraArrayNumerico(l.Value)[0] ?? 0]));
 }
 
+/**
+ * Todo bonusId que existe no `ItemBonus` deste build — **não** só os que a
+ * árvore de algum item do catálogo alcança.
+ *
+ * A árvore (`resolucao-bonus.ts`) responde "que bônus este item pode
+ * assumir por contexto", não "que bônus pode aparecer num itemString real".
+ * São coisas diferentes: modificadores atribuídos no sorteio do drop (ex.
+ * `3524`, `Type 0` no-op, no `itemString` do próprio escudo da fixture; ou
+ * `8767`/`1485` no Wallcliber's Incursion Hatchet) não estão em nó de
+ * árvore nem em entrada de grupo em lugar NENHUM do build — confirmado
+ * varrendo `ChildItemBonusListID` e `ItemBonusListGroupEntry` inteiros.
+ *
+ * Sem isso, `WowBonus` cobria ~4% dos bonus ids do build (425 de 10.085), e
+ * "ausente da tabela" — que devia significar "esse id não existe neste
+ * build" (Regra 7) — na prática significava também "a árvore não ofereceu",
+ * que é acidente de caminho, não ausência real. O escudo, o espécime mais
+ * estudado do projeto, mostraria "1 bônus desconhecido" para sempre.
+ */
+export function carregarTodosBonusIds(db: DatabaseSync): Set<number> {
+  const linhas = db
+    .prepare(`SELECT DISTINCT ParentItemBonusListID FROM ItemBonus`)
+    .all() as unknown as Array<{
+    ParentItemBonusListID: number;
+  }>;
+  return new Set(linhas.map((l) => l.ParentItemBonusListID));
+}
+
 /** `Type 6` (`SOCKET`) — bonusId que acrescenta socket. */
 export function carregarBonusComSocket(db: DatabaseSync): Set<number> {
   const linhas = db

@@ -145,6 +145,13 @@ export class ResolvedorItemLevel {
     const configLinha = linhas.find((l) => l.Type === 49 || l.Type === 51);
     if (configLinha) {
       const [configId, marcador] = configLinha.Value.split(',').map(Number);
+      // configId 0: achado ampliando bonuses pra todo bonusId do build (PR
+      // #98) — 1 de 541 linhas Type49/51, isolada (não alcançável por nó de
+      // árvore nem por grupo). ItemScalingConfig.ID começa em 1, então 0
+      // nunca existiria mesmo com a extração completa; tratar como "sem
+      // config" em vez de falha dura — diferente de um id positivo ausente,
+      // que continua sendo extração incompleta.
+      if (configId === 0) return null;
       return { ilvl: this.resolverPelaConfig(configId!), confiavel: (marcador ?? 0) === 0 };
     }
 

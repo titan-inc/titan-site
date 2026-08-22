@@ -683,6 +683,23 @@ personagem que linkou não estava no cap). Verificado: `curve_point_value(109495
 isto olha) nem tinha aparecido nos 19 espécimes anteriores — todos pós-squish,
 todos com `Type 49` só, `ItemLevel` sempre não-zero.
 
+**Um terceiro caso, achado na revisão da PR #98: `Type 1` (`ILEVEL`) é
+inerte no único espécime que o carrega — e isso é medição, não palpite.**
+
+O `Wallcliber's Incursion Hatchet` cita o bonus `1485`, que é `Type 1 = 13`
+(delta de item level, o "caminho antigo" da tabela em "Para resolver o item
+level"). O ilvl dele fecha em **82 sem aplicar o delta**: o mesmo item cita
+o bonus `9330`, que via `Type 50` chega em `ItemScalingConfig 7`
+(`ItemLevel 70`, `ItemOffsetCurveID 20` → `CurveID 6243`, `Offset 12`) — a
+curva é identidade em `(1,1)..(80,80)`, então `70 + 12 = 82`, exato contra o
+tooltip. **Aplicar o `+13` do `Type 1` por cima daria 95**, que não bate.
+
+`Type 1` aparece em **2.436 listas** do build e **não tem representação em
+`WowBonus`** — o que é o certo por enquanto: a única evidência disponível diz
+que somá-lo quebra o único espécime que o exercita. Fica registrado como
+pergunta aberta, não como lacuna a preencher. Quem for mexer nisso precisa de
+um espécime cujo tooltip **exija** o delta — o Wallcliber prova o oposto.
+
 ### O descritor de dificuldade
 
 `Type 4` (`DESC`) aponta para o `ItemNameDescription`, que traz o texto e a cor:
@@ -1505,6 +1522,38 @@ O caso da luva mostra por que a ordem importa: a árvore oferece **três** grupo
 `Type 34` do `itemString`, que aponta `611`. No escudo a árvore oferece **um**
 grupo, e o padrão é inequívoco.
 
+#### `bonuses` precisa cobrir o build inteiro, não só o que a árvore alcança
+
+Achado na revisão da PR #98 (TIT-139), separado da regra acima porque é sobre
+**decodificar** o bônus, não sobre **aplicá-lo**.
+
+A árvore responde "que bônus este item pode assumir por contexto" — é a
+metade direita da união. Mas um `itemString` real também pode citar bônus que
+não são nem a metade esquerda dela nem a direita: modificadores atribuídos no
+sorteio do drop, que não passam por nó de árvore nem por entrada de grupo em
+lugar **nenhum** do build. Três exemplos, todos em itens do catálogo:
+
+| id     | `Type`            | onde aparece                                   |
+| ------ | ----------------- | ---------------------------------------------- |
+| `3524` | `0` (no-op)       | o escudo — o espécime mais estudado da fixture |
+| `8767` | `3` (qualidade)   | `Wallcliber's Incursion Hatchet`               |
+| `1485` | `1` (ver adiante) | `Wallcliber's Incursion Hatchet`               |
+
+Confirmado varrendo `ChildItemBonusListID` de `ItemBonusTreeNode` e
+`ItemBonusListID` de `ItemBonusListGroupEntry` inteiros: os três não aparecem
+em nenhum dos dois. Antes desta correção, `WowBonus` cobria só os bonus ids
+alcançados pela árvore de algum item do catálogo — **425 de 10.085** ids do
+`ItemBonus`, 4%. Um id fora desses 425 citado num `itemString` real virava
+"desconhecido" pra sempre, mesmo sendo tão inerte quanto um `Type 0`.
+
+**A correção: `bonuses` emite uma linha pra todo bonusId que existe no
+`ItemBonus` deste build**, cobrindo os 10.085. Isso faz "ausente da tabela"
+significar de verdade "não existe neste build" (Regra 7) — o mesmo raciocínio
+que já valia pra `contextos`, agora estendido pra `bonuses`. Custo: ~600 KB no
+arquivo final, contra o teto de 2mb do `/internal/ops` (que, como sempre, é
+decisão de subir o teto, não de o gerador se contorcer — ver "O tamanho não é
+falha" na issue).
+
 #### A ambiguidade da luva tem nome: é banda de keystone
 
 Os três nós da luva no `itemContext 110` **não** são um cardápio genérico — eles
@@ -1788,22 +1837,54 @@ espécime foi mostrado de passagem, sem relação com nenhuma pendência da list
 
 | o quê                                                  | o que fecharia                                                         |
 | ------------------------------------------------------ | ---------------------------------------------------------------------- |
-| seis `Type` sem decodificar (7, 9, 16, 26, 37, 47)     | achar um espécime em que um deles altere um valor conferível           |
+| `Type` do `ItemBonus` sem decodificar — ver abaixo     | achar um espécime em que um deles altere um valor conferível           |
 | `DamageReplaceStat` / `DamageSecondary`: float ou INT? | um trinket de `ScalingClass −8` com tooltip transcrito                 |
 | modificadores do `itemString` (28, 29, 30)             | nunca foram analisados — nem os que já estão na fixture                |
 | `ItemLevelSelector` pela árvore                        | um espécime cujo nó de contexto exato traga `ChildItemLevelSelectorID` |
 
-Nenhum dos quatro bloqueia a implementação: os seis `Type` não apareceram mexendo
-em valor conferido, a escolha de coluna afeta só efeito de trinket, os
+Nenhum dos quatro bloqueia a implementação: os `Type` não apareceram mexendo em
+valor conferido, a escolha de coluna afeta só efeito de trinket, os
 modificadores nunca foram necessários para nenhuma linha reproduzida, e nenhum
 dos 69 pares (item, contexto) conferidos passou pelo `ItemLevelSelector`. **Mas
 isso é o mesmo formato de argumento que falhou com o `Type 50`** — "não vi
 mexer" não é "não mexe".
 
-O último da lista é o mais desconfortável dos quatro, porque é **literalmente a
-forma da árvore de bônus**: um caminho que existe no dado, que nenhum espécime
-nosso percorreu, e que erraria em silêncio. A diferença é que a árvore ninguém
-tinha olhado, e este está escrito.
+O `ItemLevelSelector` é o mais desconfortável dos quatro, porque é
+**literalmente a forma da árvore de bônus**: um caminho que existe no dado, que
+nenhum espécime nosso percorreu, e que erraria em silêncio. A diferença é que a
+árvore ninguém tinha olhado, e este está escrito.
+
+**Atualização (TIT-139, gerador rodando contra o catálogo inteiro — 963
+itens):** os dois riscos acima deixaram de ser hipotéticos, e agora têm número.
+
+`ChildItemLevelSelectorID` não-zero aparece em **1.065 nós aplicados** —
+não é mais "nenhum espécime passa por lá" (isso continua verdade pros 21
+espécimes), é "passa por lá o tempo todo fora da fixture". O gerador conta e
+avisa, não resolve — ver "Mantidas apesar de não usadas" pra a contagem
+original (2.234 no build inteiro, sem filtrar por catálogo).
+
+Os `Type` sem decodificar eram seis (`7, 9, 16, 26, 37, 47`), medidos só nos
+21 espécimes. O relatório do gerador, rodando contra `bonuses` (que agora
+cobre todo bonusId do build — ver "A tabela `bonuses` é o universo do build,
+não só o alcançável pela árvore" adiante), encontra **23**:
+
+```
+7 (1.138)   27 (1.076)   9 (532)   12 (306)   16 (292)   31 (266)
+30 (265)    19 (247)     10 (144)  20 (98)    43 (48)    37 (42)
+26 (31)     35 (27)      47 (24)   21 (17)    28 (17)    24 (8)
+44 (8)      29 (2)       15 (1)    32 (1)     45 (1)
+```
+
+(contagem entre parênteses = ocorrências no universo escaneado, não itens —
+um `Type` pode se repetir em várias listas do mesmo item)
+
+A maioria dos novos **não é alcançável pela árvore de nenhum item do
+catálogo** — o que os traz pro relatório é justamente a ampliação da
+`bonuses` pra "todo bonusId do build" (ver adiante). Provavelmente é sistema
+de crafting, PvP ou profissão que nunca aparece num drop de raid, mas isso é
+palpite, não medição — a régua do documento continua a mesma: `Type`
+desconhecido é pergunta aberta, nunca chute, então fica listado até alguém
+medir.
 
 ### As pendências antigas terminaram assim
 

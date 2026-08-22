@@ -35,6 +35,7 @@ import {
   carregarBonusComSocket,
   carregarBindingPorBonus,
   carregarDescritorPorBonus,
+  carregarTodosBonusIds,
 } from './carregadores.js';
 import { wowDataFileSchema, WOW_DATA_FILE_VERSION } from '../../packages/shared/dist/index.mjs';
 
@@ -88,6 +89,14 @@ async function main(): Promise<void> {
   const armorLocationPorSlot = carregarArmorLocation(db);
   const efeitoResolver = new ResolvedorEfeito(db);
 
+  // Todo bonusId do build, não só os que a árvore alcança — ver o
+  // comentário de carregarTodosBonusIds. "Ausente da tabela" precisa
+  // significar "não existe neste build", nunca "a árvore não ofereceu".
+  const todosBonusIds = carregarTodosBonusIds(db);
+  console.log(
+    `bonus ids no build: ${todosBonusIds.size} (${arvore.bonusIdsAlcancados.size} alcançados pela árvore)`,
+  );
+
   const { tabela: itens, itemIdsSemDado } = montarItens(
     itemIdsCatalogo,
     itemSparsePorId,
@@ -96,7 +105,7 @@ async function main(): Promise<void> {
     efeitoResolver,
   );
 
-  const bonuses = montarBonuses(arvore.bonusIdsAlcancados, {
+  const bonuses = montarBonuses(todosBonusIds, {
     itemLevelResolver: new ResolvedorItemLevel(db),
     trackResolver: new ResolvedorTrack(db),
     statsExtrasPorBonus: carregarStatsAdicionaisPorBonus(db),
@@ -134,7 +143,10 @@ async function main(): Promise<void> {
 
   imprimirRelatorio({
     itemIdsSemDado,
-    typesDesconhecidos: listarTypesDesconhecidos(db, arvore.bonusIdsAlcancados),
+    // Escaneia os MESMOS bonus ids que foram pra bonuses — senão o relatório
+    // ficaria cego pra Type desconhecido nos 96% que a árvore não alcança,
+    // que é exatamente o que o ponto 1 desta revisão corrigiu.
+    typesDesconhecidos: listarTypesDesconhecidos(db, todosBonusIds),
     avisosItemLevelSelector: arvore.avisosItemLevelSelector.length,
     tamanhoBytes: Buffer.byteLength(conteudo),
   });
