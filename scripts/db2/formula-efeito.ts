@@ -20,8 +20,8 @@ import type { LinhaEscala } from './montar-escalas.js';
  * `$u`), não o texto inteiro.
  *
  * **Sobre o "fecho de spells":** este gerador lê o `wow.db` inteiro, sem
- * filtro prévio — diferente do caminho de ops (que filtra pra caber em
- * 2mb), aqui todo `SpellID` citado é sempre resolvível na hora, não existe
+ * filtro prévio — diferente do caminho de ops (que filtra pra caber no
+ * teto de corpo), aqui todo `SpellID` citado é sempre resolvível na hora, não existe
  * "spell fora do extraído". O que vai pra `WowItemData.effects` é só a
  * receita do PRÓPRIO spell do item (`$sN`/`$d`/`$u` já resolvíveis); um
  * `$@spelldescN` que cite outro spell fica como placeholder cru no

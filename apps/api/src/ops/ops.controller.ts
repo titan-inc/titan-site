@@ -217,7 +217,7 @@ export class OpsController {
    *
    * O arquivo vai no corpo, igual ao `catalog-load`, porque o container não tem
    * o arquivo e é efêmero. São ~304 KB, acima do teto público de 16kb: quem
-   * libera é o `json({ limit: '2mb' })` do prefixo de ops no `main.ts`.
+   * libera é o `json({ limit: '20mb' })` do prefixo de ops no `main.ts`.
    *
    * Idempotente. Rodar de novo atualiza as mesmas linhas e devolve os mesmos
    * números.

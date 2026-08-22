@@ -317,7 +317,9 @@ reextrair "por via das dúvidas" no próximo patch:
 
 ## O tamanho não é obstáculo, desde que o filtro seja o certo
 
-O `ItemSparse` bruto tem ~59 MB, contra o teto de 2mb do `/internal/ops`.
+O `ItemSparse` bruto tem ~59 MB, contra o teto de 20mb do `/internal/ops` —
+subido de 2mb quando o dado do cliente do WoW inteiro (TIT-139) já passava
+dele.
 
 **Filtrar pelos `itemId` que temos no catálogo**, e não por expansão:
 
@@ -325,7 +327,7 @@ O `ItemSparse` bruto tem ~59 MB, contra o teto de 2mb do `/internal/ops`.
   **cortaria o histórico** — o catálogo vai até Dragonflight S1 (TIT-124), e a
   tabela de histórico é consumidora do popover
 - pelos nossos ids são **algumas centenas de linhas**, cobrindo o histórico
-  inteiro e cabendo com folga nos 2mb
+  inteiro e cabendo com folga no teto
 
 E, dentro disso, **cortar coluna antes de cortar linha**: o `ItemSparse` tem 68
 colunas e a fórmula usa ~13.
@@ -1549,10 +1551,10 @@ alcançados pela árvore de algum item do catálogo — **425 de 10.085** ids do
 **A correção: `bonuses` emite uma linha pra todo bonusId que existe no
 `ItemBonus` deste build**, cobrindo os 10.085. Isso faz "ausente da tabela"
 significar de verdade "não existe neste build" (Regra 7) — o mesmo raciocínio
-que já valia pra `contextos`, agora estendido pra `bonuses`. Custo: ~600 KB no
-arquivo final, contra o teto de 2mb do `/internal/ops` (que, como sempre, é
-decisão de subir o teto, não de o gerador se contorcer — ver "O tamanho não é
-falha" na issue).
+que já valia pra `contextos`, agora estendido pra `bonuses`. Custo: ~600 KB —
+foi este arquivo, junto do crescimento natural do catálogo, que motivou subir
+o teto do `/internal/ops` de 2mb pra 20mb (ver "O tamanho não é falha" na
+issue: o gerador nunca se contorce pra caber, quem sobe é o teto).
 
 #### A ambiguidade da luva tem nome: é banda de keystone
 

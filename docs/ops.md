@@ -18,12 +18,15 @@ Todas as rotas abaixo (e o resto da API) também estão prontas como requests
 na collection do Yaak em `yaak/` — ver `yaak/README.md` — se preferir
 testar por lá em vez de `curl`.
 
-**Corpo até 2mb neste prefixo**, contra 16kb no resto da app (`main.ts`). As duas
-rotas que carregam arquivo — `catalog-load` e `loot-import-rc` — não caberiam no
-teto público: o maior catálogo tem 92 KB e o export do RC tem 304 KB. O teto
+**Corpo até 20mb neste prefixo**, contra 16kb no resto da app (`main.ts`). As
+rotas que carregam arquivo — `catalog-load`, `loot-import-rc` e (quando a
+TIT-140 existir) a carga do dado do cliente do WoW — não caberiam no teto
+público: o maior catálogo tem 92 KB, o export do RC tem 304 KB, e o dado do
+cliente do WoW já passa de 4,9 MB (TIT-139) e cresce a cada patch. O teto
 público existe para o `/applications`, que é anônimo; aqui não há ator anônimo,
 mas o teto continua existindo contra engano de operador (`--data-binary @` com o
-caminho errado), que é o modo de falha da TIT-109.
+caminho errado), que é o modo de falha da TIT-109. Subido de 2mb pra 20mb na
+TIT-139, quando 2mb se provou pequeno demais.
 
 ## Como implementar uma rota nova
 

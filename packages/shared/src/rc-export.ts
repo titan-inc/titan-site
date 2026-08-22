@@ -77,7 +77,7 @@ export type RcExportRecord = z.infer<typeof rcExportRecordSchema>;
  * O arquivo inteiro.
  *
  * Sem teto de tamanho aqui: quem limita é o body parser do Nest, antes de o Zod
- * ver o conteúdo — 2mb no prefixo de ops. Repetir o limite em dois lugares só
+ * ver o conteúdo — 20mb no prefixo de ops. Repetir o limite em dois lugares só
  * cria a chance de eles discordarem.
  */
 export const rcExportSchema = z.array(rcExportRecordSchema);
