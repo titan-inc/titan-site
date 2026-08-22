@@ -27,12 +27,17 @@ export interface Track {
   nome: string;
   rank: number;
   total: number;
+  /** `ItemBonusListGroup.ItemGroupIlvlScalingID` — quem decide se a linha
+   * aparece é o renderizador, comparando com a season corrente. O gerador só
+   * grava. */
+  scalingId: number;
 }
 
 export class ResolvedorTrack {
   private readonly type34PorBonus: Map<number, { groupId: number; sharedStringId: number }>;
   private readonly entradasPorGrupo: Map<number, EntradaGrupo[]>;
   private readonly nomePorSharedStringId: Map<number, string>;
+  private readonly scalingIdPorGrupo: Map<number, number>;
 
   constructor(db: DatabaseSync) {
     const type34 = db
@@ -84,6 +89,14 @@ export class ResolvedorTrack {
       String_lang: string;
     }>;
     this.nomePorSharedStringId = new Map(strings.map((s) => [s.ID, s.String_lang]));
+
+    const grupos = db
+      .prepare(`SELECT ID, ItemGroupIlvlScalingID FROM ItemBonusListGroup`)
+      .all() as unknown as Array<{
+      ID: number;
+      ItemGroupIlvlScalingID: number;
+    }>;
+    this.scalingIdPorGrupo = new Map(grupos.map((g) => [g.ID, g.ItemGroupIlvlScalingID]));
   }
 
   /** `null` quando o bônus não carrega `Type 34` — não é track. */
@@ -102,7 +115,8 @@ export class ResolvedorTrack {
     const entradaDoBonus = entradasDoGrupo.find((e) => e.itemBonusListId === bonusId);
     const rank = entradaDoBonus?.sequenceValue ?? 1; // ausente no grupo → rank padrão.
     const total = entradasDoGrupo.filter((e) => e.flags !== 3).length;
+    const scalingId = this.scalingIdPorGrupo.get(type34.groupId) ?? 0;
 
-    return { nome, rank, total };
+    return { nome, rank, total, scalingId };
   }
 }

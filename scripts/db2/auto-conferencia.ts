@@ -1,5 +1,4 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { paraArrayNumerico } from './wow-export-db.js';
 import type { LinhaEscala } from './montar-escalas.js';
 import { ResolvedorItemLevel } from './item-level.js';
 import { resolverArvoreDeBonus } from './resolucao-bonus.js';
@@ -9,13 +8,21 @@ import {
   calcularArmadura,
   calcularBlock,
   calcularDanoDeArma,
-  resolverMaterial,
   resolverTabelaDano,
   type ArmorLocationLinha,
 } from './formula-armadura-arma.js';
 import { ResolvedorTrack } from './formula-track.js';
 import { ResolvedorEfeito, calcularValorEfeito } from './formula-efeito.js';
 import { carregarFixture, type EspecimeFixture } from './fixture.js';
+import {
+  carregarItemSparse,
+  carregarMaterialPorItem,
+  carregarArmorLocation,
+  carregarStatsAdicionaisPorBonus,
+  carregarQualidadeExtraPorBonus,
+  type ItemSparseResumo,
+  type StatAdicional,
+} from './carregadores.js';
 
 /**
  * O CORAÇÃO DA ISSUE (TIT-139): roda a fixture contra o dump a cada geração.
@@ -459,135 +466,4 @@ function conferirEfeito(
   }
 
   return conferidos;
-}
-
-interface StatAdicional {
-  statId: number;
-  alocacao: number;
-}
-
-/** `Type 2` (`MOD`, "acrescenta stat") — usado sobretudo pelos terciários
- * (bônus 40-43), mas é mecanismo genérico: qualquer bônus pode injetar uma
- * entrada de stat que não está no `ItemSparse` do item base. */
-function carregarStatsAdicionaisPorBonus(db: DatabaseSync): Map<number, StatAdicional[]> {
-  const linhas = db
-    .prepare(`SELECT ParentItemBonusListID, Value FROM ItemBonus WHERE Type = 2`)
-    .all() as unknown as Array<{
-    ParentItemBonusListID: number;
-    Value: string;
-  }>;
-
-  const porBonus = new Map<number, StatAdicional[]>();
-  for (const linha of linhas) {
-    const [statId, alocacao] = paraArrayNumerico(linha.Value);
-    let lista = porBonus.get(linha.ParentItemBonusListID);
-    if (!lista) {
-      lista = [];
-      porBonus.set(linha.ParentItemBonusListID, lista);
-    }
-    lista.push({ statId: statId ?? 0, alocacao: alocacao ?? 0 });
-  }
-  return porBonus;
-}
-
-/** `Type 3` (`QUALITY`) — bonusId → qualidade que ele força. */
-function carregarQualidadeExtraPorBonus(db: DatabaseSync): Map<number, number> {
-  const linhas = db
-    .prepare(`SELECT ParentItemBonusListID, Value FROM ItemBonus WHERE Type = 3`)
-    .all() as unknown as Array<{
-    ParentItemBonusListID: number;
-    Value: string;
-  }>;
-  return new Map(linhas.map((l) => [l.ParentItemBonusListID, paraArrayNumerico(l.Value)[0] ?? 0]));
-}
-
-/** `ArmorLocation.ID` É o `InventoryType` — confirmado pelas 23 linhas
- * batendo um a um com os slots que o `docs/db2-do-cliente.md` já mapeia. */
-function carregarArmorLocation(db: DatabaseSync): Map<number, ArmorLocationLinha> {
-  const linhas = db
-    .prepare(
-      `SELECT ID, Clothmodifier, Leathermodifier, Chainmodifier, Platemodifier FROM ArmorLocation`,
-    )
-    .all() as unknown as Array<{
-    ID: number;
-    Clothmodifier: number;
-    Leathermodifier: number;
-    Chainmodifier: number;
-    Platemodifier: number;
-  }>;
-  return new Map(
-    linhas.map((l) => [
-      l.ID,
-      {
-        clothmodifier: l.Clothmodifier,
-        leathermodifier: l.Leathermodifier,
-        chainmodifier: l.Chainmodifier,
-        platemodifier: l.Platemodifier,
-      },
-    ]),
-  );
-}
-
-/** `Item.SubclassID` — só ele dá o material de armadura (1 Cloth .. 4 Plate);
- * `ItemSparse.Material` é outra coisa (sheathe/textura), não usar aqui. */
-function carregarMaterialPorItem(db: DatabaseSync, itemIds: number[]): Map<number, number> {
-  const placeholders = itemIds.map(() => '?').join(',');
-  const linhas = db
-    .prepare(`SELECT ID, SubclassID FROM Item WHERE ID IN (${placeholders})`)
-    .all(...itemIds) as unknown as Array<{
-    ID: number;
-    SubclassID: number;
-  }>;
-  return new Map(linhas.map((l) => [l.ID, resolverMaterial(l.SubclassID)]));
-}
-
-interface ItemSparseResumo {
-  itemLevel: number;
-  inventoryType: number;
-  statIds: number[];
-  statAllocs: number[];
-  socketAllocs: number[];
-  flags: number[];
-  itemDelay: number;
-  dmgVariance: number;
-  overallQualityId: number;
-}
-
-function carregarItemSparse(db: DatabaseSync, itemIds: number[]): Map<number, ItemSparseResumo> {
-  const placeholders = itemIds.map(() => '?').join(',');
-  const linhas = db
-    .prepare(
-      `SELECT ID, ItemLevel, InventoryType, StatModifier_bonusStat, StatPercentEditor, StatPercentageOfSocket,
-              Flags, ItemDelay, DmgVariance, OverallQualityID
-       FROM ItemSparse WHERE ID IN (${placeholders})`,
-    )
-    .all(...itemIds) as unknown as Array<{
-    ID: number;
-    ItemLevel: number;
-    InventoryType: number;
-    StatModifier_bonusStat: string;
-    StatPercentEditor: string;
-    StatPercentageOfSocket: string;
-    Flags: string;
-    ItemDelay: number;
-    DmgVariance: number;
-    OverallQualityID: number;
-  }>;
-
-  return new Map(
-    linhas.map((l) => [
-      l.ID,
-      {
-        itemLevel: l.ItemLevel,
-        inventoryType: l.InventoryType,
-        statIds: paraArrayNumerico(l.StatModifier_bonusStat),
-        statAllocs: paraArrayNumerico(l.StatPercentEditor),
-        socketAllocs: paraArrayNumerico(l.StatPercentageOfSocket),
-        flags: paraArrayNumerico(l.Flags),
-        itemDelay: l.ItemDelay,
-        dmgVariance: l.DmgVariance,
-        overallQualityId: l.OverallQualityID,
-      },
-    ]),
-  );
 }
