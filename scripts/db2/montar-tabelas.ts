@@ -1,11 +1,21 @@
 import type { ResultadoResolucaoBonus } from './resolucao-bonus.js';
-import type { ItemSparseResumo, Descritor, StatAdicional } from './carregadores.js';
+import type {
+  ItemSparseResumo,
+  Descritor,
+  StatAdicional,
+  ConjuntoDeItens,
+} from './carregadores.js';
 import type { ArmorLocationLinha } from './formula-armadura-arma.js';
 import type { ResolvedorItemLevel } from './item-level.js';
 import type { ResolvedorTrack } from './formula-track.js';
 import type { ResolvedorEfeito } from './formula-efeito.js';
 import { resolverBudgetIndex, resolverTipoOrcamento } from './orcamento.js';
-import { COLS_ITEM, COLS_BONUS, COLS_CONTEXT } from '../../packages/shared/dist/index.mjs';
+import {
+  COLS_ITEM,
+  COLS_BONUS,
+  COLS_CONTEXT,
+  COLS_SET,
+} from '../../packages/shared/dist/index.mjs';
 
 export interface TabelaColunar {
   cols: readonly string[];
@@ -63,6 +73,7 @@ export function montarItens(
       item.dmgVariance,
       item.flavor === '' ? null : item.flavor,
       item.nameDescriptionId === 0 ? null : item.nameDescriptionId,
+      item.itemSet === 0 ? null : item.itemSet,
       budgetIndex,
       scalingType,
       armorModifier,
@@ -102,13 +113,6 @@ export interface FontesBonus {
   descritorPorBonus: Map<number, Descritor>;
 }
 
-const STAT_ID_PARA_TERCIARIO: Record<number, 'avoidance' | 'leech' | 'speed' | 'indestructible'> = {
-  63: 'avoidance',
-  62: 'leech',
-  61: 'speed',
-  64: 'indestructible',
-};
-
 /**
  * `bonuses` (`WowBonus`) — uma linha por bonusId que existe no `ItemBonus`
  * DESTE BUILD, não só os alcançados pela árvore de algum item do catálogo.
@@ -125,11 +129,14 @@ export function montarBonuses(bonusIds: Set<number>, fontes: FontesBonus): Tabel
 
   for (const bonusId of bonusIds) {
     const track = fontes.trackResolver.resolver(bonusId);
-    const itemLevel = fontes.itemLevelResolver.resolver(bonusId);
-    const tercEntrada = (fontes.statsExtrasPorBonus.get(bonusId) ?? []).find(
-      (e) => e.statId in STAT_ID_PARA_TERCIARIO,
-    );
+    const ilvl = fontes.itemLevelResolver.resolverComConfianca(bonusId);
     const descritor = fontes.descritorPorBonus.get(bonusId);
+
+    // TODOS os stats do `Type 2`, não só o terciário. Ele acrescenta
+    // secundário muito mais do que terciário (Versatility em 468 listas,
+    // Haste 372, contra 8 de cada terciário), e a versão anterior emitia só
+    // um rótulo de terciário — perdendo o valor E todo o resto em silêncio.
+    const stats = fontes.statsExtrasPorBonus.get(bonusId) ?? [];
 
     rows.push([
       bonusId,
@@ -137,8 +144,12 @@ export function montarBonuses(bonusIds: Set<number>, fontes: FontesBonus): Tabel
       track?.rank ?? null,
       track?.total ?? null,
       track?.scalingId ?? null,
-      itemLevel,
-      tercEntrada ? STAT_ID_PARA_TERCIARIO[tercEntrada.statId] : null,
+      ilvl?.ilvl ?? null,
+      // O desempate, CRU: `0` vence quando duas listas do mesmo itemString
+      // disputam o ilvl. Sem ele, o banco não distingue as duas.
+      ilvl?.marcador ?? null,
+      stats.map((e) => e.statId),
+      stats.map((e) => e.alocacao),
       fontes.bonusComSocket.has(bonusId),
       fontes.bindingPorBonus.get(bonusId) ?? null,
       descritor?.texto ?? null,
@@ -167,4 +178,18 @@ export function montarContextos(
     }
   }
   return { cols: COLS_CONTEXT, rows };
+}
+
+/**
+ * `sets` (`WowItemSet`) — só os conjuntos que os itens do catálogo alcançam.
+ *
+ * O `bonuses` sai como JSON de `{ chrSpecId, threshold, spellId }`: é lista
+ * particular do conjunto, não vira filtro nem coluna de relatório — mesma
+ * régua do `effects` do item.
+ */
+export function montarSets(conjuntos: ConjuntoDeItens[]): TabelaColunar {
+  return {
+    cols: COLS_SET,
+    rows: conjuntos.map((c) => [c.itemSetId, c.name, c.pieceItemIds, c.bonuses]),
+  };
 }

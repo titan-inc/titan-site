@@ -21,6 +21,8 @@ export interface ItemSparseResumo {
   bonding: number;
   flavor: string;
   nameDescriptionId: number;
+  /** `ItemSparse.ItemSet` — 0 quando a peça não pertence a conjunto nenhum. */
+  itemSet: number;
 }
 
 export function carregarItemSparse(
@@ -31,7 +33,7 @@ export function carregarItemSparse(
   const linhas = db
     .prepare(
       `SELECT ID, ItemLevel, InventoryType, StatModifier_bonusStat, StatPercentEditor, StatPercentageOfSocket,
-              Flags, ItemDelay, DmgVariance, OverallQualityID, Bonding, Description_lang, ItemNameDescriptionID
+              Flags, ItemDelay, DmgVariance, OverallQualityID, Bonding, Description_lang, ItemNameDescriptionID, ItemSet
        FROM ItemSparse WHERE ID IN (${placeholders})`,
     )
     .all(...itemIds) as unknown as Array<{
@@ -48,6 +50,7 @@ export function carregarItemSparse(
     Bonding: number;
     Description_lang: string;
     ItemNameDescriptionID: number;
+    ItemSet: number;
   }>;
 
   return new Map(
@@ -66,6 +69,7 @@ export function carregarItemSparse(
         bonding: l.Bonding,
         flavor: l.Description_lang,
         nameDescriptionId: l.ItemNameDescriptionID,
+        itemSet: l.ItemSet,
       },
     ]),
   );
@@ -240,4 +244,63 @@ export function carregarDescritorPorBonus(db: DatabaseSync): Map<number, Descrit
     if (descritor) porBonus.set(linha.ParentItemBonusListID, descritor);
   }
   return porBonus;
+}
+
+/** Uma peça de um conjunto, e os bônus que o conjunto dá. */
+export interface ConjuntoDeItens {
+  itemSetId: number;
+  name: string;
+  pieceItemIds: number[];
+  bonuses: Array<{ chrSpecId: number; threshold: number; spellId: number }>;
+}
+
+/**
+ * Os conjuntos que os itens do catálogo alcançam — TIT-141.
+ *
+ * Só os alcançados: `ItemSet` tem 1.008 linhas no build, mas dos 975 itens do
+ * catálogo apenas **9 pertencem a conjunto**, em **3** deles. Peça de tier em
+ * geral não dropa — dropa o token, que não tem `ItemSet`.
+ *
+ * As peças vêm INTEIRAS mesmo quando parte delas está fora do catálogo: o
+ * tooltip lista as cinco, e omitir as não catalogadas faria o conjunto parecer
+ * menor do que é.
+ */
+export function carregarConjuntos(db: DatabaseSync, itemSetIds: number[]): ConjuntoDeItens[] {
+  if (itemSetIds.length === 0) return [];
+  const placeholders = itemSetIds.map(() => '?').join(',');
+
+  const sets = db
+    .prepare(`SELECT ID, Name_lang, ItemID FROM ItemSet WHERE ID IN (${placeholders})`)
+    .all(...itemSetIds) as unknown as Array<{ ID: number; Name_lang: string; ItemID: string }>;
+
+  const spells = db
+    .prepare(
+      `SELECT ItemSetID, ChrSpecID, Threshold, SpellID FROM ItemSetSpell
+       WHERE ItemSetID IN (${placeholders})`,
+    )
+    .all(...itemSetIds) as unknown as Array<{
+    ItemSetID: number;
+    ChrSpecID: number;
+    Threshold: number;
+    SpellID: number;
+  }>;
+
+  const porSet = new Map<number, ConjuntoDeItens['bonuses']>();
+  for (const s of spells) {
+    let lista = porSet.get(s.ItemSetID);
+    if (!lista) {
+      lista = [];
+      porSet.set(s.ItemSetID, lista);
+    }
+    lista.push({ chrSpecId: s.ChrSpecID, threshold: s.Threshold, spellId: s.SpellID });
+  }
+
+  return sets.map((s) => ({
+    itemSetId: s.ID,
+    name: s.Name_lang,
+    // `ItemID` é array no db2 e traz zeros de preenchimento — o conjunto tem
+    // 5 peças, o campo tem espaço para mais.
+    pieceItemIds: paraArrayNumerico(s.ItemID).filter((id) => id !== 0),
+    bonuses: porSet.get(s.ID) ?? [],
+  }));
 }

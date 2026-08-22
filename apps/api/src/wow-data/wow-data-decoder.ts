@@ -1,4 +1,10 @@
-import type { BonusFacets, DecodedBonuses } from '@titan/shared';
+import {
+  escolherItemLevel,
+  statsAdicionadosDe,
+  terciariosDe,
+  type BonusFacets,
+  type DecodedBonuses,
+} from '@titan/shared';
 
 /**
  * `bonusIds` → estrutura legível — o coração da TIT-82, remodelado pela
@@ -21,10 +27,13 @@ export function decodeBonuses(
     track: null,
     sockets: 0,
     terciarios: [],
+    statsAdicionados: [],
     binding: null,
     dificuldade: null,
     desconhecidos: [],
   };
+
+  const comItemLevel: BonusFacets[] = [];
 
   for (const bonusId of bonusIds) {
     const facetas = dicionario.get(bonusId);
@@ -34,8 +43,16 @@ export function decodeBonuses(
       continue;
     }
 
+    if (facetas.itemLevel !== null) comItemLevel.push(facetas);
     aplicar(saida, facetas);
   }
+
+  // DEPOIS do laço, e não "o último vence": duas listas do mesmo itemString
+  // podem disputar o ilvl, e quem desempata é o marcador — ver
+  // `escolherItemLevel`. Resolver dentro do laço deixaria a ordem de iteração
+  // decidir, que não é regra, é sorte.
+  saida.itemLevel = escolherItemLevel(comItemLevel);
+  saida.terciarios = terciariosDe(saida.statsAdicionados);
 
   return saida;
 }
@@ -66,16 +83,11 @@ function aplicar(saida: DecodedBonuses, facetas: BonusFacets): void {
     };
   }
 
-  // INDEPENDENTE do track, e isto corrige a versão anterior: ela amarrava o
-  // ilvl à entrada de track, mas um bonus pode trazer só o `Type 49` — a
-  // árvore do escudo devolve exatamente isso.
-  if (facetas.itemLevel !== null) {
-    saida.itemLevel = facetas.itemLevel;
-  }
+  // O ilvl NÃO é decidido aqui — ver o comentário em `decodeBonuses`.
 
-  if (facetas.tertiary !== null) {
-    saida.terciarios.push(facetas.tertiary);
-  }
+  // Os stats do `Type 2` SOMAM entre bônus: dois bônus podem acrescentar o
+  // mesmo stat, e o renderizador é quem agrega. Aqui só se acumula a lista.
+  saida.statsAdicionados.push(...statsAdicionadosDe(facetas));
 
   if (facetas.hasSocket) {
     saida.sockets += 1;

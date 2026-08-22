@@ -22,6 +22,7 @@ function montar(opts: { buildJaExiste?: boolean } = {}) {
       bonuses: [] as Chamada[][],
       contextos: [] as Chamada[][],
       escalas: [] as Chamada[][],
+      sets: [] as Chamada[][],
     },
     updateManyActive: [] as Chamada[],
     updateBuild: [] as Chamada[],
@@ -86,6 +87,16 @@ function montar(opts: { buildJaExiste?: boolean } = {}) {
         return Promise.resolve({ count: data.length });
       },
     },
+    wowItemSet: {
+      deleteMany: () => {
+        chamadas.deletes.push('sets');
+        return Promise.resolve({ count: 0 });
+      },
+      createMany: ({ data }: { data: Chamada[] }) => {
+        chamadas.createMany.sets.push(data);
+        return Promise.resolve({ count: data.length });
+      },
+    },
   };
 
   const prisma = {
@@ -124,6 +135,7 @@ const COLS_ITEM_TESTE = [
   'dmgVariance',
   'flavor',
   'nameDescriptionId',
+  'itemSetId',
   'budgetIndex',
   'scalingType',
   'armorModifier',
@@ -139,6 +151,7 @@ describe('WowDataRepository.regravarBuild', () => {
       bonuses: [],
       contextos: [],
       escalas: [],
+      sets: [],
     });
 
     const args = chamadas.upsertBuild[0];
@@ -155,9 +168,10 @@ describe('WowDataRepository.regravarBuild', () => {
       bonuses: [],
       contextos: [],
       escalas: [],
+      sets: [],
     });
 
-    expect(chamadas.deletes).toEqual(['itens', 'bonuses', 'contextos', 'escalas']);
+    expect(chamadas.deletes).toEqual(['itens', 'bonuses', 'contextos', 'escalas', 'sets']);
   });
 
   it('`novo` é true quando o build ainda não existia, false quando já existia', async () => {
@@ -169,12 +183,14 @@ describe('WowDataRepository.regravarBuild', () => {
       bonuses: [],
       contextos: [],
       escalas: [],
+      sets: [],
     });
     const b = await repoExistente.regravarBuild('b1', {
       itens: [],
       bonuses: [],
       contextos: [],
       escalas: [],
+      sets: [],
     });
 
     expect(a.novo).toBe(true);
@@ -190,7 +206,13 @@ describe('WowDataRepository.regravarBuild', () => {
       bonusId: 2,
     }));
 
-    await repo.regravarBuild('12.1.0.69299', { itens: [], bonuses: [], contextos, escalas: [] });
+    await repo.regravarBuild('12.1.0.69299', {
+      itens: [],
+      bonuses: [],
+      contextos,
+      escalas: [],
+      sets: [],
+    });
 
     expect(chamadas.createMany.contextos).toHaveLength(3);
     expect(chamadas.createMany.contextos.map((l) => l.length)).toEqual([16_383, 16_383, 5]);
@@ -221,6 +243,7 @@ describe('WowDataRepository.regravarBuild', () => {
           0,
           'flavor',
           null,
+          null, // itemSetId
           0,
           'armor',
           null,
@@ -230,6 +253,7 @@ describe('WowDataRepository.regravarBuild', () => {
       bonuses: [],
       contextos: [],
       escalas: [],
+      sets: [],
     });
 
     const gravado = chamadas.createMany.itens[0]?.[0];

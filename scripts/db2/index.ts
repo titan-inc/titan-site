@@ -24,7 +24,7 @@ import { rodarAutoConferencia } from './auto-conferencia.js';
 import { ResolvedorItemLevel } from './item-level.js';
 import { ResolvedorTrack } from './formula-track.js';
 import { ResolvedorEfeito } from './formula-efeito.js';
-import { montarItens, montarBonuses, montarContextos } from './montar-tabelas.js';
+import { montarItens, montarBonuses, montarContextos, montarSets } from './montar-tabelas.js';
 import { listarTypesDesconhecidos, imprimirRelatorio } from './relatorio.js';
 import {
   carregarItemSparse,
@@ -36,6 +36,7 @@ import {
   carregarBindingPorBonus,
   carregarDescritorPorBonus,
   carregarTodosBonusIds,
+  carregarConjuntos,
 } from './carregadores.js';
 import { wowDataFileSchema, WOW_DATA_FILE_VERSION } from '../../packages/shared/dist/index.mjs';
 
@@ -118,6 +119,16 @@ async function main(): Promise<void> {
   const contextos = montarContextos(arvore.contextosPorItem);
   const escalas = montarTabelaEscalas(escalasPorIlvl);
 
+  // Só os conjuntos que os itens do catálogo alcançam — o `ItemSet` tem 1.008
+  // linhas no build e a nossa fatia é minúscula (9 itens, 3 conjuntos).
+  const itemSetIds = [
+    ...new Set(
+      [...itemSparsePorId.values()].map((i) => i.itemSet).filter((id): id is number => id !== 0),
+    ),
+  ];
+  const sets = montarSets(carregarConjuntos(db, itemSetIds));
+  console.log(`sets: ${sets.rows.length} conjunto(s) alcançado(s) pelo catálogo`);
+
   const arquivo = {
     version: WOW_DATA_FILE_VERSION,
     build: args.build,
@@ -125,6 +136,7 @@ async function main(): Promise<void> {
     bonuses,
     contextos,
     escalas,
+    sets,
   };
 
   const validacao = wowDataFileSchema.safeParse(arquivo);

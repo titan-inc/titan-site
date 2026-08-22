@@ -9,7 +9,9 @@ function facetas(over: Partial<BonusFacets> & { bonusId: number }): BonusFacets 
     trackMaxRank: null,
     trackScalingId: null,
     itemLevel: null,
-    tertiary: null,
+    itemLevelMarcador: null,
+    statIds: [],
+    statAllocs: [],
     hasSocket: false,
     binding: null,
     difficulty: null,
@@ -35,14 +37,14 @@ describe('WowDataService.decodificar', () => {
   it('busca só os ids pedidos, no build ativo, e decodifica', async () => {
     repo.facetasDeBonus.mockResolvedValueOnce([
       facetas({ bonusId: 12806, trackName: 'Myth', trackRank: 4, trackMaxRank: 6 }),
-      facetas({ bonusId: 40, tertiary: 'avoidance' }),
+      facetas({ bonusId: 40, statIds: [63], statAllocs: [3000] }),
     ]);
 
     const resultado = await service.decodificar([12806, 40]);
 
     expect(repo.facetasDeBonus).toHaveBeenCalledWith('12.1.0.69299', [12806, 40]);
     expect(resultado.track).toEqual({ nome: 'Myth', rank: 4, de: 6, scalingId: null });
-    expect(resultado.terciarios).toEqual(['avoidance']);
+    expect(resultado.terciarios).toEqual([{ tipo: 'avoidance', alocacao: 3000 }]);
   });
 
   it('lista vazia não consulta o banco', async () => {

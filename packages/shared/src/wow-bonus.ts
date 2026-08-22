@@ -94,7 +94,25 @@ export const bonusFacetsSchema = z.object({
   /** O ilvl que este bonus determina, via `Type 49`. */
   itemLevel: z.number().int().positive().nullable(),
 
-  tertiary: bonusTertiarySchema.nullable(),
+  /**
+   * O segundo valor do `Value` do `Type 49`/`51` — o desempate quando duas
+   * listas do mesmo `itemString` disputam o ilvl. **O `0` vence.**
+   *
+   * Cru de propósito: um espécime só (o `Ancient Amani Greataxe`) não prova o
+   * enum inteiro do campo. Quem aplica a regra é `escolherItemLevel`.
+   */
+  itemLevelMarcador: z.number().int().nullable(),
+
+  /**
+   * Os stats que este bonus ACRESCENTA — o `Type 2`, pareados por posição.
+   *
+   * **Substituiu o campo `tertiary`, que era um enum único.** O `Type 2`
+   * acrescenta qualquer stat e quase sempre dois de uma vez (740 listas com
+   * dois, contra 8 por terciário), e a maioria é secundário. O terciário
+   * deriva daqui, com o valor junto — ver `terciariosDe`.
+   */
+  statIds: z.number().int().array(),
+  statAllocs: z.number().int().array(),
 
   /** `Type 6` — acrescenta um socket. */
   hasSocket: z.boolean(),
@@ -109,3 +127,77 @@ export const bonusFacetsSchema = z.object({
   quality: z.number().int().nullable(),
 });
 export type BonusFacets = z.infer<typeof bonusFacetsSchema>;
+
+/** Os ids de stat que o jogo trata como terciário. Ver `BONUS_TERTIARIES`. */
+export const STAT_ID_TERCIARIO: Readonly<Record<number, BonusTertiary>> = {
+  61: BONUS_TERTIARIES.SPEED,
+  62: BONUS_TERTIARIES.LEECH,
+  63: BONUS_TERTIARIES.AVOIDANCE,
+  64: BONUS_TERTIARIES.INDESTRUCTIBLE,
+};
+
+/** Um stat que um bonus acrescenta, já despareado dos arrays. */
+export interface StatAdicionado {
+  statId: number;
+  alocacao: number;
+}
+
+/** Despareia `statIds`/`statAllocs` de um bonus. */
+export function statsAdicionadosDe(
+  facetas: Pick<BonusFacets, 'statIds' | 'statAllocs'>,
+): StatAdicionado[] {
+  return facetas.statIds.map((statId, i) => ({ statId, alocacao: facetas.statAllocs[i] ?? 0 }));
+}
+
+/**
+ * Os terciários de uma lista de stats acrescentados, com a **alocação**.
+ *
+ * A alocação não é constante e não pode ser assumida: medida no build 12.1.0,
+ * Speed vai de 1925 a 5973, Leech de 3000 a 23892, Avoidance de 1925 a 11946.
+ * Só `indestructible` é sempre 3000 — e ele é flag, o jogo mostra a palavra.
+ */
+export function terciariosDe(
+  stats: readonly StatAdicionado[],
+): Array<{ tipo: BonusTertiary; alocacao: number }> {
+  const saida: Array<{ tipo: BonusTertiary; alocacao: number }> = [];
+  for (const { statId, alocacao } of stats) {
+    const tipo = STAT_ID_TERCIARIO[statId];
+    if (tipo !== undefined) saida.push({ tipo, alocacao });
+  }
+  return saida;
+}
+
+/**
+ * Qual `itemLevel` vale, entre os bonus que determinam um.
+ *
+ * **O `itemLevelMarcador` 0 vence.** Sem isto, duas listas do mesmo
+ * `itemString` disputando o ilvl seriam desempatadas pela ordem de iteração —
+ * que não é regra, é sorte, e erra em silêncio arrastando todos os stats.
+ *
+ * Medido no `Ancient Amani Greataxe`: `13844` traz `"449,1"` (ilvl 256) e
+ * `13845` traz `"450,0"` (ilvl 263, o que o tooltip mostra).
+ *
+ * Empate entre marcadores iguais mantém o último — não há evidência de que
+ * aconteça, e degradar é melhor que estourar no meio de uma raid.
+ */
+export function escolherItemLevel(
+  candidatos: ReadonlyArray<Pick<BonusFacets, 'itemLevel' | 'itemLevelMarcador'>>,
+): number | null {
+  let escolhido: number | null = null;
+  let melhorMarcador: number | null = null;
+
+  for (const c of candidatos) {
+    if (c.itemLevel === null) continue;
+
+    // Marcador ausente conta como 0: bonus que traz ilvl sem disputar ninguém
+    // é o caso esmagadoramente comum, e ele tem que vencer o `1` de um
+    // concorrente. Só o marcador MAIOR é descartado.
+    const marcador = c.itemLevelMarcador ?? 0;
+    if (melhorMarcador !== null && marcador > melhorMarcador) continue;
+
+    escolhido = c.itemLevel;
+    melhorMarcador = marcador;
+  }
+
+  return escolhido;
+}

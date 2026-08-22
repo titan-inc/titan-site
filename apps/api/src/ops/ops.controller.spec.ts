@@ -92,7 +92,7 @@ describe('OpsController', () => {
         build: '12.1.0.69299',
         novo: true,
         ativo: false,
-        linhas: { itens: 963, bonuses: 10085, contextos: 163207, escalas: 1300 },
+        linhas: { itens: 963, bonuses: 10085, contextos: 163207, escalas: 1300, sets: 3 },
       }),
     ),
     ativar: jest.fn<Promise<WowDataActivateResult>, [string]>(() =>

@@ -46,6 +46,7 @@ export const COLS_ITEM = [
   'dmgVariance',
   'flavor',
   'nameDescriptionId',
+  'itemSetId',
   'budgetIndex',
   'scalingType',
   'armorModifier',
@@ -59,7 +60,9 @@ export const COLS_BONUS = [
   'trackMaxRank',
   'trackScalingId',
   'itemLevel',
-  'tertiary',
+  'itemLevelMarcador',
+  'statIds',
+  'statAllocs',
   'hasSocket',
   'binding',
   'difficulty',
@@ -68,6 +71,8 @@ export const COLS_BONUS = [
 ] as const;
 
 export const COLS_CONTEXT = ['itemId', 'itemContext', 'bonusId'] as const;
+
+export const COLS_SET = ['itemSetId', 'name', 'pieceItemIds', 'bonuses'] as const;
 
 export const COLS_SCALING = [
   'itemLevel',
@@ -176,5 +181,6 @@ export const wowDataFileSchema = z.object({
   bonuses: tabelaColunar(COLS_BONUS),
   contextos: tabelaColunar(COLS_CONTEXT),
   escalas: tabelaColunar(COLS_SCALING),
+  sets: tabelaColunar(COLS_SET),
 });
 export type WowDataFile = z.infer<typeof wowDataFileSchema>;

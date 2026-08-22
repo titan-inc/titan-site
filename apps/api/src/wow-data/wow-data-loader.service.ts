@@ -4,6 +4,7 @@ import {
   COLS_CONTEXT,
   COLS_ITEM,
   COLS_SCALING,
+  COLS_SET,
   linhasParaObjetos,
   type WowDataFile,
 } from '@titan/shared';
@@ -16,7 +17,7 @@ export interface WowDataLoadResult {
   novo: boolean;
   /** Este build é o que a guilda enxerga AGORA — carregar nunca muda isto. */
   ativo: boolean;
-  linhas: { itens: number; bonuses: number; contextos: number; escalas: number };
+  linhas: { itens: number; bonuses: number; contextos: number; escalas: number; sets: number };
   /**
    * Só existe quando `ativo` é `true`. Não é aviso genérico — é a frase que
    * torna impossível carregar por engano o build ativo sem perceber, porque
@@ -54,6 +55,7 @@ export class WowDataLoaderService {
       bonuses: linhasParaObjetos(COLS_BONUS, arquivo.bonuses),
       contextos: linhasParaObjetos(COLS_CONTEXT, arquivo.contextos),
       escalas: linhasParaObjetos(COLS_SCALING, arquivo.escalas),
+      sets: linhasParaObjetos(COLS_SET, arquivo.sets),
     });
 
     const buildAtivo = await this.repo.buildAtivo();
@@ -68,6 +70,7 @@ export class WowDataLoaderService {
         bonuses: contagem.bonuses,
         contextos: contagem.contextos,
         escalas: contagem.escalas,
+        sets: contagem.sets,
       },
       aviso: ativo ? avisoDeRecargaDoAtivo(arquivo.build) : undefined,
     };

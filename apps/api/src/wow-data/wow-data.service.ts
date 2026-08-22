@@ -8,6 +8,7 @@ const saidaVazia: DecodedBonuses = {
   track: null,
   sockets: 0,
   terciarios: [],
+  statsAdicionados: [],
   binding: null,
   dificuldade: null,
   desconhecidos: [],
