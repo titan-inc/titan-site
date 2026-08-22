@@ -2,9 +2,9 @@ type: http_request
 model: http_request
 id: rq_HQiBYv2eob
 createdAt: 2026-08-15T00:16:28.559691
-updatedAt: 2026-08-15T02:06:14.291542200
+updatedAt: 2026-08-22T13:40:31.162677900
 workspaceId: wk_8LmjjnEbam
-folderId: fl_FknhcmhGXn
+folderId: fl_9Bmwti7obm
 authentication: {}
 authenticationType: null
 body:
@@ -22,7 +22,7 @@ headers:
   id: null
 method: POST
 name: Loot import RC
-sortPriority: 6000.0
+sortPriority: 2000.0
 url: ${[ base_url ]}/internal/ops/loot-import-rc
 urlParameters: []
 settingSendCookies:

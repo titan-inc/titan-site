@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_gAJEavAqkY
 createdAt: 2026-08-16T01:33:59.337398
-updatedAt: 2026-08-16T01:33:59.337401400
+updatedAt: 2026-08-22T13:40:17.814298500
 workspaceId: wk_8LmjjnEbam
 folderId: fl_FknhcmhGXn
 authentication: {}
@@ -17,7 +17,7 @@ headers:
   id: null
 method: POST
 name: Fix character ids
-sortPriority: 0.0
+sortPriority: 3000.0
 url: ${[ base_url ]}/internal/ops/fix-character-ids
 urlParameters: []
 settingSendCookies:

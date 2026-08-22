@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_kzFTPikfUX
 createdAt: 2026-08-16T13:01:22.065311900
-updatedAt: 2026-08-16T13:01:22.065315500
+updatedAt: 2026-08-22T13:40:17.814702300
 workspaceId: wk_8LmjjnEbam
 folderId: fl_FknhcmhGXn
 authentication: {}
@@ -17,7 +17,7 @@ headers:
   id: null
 method: POST
 name: Regerar histórico da sessão
-sortPriority: 0.0
+sortPriority: 4000.0
 url: ${[ base_url ]}/internal/ops/loot-sessions/:id/regerar-historico
 urlParameters: []
 settingSendCookies:

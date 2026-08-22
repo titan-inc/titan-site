@@ -2,9 +2,9 @@ type: http_request
 model: http_request
 id: rq_catalogItemIds1
 createdAt: 2026-08-16T22:30:00
-updatedAt: 2026-08-16T22:30:00
+updatedAt: 2026-08-22T13:41:07.573638200
 workspaceId: wk_8LmjjnEbam
-folderId: fl_FknhcmhGXn
+folderId: fl_JCWQzsozJU
 authentication: {}
 authenticationType: null
 body: {}
@@ -17,7 +17,7 @@ headers:
   id: null
 method: GET
 name: Catalog item ids
-sortPriority: 3100.0
+sortPriority: 1000.0
 url: ${[ base_url ]}/internal/ops/catalog-item-ids
 urlParameters: []
 settingSendCookies:

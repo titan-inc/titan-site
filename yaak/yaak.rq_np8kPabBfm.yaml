@@ -2,15 +2,15 @@ type: http_request
 model: http_request
 id: rq_np8kPabBfm
 createdAt: 2026-08-15T00:16:28.280548400
-updatedAt: 2026-08-15T03:31:17.502587300
+updatedAt: 2026-08-22T16:17:26.775882200
 workspaceId: wk_8LmjjnEbam
-folderId: fl_FknhcmhGXn
+folderId: fl_JCWQzsozJU
 authentication: {}
 authenticationType: null
 body:
-  text: '{"catalog": ${[ fs.readFile(path=b64''QzpcVXNlcnNcYW5kcmVcd29ya3NwYWNlXHRpdGFuLXNpdGVcYXBwc1xhcGlcY2F0YWxvZ29cdmF1bHQtb2YtdGhlLWluY2FybmF0ZXMuanNvbg'', encoding=''utf8'') ]}}'
+  text: '{"catalog": ${[ fs.readFile(path=b64''QzpcVXNlcnNcYW5kcmVcd29ya3NwYWNlXHRpdGFuLXNpdGVcYXBwc1xhcGlcY2F0YWxvZ29cMTMxN190aGUtdGlkZWJvdW5kLWdyb3R0by5qc29u'', encoding=''utf8'') ]}}'
 bodyType: application/json
-description: 'Aponte a variável catalog_json_path (Local) para o .json de um catálogo já gerado (ex.: apps/api/catalogo/the-voidspire.json ou a saída de ''Catalog generate''). Diferente do journalDump do Catalog generate, catalog aqui é um valor JSON, não uma string — fs.readFile() sozinho basta, sem pnpm dump:escape. Pra rodar sem conferência contra o Warcraft Logs (só se ele estiver fora do ar), edite o body e acrescente , "semConferencia": true antes de enviar.'
+description: 'Aponte a variável catalog_json_path (Local) para o .json de um catálogo já gerado (ex.: apps/api/catalogo/1307_the-voidspire.json ou a saída de ''Catalog generate''). Diferente do journalDump do Catalog generate, catalog aqui é um valor JSON, não uma string — fs.readFile() sozinho basta, sem pnpm dump:escape. Pra rodar sem conferência contra o Warcraft Logs (só se ele estiver fora do ar), edite o body e acrescente , "semConferencia": true antes de enviar.'
 headers:
 - enabled: true
   name: X-Ops-Token
@@ -22,7 +22,7 @@ headers:
   id: null
 method: POST
 name: Catalog load
-sortPriority: 4000.0
+sortPriority: 3000.0
 url: ${[ base_url ]}/internal/ops/catalog-load
 urlParameters: []
 settingSendCookies:
