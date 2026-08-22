@@ -323,11 +323,15 @@ dele.
 
 **Filtrar pelos `itemId` que temos no catálogo**, e não por expansão:
 
-- por "expansão atual + equipamento" ainda seriam milhares de linhas, e
-  **cortaria o histórico** — o catálogo vai até Dragonflight S1 (TIT-124), e a
-  tabela de histórico é consumidora do popover
-- pelos nossos ids são **algumas centenas de linhas**, cobrindo o histórico
-  inteiro e cabendo com folga no teto
+- por "expansão atual + equipamento" ainda seriam milhares de linhas, e não
+  acompanharia o catálogo — quem decide o recorte é ele, não uma regra
+  paralela que pode divergir dele em silêncio
+- pelos nossos ids são **algumas centenas de linhas**, cobrindo exatamente o
+  que a guilda tem no histórico e cabendo com folga no teto
+
+> **O recorte é Midnight S1 em diante (TIT-142).** O catálogo tem **286 itens**
+> em 6 raids. Os cinco arquivos de Dragonflight e The War Within continuam no
+> repositório como registro do trabalho da TIT-124, mas **não são carregados**.
 
 E, dentro disso, **cortar coluna antes de cortar linha**: o `ItemSparse` tem 68
 colunas e a fórmula usa ~13.

@@ -131,8 +131,10 @@ Sem script antigo equivalente. Todo `itemId` que já existe no dicionário
 (`WowItem`) — serve para filtrar db2 gigantes pelos itens que interessam
 antes de carregar, em vez de trazer o arquivo inteiro. O caso concreto é o
 `ItemSparse.db2` (~59MB) da TIT-136: filtrado por esta lista vira algumas
-centenas de linhas e cobre o histórico inteiro, contra milhares de linhas e
-um corte na Dragonflight S1 se o filtro fosse "expansão atual".
+centenas de linhas, contra milhares se o filtro fosse "expansão atual".
+
+**Quem decide o recorte é o catálogo, não uma regra paralela** — se um dia a
+guilda catalogar uma raid a mais, o filtro acompanha sozinho.
 
 ```bash
 curl "http://localhost:3001/internal/ops/catalog-item-ids" \
@@ -214,6 +216,31 @@ resolveram o sintoma na prática.
 ## Catálogo — carregar no banco
 
 Era `pnpm --filter api catalog:load <arquivo.json> [--sem-conferencia]`.
+
+### Quais arquivos entram — e por que cinco ficam de fora
+
+**O histórico de produção começa em Midnight S1** (TIT-142). São **6 raids,
+286 itens**:
+
+```
+1305_sporefall              1314_the-dreamrift
+1307_the-voidspire          1317_the-tidebound-grotto
+1308_march-on-quel-danas    1320_the-venomous-abyss
+```
+
+Os outros cinco arquivos de `apps/api/catalogo/` — `1200_vault-of-the-incarnates`,
+`1207_amirdrassil-the-dreams-hope`, `1208_aberrus-the-shadowed-crucible`,
+`1273_nerub-ar-palace`, `1296_liberation-of-undermine`, `1302_manaforge-omega`
+— **existem no repositório de propósito e NÃO são carregados.**
+
+Eles são o artefato do trabalho da TIT-124: gerá-los de novo custa dump do
+journal e curadoria, e apagá-los faria a próxima pessoa achar que nunca
+existiram. **Carregar "para completar" é o erro que este parágrafo existe para
+evitar** — traria 741 itens de raids que a guilda não vai ter no histórico.
+
+> O histórico importado do RCLootCouncil (TIT-53) **já cabe inteiro em
+> Midnight**: o export vai de 17/03 a 25/06/2026, e as raids nele são The
+> Voidspire e The Dreamrift. Não há lacuna a aceitar.
 
 ```bash
 curl -X POST "http://localhost:3001/internal/ops/catalog-load" \
