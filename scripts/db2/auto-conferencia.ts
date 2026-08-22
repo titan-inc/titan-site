@@ -14,6 +14,7 @@ import {
   type ArmorLocationLinha,
 } from './formula-armadura-arma.js';
 import { ResolvedorTrack } from './formula-track.js';
+import { ResolvedorEfeito, calcularValorEfeito } from './formula-efeito.js';
 import { carregarFixture, type EspecimeFixture } from './fixture.js';
 
 /**
@@ -72,6 +73,7 @@ export function rodarAutoConferencia(
   const statsExtrasPorBonus = carregarStatsAdicionaisPorBonus(db);
   const qualidadeExtraPorBonus = carregarQualidadeExtraPorBonus(db);
   const trackResolver = new ResolvedorTrack(db);
+  const efeitoResolver = new ResolvedorEfeito(db);
 
   const divergencias: DivergenciaFixture[] = [];
   let valoresConferidos = 0;
@@ -129,6 +131,7 @@ export function rodarAutoConferencia(
     );
     valoresConferidos += conferirDanoDeArma(divergencias, especime, item, qualidade, escala);
     valoresConferidos += conferirTrack(divergencias, especime, bonusAplicados, trackResolver);
+    valoresConferidos += conferirEfeito(divergencias, especime, escala, efeitoResolver);
   }
 
   return { valoresConferidos, divergencias };
@@ -393,6 +396,69 @@ function conferirTrack(
   conferir(divergencias, especime.nome, 'track.rank', especime.track.rank, track.rank);
   conferir(divergencias, especime.nome, 'track.total', especime.track.total, track.total);
   return 3;
+}
+
+/**
+ * `esperado.efeito` traz chaves `sN_rotulo` (ex. `s1_strength`) para os
+ * placeholders numéricos, mais `duracaoSegundos`/`maxStacks`.
+ * `cooldownMinutos` e `textoRenderizado` ficam de fora — ver a lacuna
+ * documentada no topo de `formula-efeito.ts` (cooldown de proc não sai de
+ * nenhuma tabela extraída).
+ */
+function conferirEfeito(
+  divergencias: DivergenciaFixture[],
+  especime: EspecimeFixture,
+  escala: LinhaEscala,
+  resolver: ResolvedorEfeito,
+): number {
+  const efeitoEsperado = especime.esperado.efeito as Record<string, unknown> | undefined;
+  if (!efeitoEsperado) return 0;
+
+  const efeito = resolver.resolverPorItem(especime.itemId);
+  if (!efeito) {
+    divergencias.push({
+      especime: especime.nome,
+      campo: 'efeito',
+      esperado: 'presente',
+      calculado: 'ausente',
+    });
+    return 1;
+  }
+
+  let conferidos = 0;
+  for (const [campo, valorEsperado] of Object.entries(efeitoEsperado)) {
+    if (campo === 'cooldownMinutos' || campo === 'textoRenderizado') continue;
+    if (typeof valorEsperado !== 'number') continue;
+
+    if (campo === 'duracaoSegundos') {
+      conferir(
+        divergencias,
+        especime.nome,
+        campo,
+        valorEsperado,
+        efeito.duracaoMs === null ? null : efeito.duracaoMs / 1000,
+      );
+      conferidos++;
+      continue;
+    }
+    if (campo === 'maxStacks') {
+      conferir(divergencias, especime.nome, campo, valorEsperado, efeito.maxStacks);
+      conferidos++;
+      continue;
+    }
+
+    const match = /^s(\d+)_/.exec(campo);
+    if (!match) continue;
+    const effectIndex = Number(match[1]) - 1;
+    const spellEfeito = efeito.efeitos.find((e) => e.effectIndex === effectIndex);
+    const calculado = spellEfeito
+      ? calcularValorEfeito(spellEfeito.coefficient, spellEfeito.scalingClass, escala)
+      : undefined;
+    conferir(divergencias, especime.nome, campo, valorEsperado, calculado);
+    conferidos++;
+  }
+
+  return conferidos;
 }
 
 interface StatAdicional {

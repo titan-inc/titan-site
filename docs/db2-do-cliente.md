@@ -848,6 +848,14 @@ Verificado no trinket, nos dois ranks e nos dois efeitos:
 O `DamageReplaceStat` e o `DamageSecondary` são colunas do `RandPropPoints` que
 parecem "coisa de arma" e não são — o `−8` de um trinket usa a primeira.
 
+> **Correção (TIT-139): o arredondamento é `round`, não `floor`.** A tabela
+> acima mostra o cru a 1 casa, e isso escondeu a diferença — `77.365,5`
+> parece pedir `floor` porque `floor` e `round` dão o mesmo 77365 quando a
+> fração é `< 0,5`. O cru de verdade do rank 2 é `79.752,998`, não
+> `79.753,0`: com `floor` dá 79752, e o tooltip mostra 79753. Só `round`
+> fecha os dois ranks ao mesmo tempo — mesma disciplina do resto da fórmula
+> ("Duas coisas menores": `round`, nunca truncamento).
+
 **O caso `−1` também dá um jeito de LER o item level real de uma peça**:
 dividindo o número do tooltip pelo `Coefficient`, sai o orçamento, e dele o
 ilvl. Foi assim que se descobriu que o trinket estava em 292/295.
