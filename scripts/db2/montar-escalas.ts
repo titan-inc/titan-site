@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { paraArrayNumerico } from './wow-export-db.js';
 import type { GameTables, MultiplicadorPorTipo } from './game-tables.js';
-import { COLS_SCALING } from '../../packages/shared/dist/index.mjs';
+import { COLS_SCALING, type LinhaEscala } from '../../packages/shared/dist/index.mjs';
 
 /**
  * A escala por item level — colapsa onze db2 numa linha por ilvl. **NÃO
@@ -9,23 +9,12 @@ import { COLS_SCALING } from '../../packages/shared/dist/index.mjs';
  * então sai com as 1.300 linhas inteiras (a hipótese de cortar em ~340 que a
  * TIT-137 registrava está descartada com número — ver "A faixa de item
  * level" na TIT-139).
+ *
+ * A FORMA (`LinhaEscala`) mora no `packages/shared` desde a TIT-136 — é a
+ * mesma que as fórmulas migradas esperam, e o resolvedor de runtime monta a
+ * partir do Postgres. Aqui só a MONTAGEM a partir do db2 continua.
  */
-export interface LinhaEscala {
-  itemLevel: number;
-  budget: number[];
-  damageReplaceStat: number;
-  damageSecondary: number;
-  crMult: MultiplicadorPorTipo;
-  stamMult: MultiplicadorPorTipo;
-  socketCost: number;
-  armorTotal: number[];
-  armorQuality: number[];
-  armorShield: number[];
-  dmgOneHand: number[];
-  dmgTwoHand: number[];
-  dmgOneHandCaster: number[];
-  dmgTwoHandCaster: number[];
-}
+export type { LinhaEscala };
 
 /** A forma rica, por ilvl — usada pela auto-conferência e pela montagem de itens. */
 export function montarEscalasPorIlvl(

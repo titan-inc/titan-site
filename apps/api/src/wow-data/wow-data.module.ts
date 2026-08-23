@@ -6,6 +6,7 @@ import { WowDataLoaderService } from './wow-data-loader.service';
 import { WowDataReportService } from './wow-data-report.service';
 import { WowDataRepository } from './wow-data.repository';
 import { WowDataService } from './wow-data.service';
+import { WowItemStatsService } from './wow-item-stats.service';
 
 /**
  * O dado do cliente do WoW, versionado por build — TIT-137.
@@ -23,6 +24,9 @@ import { WowDataService } from './wow-data.service';
  * versão antiga foi removido junto com o `kind`: ele carregava um dicionário
  * curado à mão, e o modelo que ele preenchia deixou de existir.
  *
+ * `WowItemStatsService` (TIT-136) segue o mesmo desenho de `decodificar`:
+ * sem rota própria, chamado direto pela TIT-135 de dentro de outro módulo.
+ *
  * `LootLinesModule` e `LootSessionsModule` entram pelo relatório: ele varre
  * `LootLine` e `LootSessionItem`, e cada um só é lido através do service do
  * próprio módulo (Regra 3 — nenhum Prisma cruzando fronteira). `LootCatalogModule`
@@ -31,7 +35,13 @@ import { WowDataService } from './wow-data.service';
  */
 @Module({
   imports: [LootLinesModule, LootSessionsModule, LootCatalogModule],
-  providers: [WowDataRepository, WowDataService, WowDataReportService, WowDataLoaderService],
-  exports: [WowDataService, WowDataReportService, WowDataLoaderService],
+  providers: [
+    WowDataRepository,
+    WowDataService,
+    WowDataReportService,
+    WowDataLoaderService,
+    WowItemStatsService,
+  ],
+  exports: [WowDataService, WowDataReportService, WowDataLoaderService, WowItemStatsService],
 })
 export class WowDataModule {}

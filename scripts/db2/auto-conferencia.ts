@@ -2,17 +2,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { LinhaEscala } from './montar-escalas.js';
 import { ResolvedorItemLevel } from './item-level.js';
 import { resolverArvoreDeBonus } from './resolucao-bonus.js';
-import { resolverBudgetIndex, resolverTipoOrcamento } from './orcamento.js';
-import { calcularValorStat } from './formula-stat.js';
-import {
-  calcularArmadura,
-  calcularBlock,
-  calcularDanoDeArma,
-  resolverTabelaDano,
-  type ArmorLocationLinha,
-} from './formula-armadura-arma.js';
+import { calcularArmorModifier } from './montar-tabelas.js';
 import { ResolvedorTrack } from './formula-track.js';
-import { ResolvedorEfeito, calcularValorEfeito } from './formula-efeito.js';
+import { ResolvedorEfeito } from './formula-efeito.js';
 import { carregarFixture, type EspecimeFixture } from './fixture.js';
 import {
   carregarItemSparse,
@@ -24,7 +16,18 @@ import {
   type ItemSparseResumo,
   type StatAdicional,
   type ConjuntoDeItens,
+  type ArmorLocationLinha,
 } from './carregadores.js';
+import {
+  resolverBudgetIndex,
+  resolverTipoOrcamento,
+  calcularValorStat,
+  calcularArmadura,
+  calcularBlock,
+  calcularDanoDeArma,
+  resolverTabelaDano,
+  calcularValorEfeito,
+} from '../../packages/shared/dist/index.mjs';
 
 /**
  * O CORAÇÃO DA ISSUE (TIT-139): roda a fixture contra o dump a cada geração.
@@ -372,13 +375,12 @@ function conferirArmaduraEBlock(
   const { esperado } = especime;
 
   if (typeof esperado.armadura === 'number') {
-    const armadura = calcularArmadura(
-      material,
-      inventoryType,
-      qualidade,
-      escala,
-      armorLocationPorSlot,
-    );
+    // O MESMO modificador que vai pro `WowItemData.armorModifier` — não a
+    // tabela inteira. `calcularArmadura` (shared) recebe o escalar já
+    // resolvido, igual ao resolvedor de runtime; duas contas separadas
+    // divergiriam em silêncio no dia em que uma mudasse sem a outra.
+    const armorModifier = calcularArmorModifier(material, inventoryType, armorLocationPorSlot);
+    const armadura = calcularArmadura(material, inventoryType, qualidade, escala, armorModifier);
     conferir(divergencias, especime.nome, 'armadura', esperado.armadura, armadura ?? 0);
     conferidos++;
   }

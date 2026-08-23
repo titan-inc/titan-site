@@ -11,6 +11,7 @@ const saidaVazia: DecodedBonuses = {
   statsAdicionados: [],
   binding: null,
   dificuldade: null,
+  qualidade: null,
   desconhecidos: [],
 };
 

@@ -1,6 +1,16 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { paraArrayNumerico } from './wow-export-db.js';
-import { resolverMaterial, type ArmorLocationLinha } from './formula-armadura-arma.js';
+import { resolverMaterial } from '../../packages/shared/dist/index.mjs';
+
+/** As quatro colunas de material do `ArmorLocation` — TIT-136 (movida de
+ * `formula-armadura-arma.ts`, que migrou pro shared; só o formato de
+ * LEITURA do db2 fica aqui, `calcularArmadura` não precisa mais dela). */
+export interface ArmorLocationLinha {
+  clothmodifier: number;
+  leathermodifier: number;
+  chainmodifier: number;
+  platemodifier: number;
+}
 
 /**
  * Leituras do dump usadas tanto pela auto-conferência quanto pela montagem

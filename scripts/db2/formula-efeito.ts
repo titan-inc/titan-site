@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { LinhaEscala } from './montar-escalas.js';
+import type { EfeitoDoItem, SpellEfeitoBruto } from '../../packages/shared/dist/index.mjs';
 
 /**
  * O texto de efeito (trinket, "Use:", "Equip:") — ver "O texto de efeito:
@@ -26,21 +26,14 @@ import type { LinhaEscala } from './montar-escalas.js';
  * receita do PRÓPRIO spell do item (`$sN`/`$d`/`$u` já resolvíveis); um
  * `$@spelldescN` que cite outro spell fica como placeholder cru no
  * template — nenhum espécime da fixture exercita essa referência cruzada.
+ *
+ * `EfeitoDoItem`/`SpellEfeitoBruto` (a forma) e `calcularEscalaDoEfeito`/
+ * `calcularValorEfeito`/`renderizarTexto` (as funções puras) moraram aqui
+ * até a TIT-136 — migraram pro `packages/shared` porque o resolvedor de
+ * runtime precisa do MESMO cálculo. O que fica é só a classe: ela lê
+ * `DatabaseSync`, existe pra ler db2.
  */
-
-export interface SpellEfeitoBruto {
-  effectIndex: number;
-  coefficient: number;
-  scalingClass: number;
-}
-
-export interface EfeitoDoItem {
-  spellId: number;
-  descricaoTemplate: string;
-  duracaoMs: number | null;
-  maxStacks: number | null;
-  efeitos: SpellEfeitoBruto[];
-}
+export type { EfeitoDoItem, SpellEfeitoBruto };
 
 export class ResolvedorEfeito {
   private readonly spellIdPorItem: Map<number, number>;
@@ -154,51 +147,4 @@ export class ResolvedorEfeito {
       efeitos: this.efeitosPorSpell.get(spellId) ?? [],
     };
   }
-}
-
-/**
- * `escala(ScalingClass, ilvl)` — só o `EpicF[0]` está medido (o `−1` e o
- * `−8` do espécime verificado). Os outros ramos seguem a fórmula do SimC
- * como está escrita, sem espécime que os confirme — ver a doc.
- */
-export function calcularEscalaDoEfeito(scalingClass: number, escala: LinhaEscala): number {
-  if (scalingClass === -8) return escala.damageReplaceStat;
-  if (scalingClass === 0 || scalingClass === -9) return escala.damageSecondary;
-  // −7 usaria CombatRatingsMultByILvl também, mas nenhum espécime distingue
-  // qual coluna (armor/weapon/trinket/jewelry) — não exercitado, sem aposta.
-  return escala.budget[0] ?? 0;
-}
-
-/**
- * `round`, não `floor` — os dois exemplos verificados da doc pareciam floor
- * (105,044→105, "77.365,5"→77365) porque a doc mostra o cru arredondado a 1
- * casa. Um segundo espécime (rank 2 do mesmo trinket) desfez a ambiguidade:
- * o cru real é 79.752,998 (não 79.753,0 como a tabela sugeria) e o tooltip
- * mostra 79753 — só `round` fecha os dois ranks ao mesmo tempo.
- */
-export function calcularValorEfeito(
-  coefficient: number,
-  scalingClass: number,
-  escala: LinhaEscala,
-): number {
-  return Math.round(coefficient * calcularEscalaDoEfeito(scalingClass, escala));
-}
-
-/** Substitui `$sN`, `$d` (em segundos) e `$u` — os únicos placeholders com
- * fonte extraída. Outros (`$@spelldescN`, `$w1`...) ficam como estão. */
-export function renderizarTexto(
-  efeito: EfeitoDoItem,
-  valoresPorIndice: Map<number, number>,
-): string {
-  let texto = efeito.descricaoTemplate;
-  for (const [effectIndex, valor] of valoresPorIndice) {
-    texto = texto.replaceAll(`$s${effectIndex + 1}`, String(valor));
-  }
-  if (efeito.duracaoMs !== null) {
-    texto = texto.replaceAll('$d', `${efeito.duracaoMs / 1000} sec`);
-  }
-  if (efeito.maxStacks !== null) {
-    texto = texto.replaceAll('$u', String(efeito.maxStacks));
-  }
-  return texto;
 }

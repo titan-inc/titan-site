@@ -30,6 +30,7 @@ export function decodeBonuses(
     statsAdicionados: [],
     binding: null,
     dificuldade: null,
+    qualidade: null,
     desconhecidos: [],
   };
 
@@ -99,5 +100,12 @@ function aplicar(saida: DecodedBonuses, facetas: BonusFacets): void {
 
   if (facetas.difficulty !== null) {
     saida.dificuldade = facetas.difficulty;
+  }
+
+  // PRIMEIRO vence, ao contrário das facetas acima — mesma regra que
+  // `resolverQualidade` aplica na auto-conferência (`scripts/db2`). Uma vez
+  // setada, uma faceta de qualidade mais adiante no union não sobrescreve.
+  if (saida.qualidade === null && facetas.quality !== null) {
+    saida.qualidade = facetas.quality;
   }
 }
