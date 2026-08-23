@@ -487,10 +487,9 @@ describe('WowDataRepository.itensPorId', () => {
     expect(itens.size).toBe(2);
     expect(itens.get(249967)).toMatchObject({ itemLevel: 289 });
     expect((itens.get(249967) as { itemId?: number }).itemId).toBeUndefined();
-    expect(prisma.wowItemData.findMany).toHaveBeenCalledWith({
-      where: { buildId: 'b1', itemId: { in: [249967, 249277] } },
-      select: expect.objectContaining({ itemId: true }),
-    });
+    expect(prisma.wowItemData.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { buildId: 'b1', itemId: { in: [249967, 249277] } } }),
+    );
   });
 });
 

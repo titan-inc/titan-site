@@ -78,6 +78,7 @@ export function SessaoAoVivo({
               sessionId={sessao.id}
               item={aberto}
               opcoes={sessao.opcoesDeResposta}
+              trackScalingIdAtual={sessao.trackScalingIdAtual}
               aoFechar={() => setAbertoId(null)}
               aoResponder={recarregar}
             />

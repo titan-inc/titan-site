@@ -138,9 +138,7 @@ describe('WowItemStatsService.calcular', () => {
 
   it('une bonusIds explícitos com os da árvore, pelo itemContext do itemString', async () => {
     const { service, repo } = montarRepo();
-    repo.contextosDeBonusDeVarios.mockResolvedValueOnce(
-      new Map([['249967:35', [13440, 12806]]]),
-    );
+    repo.contextosDeBonusDeVarios.mockResolvedValueOnce(new Map([['249967:35', [13440, 12806]]]));
 
     // itemContext 35, dois bonus explícitos: 6652 e 13534.
     await service.calcular('item:249967::::::::90:250::35:2:6652:13534:::::');

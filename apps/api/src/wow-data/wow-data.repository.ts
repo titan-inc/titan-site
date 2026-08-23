@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, type WowBonding, type WowItemLevelScaling, type WowScalingType } from '@prisma/client';
+import {
+  Prisma,
+  type WowBonding,
+  type WowItemLevelScaling,
+  type WowScalingType,
+} from '@prisma/client';
 import {
   COLS_BONUS,
   COLS_CONTEXT,

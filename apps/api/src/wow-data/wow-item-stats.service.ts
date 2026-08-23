@@ -106,7 +106,10 @@ export class WowItemStatsService {
     for (const itemString of unicos) {
       const lido = parseItemString(itemString);
       if (!lido) {
-        resultado.set(itemString, itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.ITEM_STRING_INVALIDO));
+        resultado.set(
+          itemString,
+          itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.ITEM_STRING_INVALIDO),
+        );
         continue;
       }
       lidos.set(itemString, lido);
@@ -162,7 +165,9 @@ export class WowItemStatsService {
     // e não vale nem chamar o repositório — mesma garantia do singular
     // ("itemContext ausente não consulta a árvore").
     const contextos =
-      pares.length === 0 ? new Map<string, number[]>() : await this.repo.contextosDeBonusDeVarios(buildId, pares);
+      pares.length === 0
+        ? new Map<string, number[]>()
+        : await this.repo.contextosDeBonusDeVarios(buildId, pares);
 
     // A união POR ITEM, na mesma ordem árvore-antes-do-explícito que o
     // `calcular` singular usava (`uniaoDeBonus`) — colapsar tudo num `Set`
@@ -184,10 +189,16 @@ export class WowItemStatsService {
     const decodedPorItemString = new Map<string, DecodedBonuses>();
     for (const [itemString, lido] of lidos) {
       if (!itens.has(lido.itemId)) {
-        resultado.set(itemString, itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.ITEM_FORA_DO_BUILD));
+        resultado.set(
+          itemString,
+          itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.ITEM_FORA_DO_BUILD),
+        );
         continue;
       }
-      decodedPorItemString.set(itemString, decodeBonuses(uniaoPorItemString.get(itemString)!, dicionario));
+      decodedPorItemString.set(
+        itemString,
+        decodeBonuses(uniaoPorItemString.get(itemString)!, dicionario),
+      );
     }
 
     return { itens, decodedPorItemString };
@@ -204,7 +215,8 @@ export class WowItemStatsService {
     { itens, decodedPorItemString }: Onda1,
     resultado: Map<string, ComputedItemStats>,
   ): Promise<void> {
-    const itemDe = (itemString: string): WowItemDataFacets => itens.get(lidos.get(itemString)!.itemId)!;
+    const itemDe = (itemString: string): WowItemDataFacets =>
+      itens.get(lidos.get(itemString)!.itemId)!;
 
     const ilvlPorItemString = new Map<string, number>();
     for (const [itemString, decoded] of decodedPorItemString) {

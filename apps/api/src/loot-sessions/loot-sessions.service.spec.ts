@@ -142,7 +142,13 @@ describe('LootSessionsService', () => {
       [number[]]
     >(() =>
       Promise.resolve([
-        { itemId: 202612, name: 'Ashen Sigil', icon: 'inv_ring', equipLoc: 'FINGER', itemSubclass: null },
+        {
+          itemId: 202612,
+          name: 'Ashen Sigil',
+          icon: 'inv_ring',
+          equipLoc: 'FINGER',
+          itemSubclass: null,
+        },
       ]),
     ),
     garantirItens: jest.fn<Promise<void>, [number[]]>(() => Promise.resolve()),

@@ -2,6 +2,7 @@
 
 import { respostasVisiveis, type LootSessionDetail, type LootSessionItemView } from '@titan/shared';
 import { useState } from 'react';
+import { TooltipDeItem } from './tooltip-de-item';
 
 /** Uma linha da tabela: uma pessoa naquela peça. */
 interface LinhaDoQuadro {
@@ -120,7 +121,9 @@ export function QuadroDeRespostas({
               item.id === aba.id ? 'bg-fg text-bg font-medium' : 'text-fg-muted hover:text-fg'
             }`}
           >
-            {item.name ?? `Peça ${i + 1}`}
+            <TooltipDeItem item={item} trackScalingIdAtual={sessao.trackScalingIdAtual}>
+              {item.name ?? `Peça ${i + 1}`}
+            </TooltipDeItem>
             {item.minhaResposta === null && aoAbrirCard !== null && (
               <span className="ml-1.5 text-amber-400" aria-label="sem resposta">
                 •
