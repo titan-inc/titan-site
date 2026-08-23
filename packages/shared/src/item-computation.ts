@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { DecodedBonuses } from './bonus-decode.js';
+import { decodedTrackSchema, type DecodedBonuses } from './bonus-decode.js';
 import {
   calcularArmadura,
   calcularBlock,
@@ -229,6 +229,28 @@ export const computedItemStatsSchema = z.object({
   vinculo: wowBondingSchema.nullable(),
   /** O texto em itálico do rodapé — puro passthrough de `WowItemData.flavor`. */
   flavor: z.string().nullable(),
+
+  /**
+   * Os quatro campos abaixo são PASSTHROUGH de `DecodedBonuses` — não
+   * cálculo novo. Moram aqui, e não só no `decoded` interno do
+   * `WowItemStatsService`, porque a TIT-135 precisa deles pro tooltip
+   * fechar (`Upgrade Level: Myth 4/6`, o descritor `Mythic`) e a única
+   * outra forma de obtê-los seria REFAZER a união de bônus — a mesma
+   * metade de runtime que este service existe pra encapsular, e onde
+   * morava o erro silencioso que custou vinte espécimes de pesquisa. Duas
+   * implementações da união são "duas fontes que precisam concordar", e
+   * quando divergirem, divergem sem erro. Ver a review da TIT-136.
+   */
+  /** `null` = sem bônus de track. `scalingId` cru — a regra da season
+   * corrente é de quem renderiza, nunca deste objeto. */
+  track: decodedTrackSchema.nullable(),
+  /** `Mythic`, `Heroic`, `Raid Finder`. `null` em Normal, que não imprime linha. */
+  dificuldade: z.string().nullable(),
+  /** Quantos bônus de socket apareceram. Zero é o caso comum. */
+  sockets: z.number().int().nonnegative(),
+  /** Bonus IDs fora do dicionário — campo de PRIMEIRA CLASSE, não sobra. */
+  desconhecidos: z.number().int().positive().array(),
+
   /**
    * `null` = o cálculo completou. Presente = TUDO acima está vazio/nulo por
    * este motivo, não porque a peça realmente não tem stat nenhum.
@@ -409,6 +431,25 @@ function calcularSet(set: WowItemSetFacets): ComputedItemSet {
   };
 }
 
+/** O que sobrevive numa lacuna, quando já se sabe algo — ver `itemStatsIndisponivel`. */
+export interface ConhecidoNaLacuna {
+  flavor: string | null;
+  itemLevel: number | null;
+  track: DecodedBonuses['track'];
+  dificuldade: DecodedBonuses['dificuldade'];
+  sockets: DecodedBonuses['sockets'];
+  desconhecidos: DecodedBonuses['desconhecidos'];
+}
+
+const LACUNA_SEM_NADA_CONHECIDO: ConhecidoNaLacuna = {
+  flavor: null,
+  itemLevel: null,
+  track: null,
+  dificuldade: null,
+  sockets: 0,
+  desconhecidos: [],
+};
+
 /**
  * A saída para quando o cálculo não pôde rodar — tudo vazio/nulo, com o
  * motivo em `indisponivel`. Exportada porque `WowItemStatsService`
@@ -417,18 +458,19 @@ function calcularSet(set: WowItemSetFacets): ComputedItemSet {
  * uma só definição do "formato vazio", nunca um objeto montado à mão em
  * cada lugar que precisa dele.
  *
- * `flavor`/`itemLevel` sobrevivem quando JÁ se tem o item (passthrough puro
- * de `WowItemData`, sem conta nenhuma) — omiti-los junto com o resto
- * afirmaria uma lacuna que não existe. Nas lacunas ANTERIORES ao item (sem
- * build, item fora do catálogo) não há nada disso pra passar, e o padrão
- * `null` é a resposta certa.
+ * Cada campo de `conhecido` sobrevive quando JÁ se sabe alguma coisa —
+ * `flavor`/`itemLevel` são passthrough puro de `WowItemData`, os quatro de
+ * bônus (`track`/`dificuldade`/`sockets`/`desconhecidos`) são passthrough
+ * de `DecodedBonuses` quando os bônus já foram decodificados (o caso de
+ * `SEM_ESCALA_PARA_ILVL`: sem escala não sai NÚMERO nenhum, mas o que os
+ * bônus já disseram sobre track/dificuldade continua valendo). Omitir
+ * qualquer um deles junto com o resto afirmaria uma lacuna que não existe.
+ * Nas lacunas ANTERIORES a qualquer leitura (item string inválido, sem
+ * build) não há nada disso pra passar, e o padrão vazio é a resposta certa.
  */
 export function itemStatsIndisponivel(
   motivo: ItemStatsIndisponivel,
-  conhecido: { flavor: string | null; itemLevel: number | null } = {
-    flavor: null,
-    itemLevel: null,
-  },
+  conhecido: ConhecidoNaLacuna = LACUNA_SEM_NADA_CONHECIDO,
 ): ComputedItemStats {
   return {
     primario: null,
@@ -442,6 +484,10 @@ export function itemStatsIndisponivel(
     set: null,
     vinculo: null,
     flavor: conhecido.flavor,
+    track: conhecido.track,
+    dificuldade: conhecido.dificuldade,
+    sockets: conhecido.sockets,
+    desconhecidos: conhecido.desconhecidos,
     indisponivel: motivo,
   };
 }
@@ -476,6 +522,10 @@ export function computeItemStats(
     return itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.SEM_ESCALA_PARA_ILVL, {
       flavor: item.flavor,
       itemLevel: ilvl,
+      track: decoded.track,
+      dificuldade: decoded.dificuldade,
+      sockets: decoded.sockets,
+      desconhecidos: decoded.desconhecidos,
     });
   }
 
@@ -504,6 +554,10 @@ export function computeItemStats(
     set: set === null ? null : calcularSet(set),
     vinculo: resolverVinculo(item.bonding, item.flags, decoded.binding),
     flavor: item.flavor,
+    track: decoded.track,
+    dificuldade: decoded.dificuldade,
+    sockets: decoded.sockets,
+    desconhecidos: decoded.desconhecidos,
     indisponivel: null,
   };
 }

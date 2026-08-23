@@ -85,6 +85,56 @@ describe('computeItemStats — escala ausente', () => {
     expect(resultado.armadura).toBeNull();
     expect(resultado.flavor).toBe('Um texto qualquer.');
   });
+
+  it('track/dificuldade/sockets/desconhecidos sobrevivem — não dependem da escala', () => {
+    const resultado = computeItemStats(
+      item(),
+      decoded({
+        track: { nome: 'Myth', rank: 4, de: 6, scalingId: 12 },
+        dificuldade: 'Mythic',
+        sockets: 1,
+        desconhecidos: [999],
+      }),
+      null,
+      null,
+    );
+
+    expect(resultado.indisponivel).toBe(ITEM_STATS_INDISPONIVEL.SEM_ESCALA_PARA_ILVL);
+    expect(resultado.track).toEqual({ nome: 'Myth', rank: 4, de: 6, scalingId: 12 });
+    expect(resultado.dificuldade).toBe('Mythic');
+    expect(resultado.sockets).toBe(1);
+    expect(resultado.desconhecidos).toEqual([999]);
+  });
+});
+
+describe('computeItemStats — passthrough de DecodedBonuses (track/dificuldade/sockets/desconhecidos)', () => {
+  it('no caminho feliz, os quatro campos chegam intactos — sem refazer a decodificação', () => {
+    const resultado = computeItemStats(
+      item(),
+      decoded({
+        track: { nome: 'Hero', rank: 1, de: 6, scalingId: 12 },
+        dificuldade: 'Heroic',
+        sockets: 2,
+        desconhecidos: [111, 222],
+      }),
+      escalaBase,
+      null,
+    );
+
+    expect(resultado.track).toEqual({ nome: 'Hero', rank: 1, de: 6, scalingId: 12 });
+    expect(resultado.dificuldade).toBe('Heroic');
+    expect(resultado.sockets).toBe(2);
+    expect(resultado.desconhecidos).toEqual([111, 222]);
+  });
+
+  it('sem nada disso nos bônus, saem os defaults de DecodedBonuses — nulo/zero, nunca lacuna disfarçada', () => {
+    const resultado = computeItemStats(item(), decoded(), escalaBase, null);
+
+    expect(resultado.track).toBeNull();
+    expect(resultado.dificuldade).toBeNull();
+    expect(resultado.sockets).toBe(0);
+    expect(resultado.desconhecidos).toEqual([]);
+  });
 });
 
 describe('computeItemStats — stats', () => {

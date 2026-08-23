@@ -52,6 +52,12 @@ describe('WowItemStatsService — prova contra o banco (fixture, itens catalogad
       ]),
     );
     expect(r.dano).toEqual({ min: 319, max: 411, dps: 101.4, velocidade: 3.6 });
+    // `dificuldade` FICA DE FORA de propósito: este item tem DOIS bonus com
+    // Type 4 (13335 → "Mythic", 13654 → "Ascendant Voidforged: Myth"), e
+    // "o último da união vence" escolhe o segundo — a fixture nunca proveu
+    // esse campo pro comparador (nem no lado do gerador), então não há
+    // evidência de qual das duas strings o tooltip de verdade mostra.
+    // Registrado como aberto, não resolvido aqui.
   });
 
   it("Radiant Clutchtender's Jerkin (249322) — indestructible calcula número, tela mostra só a palavra", async () => {
@@ -70,6 +76,7 @@ describe('WowItemStatsService — prova contra o banco (fixture, itens catalogad
     expect(r.terciarios).toHaveLength(1);
     expect(r.terciarios[0]?.tipo).toBe('indestructible');
     expect(r.armadura).toBe(141);
+    expect(r.dificuldade).toBe('Mythic');
   });
 
   it('Bubblefin Splash Guard (268262) — o espécime mais importante: ilvl/track/descritor vêm da árvore, não do itemString', async () => {
@@ -95,6 +102,10 @@ describe('WowItemStatsService — prova contra o banco (fixture, itens catalogad
     // `computedItemStatsSchema.primario`. O fixture (lido pelo gerador)
     // resolve por fallback pro nome declarado; aqui não há esse oráculo.
     expect(r.primario).toBeNull();
+    // track/descritor TAMBÉM vêm da árvore, junto com o ilvl — o
+    // itemString não carrega nenhum dos três.
+    expect(r.track).toMatchObject({ nome: 'Hero', rank: 1, de: 6 });
+    expect(r.dificuldade).toBe('Heroic');
   });
 
   it.each([

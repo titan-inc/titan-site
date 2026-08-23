@@ -100,6 +100,17 @@ describe('WowItemStatsService.calcular', () => {
     expect(repo.itemPorId).not.toHaveBeenCalled();
   });
 
+  it('sem build ativo, os bonusIds explícitos aparecem em desconhecidos — mesma régua do decodificar', async () => {
+    const { service, repo } = montarRepo();
+    repo.buildAtivo.mockResolvedValueOnce(null);
+
+    const resultado = await service.calcular('item:249967::::::::90:250::35:2:6652:13534:::::');
+
+    expect(resultado.desconhecidos).toEqual([6652, 13534]);
+    expect(resultado.track).toBeNull();
+    expect(resultado.sockets).toBe(0);
+  });
+
   it('item fora do build carregado é lacuna, não erro', async () => {
     const { service, repo } = montarRepo();
     repo.itemPorId.mockResolvedValueOnce(null);
@@ -213,5 +224,27 @@ describe('WowItemStatsService.calcular', () => {
 
     expect(resultado.indisponivel).toBeNull();
     expect(resultado.primario).toEqual({ valor: 50, tipos: ['strength'] });
+  });
+
+  it('caminho feliz: track/dificuldade/sockets/desconhecidos chegam sem a TIT-135 refazer a união', async () => {
+    const { service, repo } = montarRepo();
+    repo.facetasDeBonus.mockResolvedValueOnce([
+      facetas({
+        bonusId: 12806,
+        trackName: 'Myth',
+        trackRank: 4,
+        trackMaxRank: 6,
+        trackScalingId: 12,
+        difficulty: 'Mythic',
+        hasSocket: true,
+      }),
+    ]);
+
+    const resultado = await service.calcular('item:249967::::::::90:250::35:2:12806:999999:::::');
+
+    expect(resultado.track).toEqual({ nome: 'Myth', rank: 4, de: 6, scalingId: 12 });
+    expect(resultado.dificuldade).toBe('Mythic');
+    expect(resultado.sockets).toBe(1);
+    expect(resultado.desconhecidos).toEqual([999999]); // não estava no mock de facetasDeBonus.
   });
 });

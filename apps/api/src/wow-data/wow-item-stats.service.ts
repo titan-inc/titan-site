@@ -43,9 +43,18 @@ export class WowItemStatsService {
     // SEM BUILD ATIVO A GENTE NÃO SABE NADA — mesma resposta do
     // `WowDataService.decodificar`: lacuna honesta, nunca um número
     // inventado. É o estado em que o banco nasce, antes da primeira carga.
+    // `desconhecidos` recebe os bonusIds explícitos que já temos em mãos —
+    // mesmo comportamento de `decodificar`, "todo bonus vira desconhecido".
     const buildAtivo = await this.repo.buildAtivo();
     if (buildAtivo === null) {
-      return itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.SEM_BUILD_ATIVO);
+      return itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.SEM_BUILD_ATIVO, {
+        flavor: null,
+        itemLevel: null,
+        track: null,
+        dificuldade: null,
+        sockets: 0,
+        desconhecidos: lido.bonusIds,
+      });
     }
 
     const item = await this.repo.itemPorId(buildAtivo, lido.itemId);
