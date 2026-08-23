@@ -129,10 +129,12 @@ export type ComputedStatPrimario = z.infer<typeof computedStatPrimarioSchema>;
 export const computedStatTerciarioSchema = z.object({
   tipo: bonusTertiarySchema,
   /**
-   * A fórmula sempre calcula um número. **`Indestructible` é FLAG na tela**
-   * — o jogo mostra só a palavra, mesmo a fórmula calculando 68 no espécime
-   * verificado. Quem decide isso é quem renderiza, não este objeto: aqui é
-   * estrutura, e o valor fica disponível pra quem quiser (filtro, ordenação).
+   * A fórmula sempre calcula um número, pra todo terciário — inclusive
+   * `Indestructible` (68 no espécime verificado). Aqui é estrutura, e o
+   * valor fica disponível pra quem quiser (filtro, ordenação); quem decide
+   * SE a tela imprime o número é `exibeValorDoTerciario()` (`wow-bonus.ts`)
+   * — regra em código, não em comentário, porque quem renderiza mora em
+   * outro pacote.
    */
   valor: z.number().int(),
 });

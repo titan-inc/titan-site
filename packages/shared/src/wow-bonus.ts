@@ -35,6 +35,22 @@ export const bonusTertiarySchema = z.nativeEnum(BONUS_TERTIARIES);
 export type BonusTertiary = z.infer<typeof bonusTertiarySchema>;
 
 /**
+ * `Indestructible` é FLAG na tela — o jogo mostra só a palavra, mesmo a
+ * fórmula calculando um número de verdade (68 no espécime verificado). Os
+ * outros três (avoidance/leech/speed) mostram o valor normal.
+ *
+ * `ComputedStatTerciario.valor` (TIT-136, `item-computation.ts`) sempre traz
+ * o número calculado pra todos — é estrutura, quem filtra ou ordena por
+ * terciário precisa dele. Esta função é a regra de EXIBIÇÃO, separada do
+ * dado: sem ela, "não mostra o valor de indestructible" viraria prosa só no
+ * comentário do schema, em outro pacote, e o dia que nascer um quinto
+ * terciário ninguém saberia que essa regra existe pra revisar.
+ */
+export function exibeValorDoTerciario(tipo: BonusTertiary): boolean {
+  return tipo !== BONUS_TERTIARIES.INDESTRUCTIBLE;
+}
+
+/**
  * Como a peça se vincula, quando um bônus sobrescreve o vínculo do item base.
  *
  * Espelha o enum `WowBonding` do Prisma. Hoje só o `warbound_until_equipped`
