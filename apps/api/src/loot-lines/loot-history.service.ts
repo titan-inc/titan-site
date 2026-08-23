@@ -5,12 +5,14 @@ import {
   splitNomeRealm,
   toCharacterKey,
   toRealmMatchKey,
+  type ComputedItemStats,
   type LootHistoryEntry,
   type LootHistoryFacets,
   type LootHistoryPage,
   type LootHistoryQuery,
 } from '@titan/shared';
 import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
+import { WowItemStatsService } from '../wow-data/wow-item-stats.service';
 import {
   LootLinesRepository,
   type CatalogItemRow,
@@ -40,16 +42,21 @@ const NENHUMA_IDENTIDADE = 'nenhuma-identidade';
 export class LootHistoryService {
   private readonly guild: GuildConfig;
 
-  constructor(private readonly repo: LootLinesRepository) {
+  constructor(
+    private readonly repo: LootLinesRepository,
+    private readonly wowItemStats: WowItemStatsService,
+  ) {
     this.guild = loadGuildConfig();
   }
 
   /**
    * Uma página do histórico, com os filtros aplicados.
    *
-   * Três consultas, não uma: as linhas, a contagem (junto, na mesma transação)
-   * e os itens do catálogo. O item vem à parte porque não há FK entre linha de
-   * loot e catálogo — ver `findItems`.
+   * Quatro consultas em lote, não uma por linha: as linhas, a contagem
+   * (junto, na mesma transação), os itens do catálogo (sem FK — ver
+   * `findItems`) e `calcularVarios` (TIT-135) — uma página de 200 linhas
+   * fazendo ~1.200 round trips pro dado do cliente é exatamente o que essa
+   * issue existe para evitar.
    */
   async consultar(filtros: LootHistoryQuery): Promise<LootHistoryPage> {
     const where = await this.montarWhere(filtros);
@@ -59,13 +66,18 @@ export class LootHistoryService {
       filtros.pageSize,
     );
 
-    const itens = await this.buscarItens(linhas);
+    const [itens, stats, trackScalingIdAtual] = await Promise.all([
+      this.buscarItens(linhas),
+      this.wowItemStats.calcularVarios(linhas.map((l) => l.itemString)),
+      this.wowItemStats.trackScalingIdAtual(),
+    ]);
 
     return {
-      entries: linhas.map((linha) => montarEntrada(linha, itens)),
+      entries: linhas.map((linha) => montarEntrada(linha, itens, stats)),
       total,
       page: filtros.page,
       pageSize: filtros.pageSize,
+      trackScalingIdAtual,
     };
   }
 
@@ -366,8 +378,14 @@ function deslocamentoDoFuso(instante: Date, timezone: string): number {
 function montarEntrada(
   linha: LootHistoryRow,
   itens: Map<number, CatalogItemRow>,
+  stats: Map<string, ComputedItemStats>,
 ): LootHistoryEntry {
   const item = itens.get(linha.itemId);
+
+  // `stats` vem de `calcularVarios(linhas.map(l => l.itemString))` — todo
+  // `itemString` da página está lá, inclusive lacunas. O `!` é seguro por
+  // construção, não por sorte (mesma régua do `calcular` singular).
+  const computado = stats.get(linha.itemString)!;
 
   return {
     id: linha.id,
@@ -383,12 +401,15 @@ function montarEntrada(
 
     item: {
       itemId: linha.itemId,
+      itemString: linha.itemString,
       // Nulo, e não o `itemName` da linha: aquele vem localizado pelo cliente de
       // quem era loot master, e o mesmo item apareceria em dois idiomas na
       // mesma lista. Melhor faltar do que mentir — ver TIT-49.
       name: item?.name ?? null,
       icon: item?.icon ?? null,
       equipLoc: item?.equipLoc ?? null,
+      itemSubclass: item?.itemSubclass ?? null,
+      ...computado,
     },
 
     boss: {

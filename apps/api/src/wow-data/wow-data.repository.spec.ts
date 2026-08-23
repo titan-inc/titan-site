@@ -300,9 +300,10 @@ describe('WowDataRepository.buildExiste', () => {
 function montarLeitura() {
   const prisma = {
     wowItemContextBonus: { findMany: jest.fn() },
-    wowItemData: { findUnique: jest.fn() },
-    wowItemLevelScaling: { findUnique: jest.fn() },
-    wowItemSet: { findUnique: jest.fn() },
+    wowItemData: { findUnique: jest.fn(), findMany: jest.fn() },
+    wowItemLevelScaling: { findUnique: jest.fn(), findMany: jest.fn() },
+    wowItemSet: { findUnique: jest.fn(), findMany: jest.fn() },
+    wowBonus: { aggregate: jest.fn() },
   };
   return { repo: new WowDataRepository(prisma as unknown as PrismaService), prisma };
 }
@@ -456,5 +457,159 @@ describe('WowDataRepository.setPorId', () => {
 
     expect(set?.bonuses).toEqual([]);
     expect(set?.name).toBe("Relentless Rider's Lament"); // o resto do conjunto sobrevive.
+  });
+});
+
+/**
+ * Os métodos plurais — TIT-135. Mesma régua do lado singular: `Map` vazio
+ * sem consultar o banco quando a entrada é vazia, e a chave do `Map` é
+ * quem chama despareia depois.
+ */
+describe('WowDataRepository.itensPorId', () => {
+  it('Map vazio sem consultar quando não há itemId', async () => {
+    const { repo, prisma } = montarLeitura();
+
+    const itens = await repo.itensPorId('b1', []);
+
+    expect(itens.size).toBe(0);
+    expect(prisma.wowItemData.findMany).not.toHaveBeenCalled();
+  });
+
+  it('despareia pelo itemId, sem o campo vazar pro `WowItemDataFacets`', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemData.findMany.mockResolvedValue([
+      { itemId: 249967, itemLevel: 289, effects: null },
+      { itemId: 249277, itemLevel: 298, effects: null },
+    ]);
+
+    const itens = await repo.itensPorId('b1', [249967, 249277]);
+
+    expect(itens.size).toBe(2);
+    expect(itens.get(249967)).toMatchObject({ itemLevel: 289 });
+    expect((itens.get(249967) as { itemId?: number }).itemId).toBeUndefined();
+    expect(prisma.wowItemData.findMany).toHaveBeenCalledWith({
+      where: { buildId: 'b1', itemId: { in: [249967, 249277] } },
+      select: expect.objectContaining({ itemId: true }),
+    });
+  });
+});
+
+describe('WowDataRepository.contextosDeBonusDeVarios', () => {
+  it('Map vazio sem consultar quando não há par nenhum', async () => {
+    const { repo, prisma } = montarLeitura();
+
+    const contextos = await repo.contextosDeBonusDeVarios('b1', []);
+
+    expect(contextos.size).toBe(0);
+    expect(prisma.wowItemContextBonus.findMany).not.toHaveBeenCalled();
+  });
+
+  it('agrupa por `itemId:itemContext`, sem repetir par no OR', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemContextBonus.findMany.mockResolvedValue([
+      { itemId: 249967, itemContext: 6, bonusId: 1 },
+      { itemId: 249967, itemContext: 6, bonusId: 2 },
+      { itemId: 249277, itemContext: 6, bonusId: 3 },
+    ]);
+
+    const contextos = await repo.contextosDeBonusDeVarios('b1', [
+      { itemId: 249967, itemContext: 6 },
+      { itemId: 249967, itemContext: 6 }, // repetido — mesma peça, duas linhas
+      { itemId: 249277, itemContext: 6 },
+    ]);
+
+    expect(contextos.get('249967:6')).toEqual([1, 2]);
+    expect(contextos.get('249277:6')).toEqual([3]);
+    expect(prisma.wowItemContextBonus.findMany).toHaveBeenCalledWith({
+      where: {
+        buildId: 'b1',
+        OR: [
+          { itemId: 249967, itemContext: 6 },
+          { itemId: 249277, itemContext: 6 },
+        ],
+      },
+      select: { itemId: true, itemContext: true, bonusId: true },
+    });
+  });
+});
+
+describe('WowDataRepository.escalasPorItemLevel', () => {
+  it('Map vazio sem consultar quando não há itemLevel', async () => {
+    const { repo, prisma } = montarLeitura();
+
+    const escalas = await repo.escalasPorItemLevel('b1', []);
+
+    expect(escalas.size).toBe(0);
+    expect(prisma.wowItemLevelScaling.findMany).not.toHaveBeenCalled();
+  });
+
+  it('despareia pelo itemLevel, crMult/stamMult convertidos como no singular', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemLevelScaling.findMany.mockResolvedValue([
+      {
+        itemLevel: 289,
+        budget: [],
+        damageReplaceStat: 0,
+        damageSecondary: 0,
+        crMult: [1, 2, 3, 4],
+        stamMult: [5, 6, 7, 8],
+        socketCost: 0,
+        armorTotal: [],
+        armorQuality: [],
+        armorShield: [],
+        dmgOneHand: [],
+        dmgTwoHand: [],
+        dmgOneHandCaster: [],
+        dmgTwoHandCaster: [],
+      },
+    ]);
+
+    const escalas = await repo.escalasPorItemLevel('b1', [289]);
+
+    expect(escalas.get(289)?.crMult).toEqual({ armor: 1, weapon: 2, trinket: 3, jewelry: 4 });
+  });
+});
+
+describe('WowDataRepository.setsPorId', () => {
+  it('Map vazio sem consultar quando não há itemSetId', async () => {
+    const { repo, prisma } = montarLeitura();
+
+    const sets = await repo.setsPorId('b1', []);
+
+    expect(sets.size).toBe(0);
+    expect(prisma.wowItemSet.findMany).not.toHaveBeenCalled();
+  });
+
+  it('despareia pelo itemSetId, bonuses malformado ainda vira lista vazia', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemSet.findMany.mockResolvedValue([
+      { itemSetId: 1978, name: 'Set A', pieceItemIds: [1, 2], bonuses: [] },
+      { itemSetId: 1979, name: 'Set B', pieceItemIds: [3, 4], bonuses: 'malformado' },
+    ]);
+
+    const sets = await repo.setsPorId('b1', [1978, 1979]);
+
+    expect(sets.get(1978)?.name).toBe('Set A');
+    expect(sets.get(1979)?.bonuses).toEqual([]);
+  });
+});
+
+describe('WowDataRepository.trackScalingIdAtual', () => {
+  it('devolve o MAX(trackScalingId) do build', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowBonus.aggregate.mockResolvedValue({ _max: { trackScalingId: 12 } });
+
+    expect(await repo.trackScalingIdAtual('b1')).toBe(12);
+    expect(prisma.wowBonus.aggregate).toHaveBeenCalledWith({
+      where: { buildId: 'b1' },
+      _max: { trackScalingId: true },
+    });
+  });
+
+  it('null quando o build não tem bonus com track nenhum', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowBonus.aggregate.mockResolvedValue({ _max: { trackScalingId: null } });
+
+    expect(await repo.trackScalingIdAtual('b1')).toBeNull();
   });
 });

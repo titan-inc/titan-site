@@ -1,5 +1,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  ITEM_STATS_INDISPONIVEL,
+  itemStatsIndisponivel,
+  type ComputedItemStats,
+} from '@titan/shared';
 import type { LootLinesService } from '../loot-lines/loot-lines.service';
+import type { WowItemStatsService } from '../wow-data/wow-item-stats.service';
 import { LootSessionsService } from './loot-sessions.service';
 import type { PersonagemDaConta } from './loot-sessions.service';
 import type {
@@ -9,6 +15,23 @@ import type {
   LootSessionsRepository,
   SessionRow,
 } from './loot-sessions.repository';
+
+/**
+ * O `ComputedItemStats` padrão dublado — LACUNA explícita, não um cálculo
+ * inventado. Estes testes provam `LootSessionsService`, não o cálculo em si
+ * — quem preenche stat de verdade é `wow-item-stats.service.spec.ts`.
+ */
+const computado = (): ComputedItemStats =>
+  itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.SEM_BUILD_ATIVO);
+
+function montarWowItemStats() {
+  return {
+    calcularVarios: jest.fn<Promise<Map<string, ComputedItemStats>>, [string[]]>((itemStrings) =>
+      Promise.resolve(new Map(itemStrings.map((s) => [s, computado()]))),
+    ),
+    trackScalingIdAtual: jest.fn<Promise<number | null>, []>(() => Promise.resolve(null)),
+  };
+}
 
 /** Sentinela para provar que o client de transação chegou ao chamado certo. */
 const FAKE_TX = { fake: 'tx' };
@@ -108,12 +131,18 @@ describe('LootSessionsService', () => {
     ),
     findItems: jest.fn<
       Promise<
-        Array<{ itemId: number; name: string | null; icon: string | null; equipLoc: string | null }>
+        Array<{
+          itemId: number;
+          name: string | null;
+          icon: string | null;
+          equipLoc: string | null;
+          itemSubclass: string | null;
+        }>
       >,
       [number[]]
     >(() =>
       Promise.resolve([
-        { itemId: 202612, name: 'Ashen Sigil', icon: 'inv_ring', equipLoc: 'FINGER' },
+        { itemId: 202612, name: 'Ashen Sigil', icon: 'inv_ring', equipLoc: 'FINGER', itemSubclass: null },
       ]),
     ),
     garantirItens: jest.fn<Promise<void>, [number[]]>(() => Promise.resolve()),
@@ -199,6 +228,8 @@ describe('LootSessionsService', () => {
     >(() => Promise.resolve(0)),
   };
 
+  const wowItemStats = montarWowItemStats();
+
   let service: LootSessionsService;
 
   /** Os itens que o serviço mandou gravar na criação. */
@@ -236,6 +267,7 @@ describe('LootSessionsService', () => {
     service = new LootSessionsService(
       repo as unknown as LootSessionsRepository,
       lootLines as unknown as LootLinesService,
+      wowItemStats as unknown as WowItemStatsService,
     );
   });
 
@@ -307,16 +339,19 @@ describe('LootSessionsService', () => {
   });
 
   describe('detalhe', () => {
-    it('nome e ícone vêm do catálogo, e os modificadores do itemString', async () => {
+    it('nome e ícone vêm do catálogo, e os stats vêm de calcularVarios (TIT-135)', async () => {
       const d = await service.detalhe('sess-1', ATOR);
 
       expect(d.items[0]).toMatchObject({
         itemId: 202612,
+        itemString: MITICO,
         name: 'Ashen Sigil',
         icon: 'inv_ring',
-        itemContext: 6,
-        bonusIds: [9323, 7979, 6652, 1472, 8767],
+        ...computado(),
       });
+      // Uma consulta em lote, com o itemString de cada peça — nunca um
+      // `calcular()` por item dentro do `.map()` de `montarItem`.
+      expect(wowItemStats.calcularVarios).toHaveBeenCalledWith([MITICO]);
     });
 
     it('item que o catálogo não tem entra sem nome', async () => {

@@ -5,9 +5,21 @@ process.env.GUILD_REALM = 'Realm de Teste';
 process.env.GUILD_TIMEZONE = 'America/Sao_Paulo';
 
 import type { Prisma } from '@prisma/client';
-import { lootHistoryQuerySchema, RAID_DIFFICULTIES } from '@titan/shared';
+import {
+  ITEM_STATS_INDISPONIVEL,
+  itemStatsIndisponivel,
+  lootHistoryQuerySchema,
+  RAID_DIFFICULTIES,
+  type ComputedItemStats,
+} from '@titan/shared';
+import type { WowItemStatsService } from '../wow-data/wow-item-stats.service';
 import { LootHistoryService } from './loot-history.service';
 import type { CatalogItemRow, LootHistoryRow, LootLinesRepository } from './loot-lines.repository';
+
+/** O `itemString` padrão da fixture — só precisa ser uma chave estável para
+ * o `Map` que o `WowItemStatsService` dublado devolve, nunca é de fato
+ * parseado nestes testes (quem prova o parse é `wow-item-stats.service.spec.ts`). */
+const ITEM_STRING = 'item:249308::::::::90:250::35:0:';
 
 /**
  * Uma linha como o `select` do repositório devolve. Nomes fictícios de
@@ -25,6 +37,7 @@ const linhaDoBanco = (over: Partial<LootHistoryRow> = {}): LootHistoryRow => ({
     class: 'MAGE',
   },
   itemId: 249308,
+  itemString: ITEM_STRING,
   difficulty: RAID_DIFFICULTIES.HEROIC,
   votes: 2,
   playerNote: null,
@@ -39,8 +52,27 @@ const item = (over: Partial<CatalogItemRow> = {}): CatalogItemRow => ({
   name: 'Despotic Raiment',
   icon: 'inv_helm_plate_raid_01',
   equipLoc: 'HEAD',
+  itemSubclass: null,
   ...over,
 });
+
+/**
+ * O `ComputedItemStats` padrão dublado — LACUNA explícita (`sem_build_ativo`,
+ * o formato vazio canônico), não um cálculo inventado. Estes testes provam
+ * `LootHistoryService`, não o cálculo em si — quem preenche stat de verdade é
+ * `wow-item-stats.service.spec.ts`.
+ */
+const computado = (): ComputedItemStats =>
+  itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.SEM_BUILD_ATIVO);
+
+function montarWowItemStats() {
+  return {
+    calcularVarios: jest.fn<Promise<Map<string, ComputedItemStats>>, [string[]]>((itemStrings) =>
+      Promise.resolve(new Map(itemStrings.map((s) => [s, computado()]))),
+    ),
+    trackScalingIdAtual: jest.fn<Promise<number | null>, []>(() => Promise.resolve(null)),
+  };
+}
 
 /** Os filtros já passados pelo schema, como o controller entrega. */
 const filtros = (bruto: Record<string, unknown> = {}) => lootHistoryQuerySchema.parse(bruto);
@@ -95,6 +127,8 @@ describe('LootHistoryService', () => {
     contarPorItem: jest.fn(() => Promise.resolve([{ itemId: 249308, _count: 7 }])),
   };
 
+  const wowItemStats = montarWowItemStats();
+
   let service: LootHistoryService;
 
   /**
@@ -111,7 +145,10 @@ describe('LootHistoryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new LootHistoryService(repo as unknown as LootLinesRepository);
+    service = new LootHistoryService(
+      repo as unknown as LootLinesRepository,
+      wowItemStats as unknown as WowItemStatsService,
+    );
   });
 
   describe('filtros', () => {
@@ -213,9 +250,12 @@ describe('LootHistoryService', () => {
 
       expect(pagina.entries[0]?.item).toEqual({
         itemId: 249308,
+        itemString: ITEM_STRING,
         name: 'Despotic Raiment',
         icon: 'inv_helm_plate_raid_01',
         equipLoc: 'HEAD',
+        itemSubclass: null,
+        ...computado(),
       });
     });
 
@@ -356,18 +396,25 @@ describe('LootHistoryService.facets', () => {
     ),
     findItems: jest.fn<Promise<CatalogItemRow[]>, [number[]]>(() =>
       Promise.resolve([
-        { itemId: 1, name: 'A', icon: null, equipLoc: 'HEAD' },
-        { itemId: 2, name: 'B', icon: null, equipLoc: 'HEAD' },
+        { itemId: 1, name: 'A', icon: null, equipLoc: 'HEAD', itemSubclass: null },
+        { itemId: 2, name: 'B', icon: null, equipLoc: 'HEAD', itemSubclass: null },
         // 99 fica de fora do catálogo de propósito.
       ]),
     ),
   };
 
+  // `facets()` não chama `WowItemStatsService` — só `consultar()` chama.
+  // Dublê sem comportamento, só para o construtor aceitar.
+  const wowItemStats = montarWowItemStats();
+
   let service: LootHistoryService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new LootHistoryService(repo as unknown as LootLinesRepository);
+    service = new LootHistoryService(
+      repo as unknown as LootLinesRepository,
+      wowItemStats as unknown as WowItemStatsService,
+    );
   });
 
   it('a lista de seasons ignora a season selecionada', async () => {

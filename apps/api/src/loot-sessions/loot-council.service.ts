@@ -202,7 +202,7 @@ export class LootCouncilService {
         awardedAt: linha.awardedAt.toISOString(),
         // Do catálogo, nunca do que a fonte gravou: o `itemName` importado vem
         // no idioma do cliente de quem era loot master (TIT-49).
-        itemName: item?.name ?? null,
+        name: item?.name ?? null,
         icon: item?.icon ?? null,
         equipLoc: item?.equipLoc ?? null,
         difficulty: linha.difficulty,

@@ -13,6 +13,7 @@ import {
   toCharacterKey,
   toRealmMatchKey,
   type AddLootSessionItem,
+  type ComputedItemStats,
   type EntrarNaSessao,
   type Participante,
   type RespostaNaSessao,
@@ -25,12 +26,21 @@ import {
   type SessionPasteItem,
 } from '@titan/shared';
 import { LootLinesService } from '../loot-lines/loot-lines.service';
+import { WowItemStatsService } from '../wow-data/wow-item-stats.service';
 import {
   LootSessionsRepository,
   type Ator,
   type ItemDaSessao,
   type SessionRow,
 } from './loot-sessions.repository';
+
+/** O item do catálogo, como `LootSessionsRepository.findItems` devolve. */
+type ItemDoCatalogo = {
+  name: string | null;
+  icon: string | null;
+  equipLoc: string | null;
+  itemSubclass: string | null;
+};
 
 /** Um personagem da conta de quem está agindo, como o roster o guarda. */
 export interface PersonagemDaConta {
@@ -68,6 +78,7 @@ export class LootSessionsService {
   constructor(
     private readonly repo: LootSessionsRepository,
     private readonly lootLines: LootLinesService,
+    private readonly wowItemStats: WowItemStatsService,
   ) {}
 
   /**
@@ -125,17 +136,34 @@ export class LootSessionsService {
     const itens = await this.repo.findItems(sessao.items.map((i) => i.itemId));
     const catalogo = new Map(itens.map((i) => [i.itemId, i]));
 
-    const [totais, participantes, opcoes] = await Promise.all([
+    // `calcularVarios`/`trackScalingIdAtual` são uma consulta em lote cada —
+    // TIT-135. Nunca um `calcular()` por item dentro do `.map()` de
+    // `montarItem`: é exatamente o padrão que vira 1.200 round trips numa
+    // página de histórico, e a sessão tem o mesmo formato de problema.
+    const [totais, participantes, opcoes, stats, trackScalingIdAtual] = await Promise.all([
       this.repo.contarRespostas(id),
       this.repo.findParticipantes(id),
       this.repo.findOpcoesDoJogador(),
+      this.wowItemStats.calcularVarios(sessao.items.map((i) => i.itemString)),
+      this.wowItemStats.trackScalingIdAtual(),
     ]);
 
     const minha = participantes.find((p) => p.userId === ator.userId) ?? null;
     const minhas = await this.buscarMinhasRespostas(id, minha);
     const todas = await this.buscarRespostasVisiveis(sessao.status, id);
 
-    return montarDetalhe(sessao, catalogo, minhas, totais, participantes, minha, todas, opcoes);
+    return montarDetalhe(
+      sessao,
+      catalogo,
+      stats,
+      trackScalingIdAtual,
+      minhas,
+      totais,
+      participantes,
+      minha,
+      todas,
+      opcoes,
+    );
   }
 
   /**
@@ -652,10 +680,12 @@ function sortearRoll(): number {
   return randomInt(ROLL_MINIMO, ROLL_MAXIMO + 1);
 }
 
-/** A linha do banco vira a visão da tela, com o catálogo por cima. */
+/** A linha do banco vira a visão da tela, com o catálogo e os stats por cima. */
 function montarDetalhe(
   sessao: SessionRow,
-  catalogo: Map<number, { name: string | null; icon: string | null; equipLoc: string | null }>,
+  catalogo: Map<number, ItemDoCatalogo>,
+  stats: Map<string, ComputedItemStats>,
+  trackScalingIdAtual: number | null,
   minhas: Map<string, RespostaDoBanco>,
   totais: Map<string, number>,
   participantes: ParticipanteDoBanco[],
@@ -667,6 +697,7 @@ function montarDetalhe(
     participantes: participantes.map(paraView),
     minhaParticipacao: minha ? paraView(minha) : null,
     opcoesDeResposta,
+    trackScalingIdAtual,
     id: sessao.id,
     status: sessao.status,
     encounter: {
@@ -682,6 +713,7 @@ function montarDetalhe(
       montarItem(
         item,
         catalogo,
+        stats,
         minhas.get(item.id) ?? null,
         totais.get(item.id) ?? 0,
         todas.get(item.id) ?? [],
@@ -704,27 +736,29 @@ function paraView(p: ParticipanteDoBanco): Participante {
 
 function montarItem(
   item: SessionRow['items'][number],
-  catalogo: Map<number, { name: string | null; icon: string | null; equipLoc: string | null }>,
+  catalogo: Map<number, ItemDoCatalogo>,
+  stats: Map<string, ComputedItemStats>,
   minha: RespostaDoBanco | null,
   totalDeRespostas: number,
   respostas: RespostaNaSessao[],
 ): LootSessionItemView {
   const doCatalogo = catalogo.get(item.itemId);
 
-  // Derivado na leitura, e não gravado: o `itemString` é a fonte, e guardar uma
-  // cópia interpretada criaria duas verdades que podem divergir.
-  const lido = parseItemString(item.itemString);
+  // `stats` vem de `calcularVarios(sessao.items.map(i => i.itemString))` —
+  // todo `itemString` da sessão está lá, inclusive lacunas. O `!` é seguro
+  // por construção, não por sorte (mesma régua do `calcular` singular).
+  const computado = stats.get(item.itemString)!;
 
   return {
     id: item.id,
     position: item.position,
     itemId: item.itemId,
     itemString: item.itemString,
-    itemContext: lido?.itemContext ?? null,
-    bonusIds: lido?.bonusIds ?? [],
     name: doCatalogo?.name ?? null,
     icon: doCatalogo?.icon ?? null,
     equipLoc: doCatalogo?.equipLoc ?? null,
+    itemSubclass: doCatalogo?.itemSubclass ?? null,
+    ...computado,
     looterName: item.looter?.name ?? null,
     looterRealm: item.looter?.realm ?? null,
 

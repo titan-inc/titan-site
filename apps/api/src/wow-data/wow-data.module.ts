@@ -4,9 +4,8 @@ import { LootLinesModule } from '../loot-lines/loot-lines.module';
 import { LootSessionsModule } from '../loot-sessions/loot-sessions.module';
 import { WowDataLoaderService } from './wow-data-loader.service';
 import { WowDataReportService } from './wow-data-report.service';
-import { WowDataRepository } from './wow-data.repository';
 import { WowDataService } from './wow-data.service';
-import { WowItemStatsService } from './wow-item-stats.service';
+import { WowItemStatsModule } from './wow-item-stats.module';
 
 /**
  * O dado do cliente do WoW, versionado por build — TIT-137.
@@ -24,8 +23,13 @@ import { WowItemStatsService } from './wow-item-stats.service';
  * versão antiga foi removido junto com o `kind`: ele carregava um dicionário
  * curado à mão, e o modelo que ele preenchia deixou de existir.
  *
- * `WowItemStatsService` (TIT-136) segue o mesmo desenho de `decodificar`:
- * sem rota própria, chamado direto pela TIT-135 de dentro de outro módulo.
+ * `WowDataRepository` e `WowItemStatsService` (TIT-136) moram em
+ * `WowItemStatsModule`, não aqui — TIT-135. A razão é o sentido do import:
+ * este módulo já importa `LootSessionsModule`/`LootLinesModule` para o
+ * relatório, e se `loot-sessions`/`loot-lines` importassem `WowDataModule`
+ * de volta para consumir `calcularVarios`, fecharia um ciclo. Separado, o
+ * cálculo de stats não depende de nenhum dos dois domínios, e cada um
+ * importa só `WowItemStatsModule`.
  *
  * `LootLinesModule` e `LootSessionsModule` entram pelo relatório: ele varre
  * `LootLine` e `LootSessionItem`, e cada um só é lido através do service do
@@ -34,14 +38,8 @@ import { WowItemStatsService } from './wow-item-stats.service';
  * repository exportado entre módulos para um dicionário compartilhado.
  */
 @Module({
-  imports: [LootLinesModule, LootSessionsModule, LootCatalogModule],
-  providers: [
-    WowDataRepository,
-    WowDataService,
-    WowDataReportService,
-    WowDataLoaderService,
-    WowItemStatsService,
-  ],
-  exports: [WowDataService, WowDataReportService, WowDataLoaderService, WowItemStatsService],
+  imports: [LootLinesModule, LootSessionsModule, LootCatalogModule, WowItemStatsModule],
+  providers: [WowDataService, WowDataReportService, WowDataLoaderService],
+  exports: [WowDataService, WowDataReportService, WowDataLoaderService, WowItemStatsModule],
 })
 export class WowDataModule {}
