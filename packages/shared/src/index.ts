@@ -5,6 +5,8 @@ export * from './bonus-decode.js';
 export * from './wow-bonus.js';
 export * from './wow-data-file.js';
 export * from './health.js';
+export * from './item-computation.js';
+export * from './item-formula.js';
 export * from './item-string.js';
 export * from './journal-dump.js';
 export * from './loot-catalog.js';

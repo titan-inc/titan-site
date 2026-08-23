@@ -63,6 +63,7 @@ describe('decodeBonuses', () => {
       statsAdicionados: [{ statId: 63, alocacao: 3000 }],
       binding: null,
       dificuldade: null,
+      qualidade: null,
       desconhecidos: [],
     });
   });
@@ -133,6 +134,7 @@ describe('decodeBonuses', () => {
       statsAdicionados: [],
       binding: null,
       dificuldade: null,
+      qualidade: null,
       desconhecidos: [],
     });
   });
@@ -197,5 +199,23 @@ describe('decodeBonuses', () => {
     });
 
     expect(decodeBonuses([12833], dicionario(seasonPassada)).track?.scalingId).toBe(11);
+  });
+
+  /**
+   * `qualidade` segue regra OPOSTA às outras facetas escalares: PRIMEIRO
+   * vence, não último. Mesma regra que `resolverQualidade` aplica na
+   * auto-conferência (`scripts/db2`) — replicada aqui porque agora é o
+   * mesmo cálculo, só que lendo Postgres em vez de db2.
+   */
+  it('qualidade: o PRIMEIRO bonus do union que traz Type 3 vence', () => {
+    const primeiro = facetas({ bonusId: 1, quality: 3 });
+    const segundo = facetas({ bonusId: 2, quality: 4 });
+
+    expect(decodeBonuses([1, 2], dicionario(primeiro, segundo)).qualidade).toBe(3);
+    expect(decodeBonuses([2, 1], dicionario(primeiro, segundo)).qualidade).toBe(4);
+  });
+
+  it('sem nenhum bonus de qualidade, fica null — cabe ao chamador cair pro item base', () => {
+    expect(decodeBonuses([MYTH_4.bonusId], dicionario(MYTH_4)).qualidade).toBeNull();
   });
 });

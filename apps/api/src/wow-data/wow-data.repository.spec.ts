@@ -291,3 +291,170 @@ describe('WowDataRepository.buildExiste', () => {
     expect(await semBuild.buildExiste('x')).toBe(false);
   });
 });
+
+/**
+ * Os quatro métodos de leitura por item — TIT-136. Mock ENXUTO, só com o
+ * `findUnique`/`findMany` que cada teste toca; nada aqui reaproveita
+ * `montar()` porque aquele mock é do caminho de ESCRITA (`regravarBuild`).
+ */
+function montarLeitura() {
+  const prisma = {
+    wowItemContextBonus: { findMany: jest.fn() },
+    wowItemData: { findUnique: jest.fn() },
+    wowItemLevelScaling: { findUnique: jest.fn() },
+    wowItemSet: { findUnique: jest.fn() },
+  };
+  return { repo: new WowDataRepository(prisma as unknown as PrismaService), prisma };
+}
+
+describe('WowDataRepository.contextosDeBonus', () => {
+  it('devolve só os bonusId — a árvore já resolvida pelo gerador', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemContextBonus.findMany.mockResolvedValue([{ bonusId: 1 }, { bonusId: 2 }]);
+
+    const ids = await repo.contextosDeBonus('b1', 249967, 6);
+
+    expect(ids).toEqual([1, 2]);
+    expect(prisma.wowItemContextBonus.findMany).toHaveBeenCalledWith({
+      where: { buildId: 'b1', itemId: 249967, itemContext: 6 },
+      select: { bonusId: true },
+    });
+  });
+});
+
+describe('WowDataRepository.itemPorId', () => {
+  const linhaBase = {
+    itemLevel: 289,
+    quality: 4,
+    inventoryType: 6,
+    material: 4,
+    bonding: 1,
+    flags: [0, 0],
+    statIds: [4],
+    statAllocs: [500],
+    socketAllocs: [0],
+    itemDelay: null,
+    dmgVariance: null,
+    flavor: null,
+    itemSetId: null,
+    budgetIndex: 1,
+    scalingType: 'armor',
+    armorModifier: null,
+    effects: null,
+  };
+
+  it('null quando o item não tem dado neste build — lacuna, não erro', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemData.findUnique.mockResolvedValue(null);
+
+    expect(await repo.itemPorId('b1', 999)).toBeNull();
+  });
+
+  it('effects nulo na coluna passa direto', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemData.findUnique.mockResolvedValue(linhaBase);
+
+    const item = await repo.itemPorId('b1', 249967);
+
+    expect(item?.effects).toBeNull();
+    expect(prisma.wowItemData.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { buildId_itemId: { buildId: 'b1', itemId: 249967 } } }),
+    );
+  });
+
+  it('effects presente e válido é devolvido estruturado', async () => {
+    const { repo, prisma } = montarLeitura();
+    const effects = {
+      spellId: 1,
+      descricaoTemplate: 'Ganha $s1.',
+      duracaoMs: null,
+      maxStacks: null,
+      efeitos: [],
+    };
+    prisma.wowItemData.findUnique.mockResolvedValue({ ...linhaBase, effects });
+
+    expect((await repo.itemPorId('b1', 249967))?.effects).toEqual(effects);
+  });
+
+  it('effects malformado vira null — rede de segurança, não trava o resto do item', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemData.findUnique.mockResolvedValue({
+      ...linhaBase,
+      effects: { campoQueNaoExiste: true },
+    });
+
+    expect((await repo.itemPorId('b1', 249967))?.effects).toBeNull();
+  });
+});
+
+describe('WowDataRepository.escalaPorItemLevel', () => {
+  it('null quando o ilvl não tem linha — lacuna, nunca zero', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemLevelScaling.findUnique.mockResolvedValue(null);
+
+    expect(await repo.escalaPorItemLevel('b1', 9999)).toBeNull();
+  });
+
+  it('crMult/stamMult voltam de Float[4] pra {armor,weapon,trinket,jewelry}', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemLevelScaling.findUnique.mockResolvedValue({
+      itemLevel: 289,
+      budget: [1, 2, 3, 4],
+      damageReplaceStat: 0,
+      damageSecondary: 0,
+      crMult: [1, 2, 3, 4],
+      stamMult: [5, 6, 7, 8],
+      socketCost: 0,
+      armorTotal: [],
+      armorQuality: [],
+      armorShield: [],
+      dmgOneHand: [],
+      dmgTwoHand: [],
+      dmgOneHandCaster: [],
+      dmgTwoHandCaster: [],
+    });
+
+    const escala = await repo.escalaPorItemLevel('b1', 289);
+
+    expect(escala?.crMult).toEqual({ armor: 1, weapon: 2, trinket: 3, jewelry: 4 });
+    expect(escala?.stamMult).toEqual({ armor: 5, weapon: 6, trinket: 7, jewelry: 8 });
+  });
+});
+
+describe('WowDataRepository.setPorId', () => {
+  it('null quando o conjunto referenciado não tem linha neste build', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemSet.findUnique.mockResolvedValue(null);
+
+    expect(await repo.setPorId('b1', 1978)).toBeNull();
+  });
+
+  it('bonuses válido é devolvido estruturado', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemSet.findUnique.mockResolvedValue({
+      itemSetId: 1978,
+      name: "Relentless Rider's Lament",
+      pieceItemIds: [1, 2, 3, 4, 5],
+      bonuses: [{ chrSpecId: 250, threshold: 2, spellId: 999 }],
+    });
+
+    const set = await repo.setPorId('b1', 1978);
+
+    expect(set?.bonuses).toEqual([{ chrSpecId: 250, threshold: 2, spellId: 999 }]);
+  });
+
+  it('bonuses malformado vira lista vazia — o conjunto não perde nome nem contagem por isso', async () => {
+    const { repo, prisma } = montarLeitura();
+    prisma.wowItemSet.findUnique.mockResolvedValue({
+      itemSetId: 1978,
+      name: "Relentless Rider's Lament",
+      pieceItemIds: [1, 2, 3, 4, 5],
+      bonuses: 'isto não é um array de bônus',
+    });
+
+    const set = await repo.setPorId('b1', 1978);
+
+    expect(set?.bonuses).toEqual([]);
+    expect(set?.name).toBe("Relentless Rider's Lament"); // o resto do conjunto sobrevive.
+  });
+});

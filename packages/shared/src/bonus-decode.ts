@@ -77,6 +77,19 @@ export const decodedBonusesSchema = z.object({
   dificuldade: z.string().nullable(),
 
   /**
+   * A qualidade que um bônus impõe (`Type 3`), quando existe — sobrescreve a
+   * do item base. TIT-136 precisa dela pra indexar `armorQuality`/
+   * `armorShield`/as tabelas de dano por qualidade.
+   *
+   * **PRIMEIRO bônus do union que traz `quality` vence** — não o último, ao
+   * contrário de track/binding/dificuldade. Mesma regra de
+   * `resolverQualidade` na auto-conferência (`scripts/db2`); replicada aqui
+   * porque é a mesma pergunta ("qual qualidade a peça mostra"), só que lendo
+   * Postgres em vez de db2.
+   */
+  qualidade: z.number().int().nullable(),
+
+  /**
    * Bonus IDs que NÃO estão no dicionário — campo de PRIMEIRA CLASSE, não
    * sobra. É o que permite a tela dizer honestamente o que não sabe, em vez
    * de omitir e parecer completa. Nunca trava a exibição do resto.

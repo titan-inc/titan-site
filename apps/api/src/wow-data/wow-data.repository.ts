@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type WowBonding, type WowScalingType } from '@prisma/client';
 import {
   COLS_BONUS,
@@ -6,7 +6,13 @@ import {
   COLS_ITEM,
   COLS_SCALING,
   COLS_SET,
+  efeitoDoItemSchema,
+  wowItemSetBonusSchema,
   type BonusFacets,
+  type LinhaEscala,
+  type MultiplicadorPorTipo,
+  type WowItemDataFacets,
+  type WowItemSetFacets,
 } from '@titan/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -82,6 +88,95 @@ export class WowDataRepository {
     });
   }
 
+  /**
+   * A metade da união que só existe fora do `itemString` — TIT-136. Os
+   * bônus que a árvore aplica para ESTE item, NESTE `itemContext` — quem
+   * chama faz `bonusIds ∪ isto` antes de buscar as facetas. Ver
+   * "O `itemString` NÃO é a fonte completa" em `docs/db2-do-cliente.md`.
+   */
+  async contextosDeBonus(buildId: string, itemId: number, itemContext: number): Promise<number[]> {
+    const linhas = await this.prisma.wowItemContextBonus.findMany({
+      where: { buildId, itemId, itemContext },
+      select: { bonusId: true },
+    });
+    return linhas.map((l) => l.bonusId);
+  }
+
+  /**
+   * A linha de `WowItemData` de um item, no build dado — o lado do ITEM do
+   * cálculo de stats (TIT-136), companheiro de `facetasDeBonus` (o lado dos
+   * bônus). `null` quando o item não tem dado neste build: patch que
+   * removeu o item, ou catálogo na frente do build carregado — mesma lacuna
+   * que `idsDeItemNoBuild` já relata em agregado.
+   */
+  async itemPorId(buildId: string, itemId: number): Promise<WowItemDataFacets | null> {
+    const linha = await this.prisma.wowItemData.findUnique({
+      where: { buildId_itemId: { buildId, itemId } },
+      select: {
+        itemLevel: true,
+        quality: true,
+        inventoryType: true,
+        material: true,
+        bonding: true,
+        flags: true,
+        statIds: true,
+        statAllocs: true,
+        socketAllocs: true,
+        itemDelay: true,
+        dmgVariance: true,
+        flavor: true,
+        itemSetId: true,
+        budgetIndex: true,
+        scalingType: true,
+        armorModifier: true,
+        effects: true,
+      },
+    });
+    if (!linha) return null;
+
+    return { ...linha, effects: paraEfeitoDoItem(itemId, linha.effects) };
+  }
+
+  /**
+   * A linha de `WowItemLevelScaling` para este ilvl, no build dado. `null`
+   * quando o ilvl resolvido não tem linha — ilvl fora da faixa que o dump
+   * cobriu, lacuna e não zero (Regra 7).
+   */
+  async escalaPorItemLevel(buildId: string, itemLevel: number): Promise<LinhaEscala | null> {
+    const linha = await this.prisma.wowItemLevelScaling.findUnique({
+      where: { buildId_itemLevel: { buildId, itemLevel } },
+    });
+    if (!linha) return null;
+
+    return {
+      itemLevel: linha.itemLevel,
+      budget: linha.budget,
+      damageReplaceStat: linha.damageReplaceStat,
+      damageSecondary: linha.damageSecondary,
+      crMult: paraMultiplicador(linha.crMult),
+      stamMult: paraMultiplicador(linha.stamMult),
+      socketCost: linha.socketCost,
+      armorTotal: linha.armorTotal,
+      armorQuality: linha.armorQuality,
+      armorShield: linha.armorShield,
+      dmgOneHand: linha.dmgOneHand,
+      dmgTwoHand: linha.dmgTwoHand,
+      dmgOneHandCaster: linha.dmgOneHandCaster,
+      dmgTwoHandCaster: linha.dmgTwoHandCaster,
+    };
+  }
+
+  /** O conjunto (`WowItemSet`) que `WowItemData.itemSetId` aponta, no build dado. */
+  async setPorId(buildId: string, itemSetId: number): Promise<WowItemSetFacets | null> {
+    const linha = await this.prisma.wowItemSet.findUnique({
+      where: { buildId_itemSetId: { buildId, itemSetId } },
+      select: { itemSetId: true, name: true, pieceItemIds: true, bonuses: true },
+    });
+    if (!linha) return null;
+
+    return { ...linha, bonuses: paraBonusesDoSet(itemSetId, linha.bonuses) };
+  }
+
   /** Todo bonus id que este build conhece — para o relatório de desconhecidos. */
   async idsDeBonusConhecidos(buildId: string): Promise<Set<number>> {
     const linhas = await this.prisma.wowBonus.findMany({
@@ -130,7 +225,7 @@ export class WowDataRepository {
       itens: LinhaItem[];
       bonuses: LinhaBonus[];
       contextos: LinhaContexto[];
-      escalas: LinhaEscala[];
+      escalas: LinhaEscalaColunar[];
       sets: LinhaSet[];
     },
   ): Promise<ContagemDeLinhasGravadas> {
@@ -220,6 +315,56 @@ export interface ContagemDeLinhasGravadas {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Prisma → forma de leitura do shared                                        */
+/* -------------------------------------------------------------------------- */
+
+const logger = new Logger('WowDataRepository');
+
+/** `Float[4]`, na ordem armor/weapon/trinket/jewelry — o inverso de
+ * `multiplicadorComoArray()` no gerador (`scripts/db2/montar-escalas.ts`). */
+function paraMultiplicador(bruto: number[]): MultiplicadorPorTipo {
+  return {
+    armor: bruto[0] ?? 0,
+    weapon: bruto[1] ?? 0,
+    trinket: bruto[2] ?? 0,
+    jewelry: bruto[3] ?? 0,
+  };
+}
+
+/**
+ * O JSON de `WowItemData.effects`, validado contra o formato que o próprio
+ * gerador emite. JSON malformado vira `null` (o item perde só o efeito, não
+ * o resto do cálculo) — nunca estoura a requisição por causa de UM campo
+ * particular de UM item. Nenhum espécime da fixture exercita isto: é rede de
+ * segurança, não caminho esperado, por isso o log em vez de silêncio total.
+ */
+function paraEfeitoDoItem(itemId: number, bruto: Prisma.JsonValue): WowItemDataFacets['effects'] {
+  if (bruto === null) return null;
+
+  const validado = efeitoDoItemSchema.safeParse(bruto);
+  if (!validado.success) {
+    logger.warn(
+      `WowItemData.effects do item ${itemId} não bate com o formato esperado — tratado como ausente.`,
+    );
+    return null;
+  }
+  return validado.data;
+}
+
+/** Mesma régua de `paraEfeitoDoItem`: um conjunto com `bonuses` malformado
+ * perde só os bônus, não o nome nem a contagem de peças. */
+function paraBonusesDoSet(itemSetId: number, bruto: Prisma.JsonValue): WowItemSetFacets['bonuses'] {
+  const validado = wowItemSetBonusSchema.array().safeParse(bruto);
+  if (!validado.success) {
+    logger.warn(
+      `WowItemSet.bonuses do conjunto ${itemSetId} não bate com o formato esperado — tratado como vazio.`,
+    );
+    return [];
+  }
+  return validado.data;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Colunar → Prisma                                                           */
 /* -------------------------------------------------------------------------- */
 
@@ -227,7 +372,7 @@ type LinhaItem = Record<(typeof COLS_ITEM)[number], unknown>;
 type LinhaSet = Record<(typeof COLS_SET)[number], unknown>;
 type LinhaBonus = Record<(typeof COLS_BONUS)[number], unknown>;
 type LinhaContexto = Record<(typeof COLS_CONTEXT)[number], unknown>;
-type LinhaEscala = Record<(typeof COLS_SCALING)[number], unknown>;
+type LinhaEscalaColunar = Record<(typeof COLS_SCALING)[number], unknown>;
 
 /**
  * `createMany` em lotes — o protocolo do Postgres aceita no máximo **65.535**
@@ -323,7 +468,7 @@ function paraContexto(
 
 function paraEscala(
   buildId: string,
-  linha: LinhaEscala,
+  linha: LinhaEscalaColunar,
 ): Prisma.WowItemLevelScalingCreateManyInput {
   return {
     buildId,

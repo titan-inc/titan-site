@@ -4,17 +4,18 @@ import type {
   Descritor,
   StatAdicional,
   ConjuntoDeItens,
+  ArmorLocationLinha,
 } from './carregadores.js';
-import type { ArmorLocationLinha } from './formula-armadura-arma.js';
 import type { ResolvedorItemLevel } from './item-level.js';
 import type { ResolvedorTrack } from './formula-track.js';
 import type { ResolvedorEfeito } from './formula-efeito.js';
-import { resolverBudgetIndex, resolverTipoOrcamento } from './orcamento.js';
 import {
   COLS_ITEM,
   COLS_BONUS,
   COLS_CONTEXT,
   COLS_SET,
+  resolverBudgetIndex,
+  resolverTipoOrcamento,
 } from '../../packages/shared/dist/index.mjs';
 
 export interface TabelaColunar {
@@ -84,9 +85,17 @@ export function montarItens(
   return { tabela: { cols: COLS_ITEM, rows }, itemIdsSemDado };
 }
 
-/** `ArmorLocation[slot][material]` — só o modificador, não a armadura
- * inteira (que depende do ilvl do drop, resolvido em runtime). */
-function calcularArmorModifier(
+/**
+ * `ArmorLocation[slot][material]` — só o modificador, não a armadura
+ * inteira (que depende do ilvl do drop, resolvido em runtime).
+ *
+ * Exportada porque a auto-conferência (TIT-136) precisa do MESMO
+ * modificador que vai pro `WowItemData.armorModifier`, pra chamar o
+ * `calcularArmadura` migrado (que recebe o escalar já resolvido, não a
+ * tabela `ArmorLocation` inteira) — duas contas separadas divergiriam em
+ * silêncio no dia em que uma mudasse sem a outra.
+ */
+export function calcularArmorModifier(
   material: number,
   inventoryType: number,
   armorLocationPorSlot: Map<number, ArmorLocationLinha>,

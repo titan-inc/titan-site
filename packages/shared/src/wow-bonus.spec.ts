@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { escolherItemLevel, statsAdicionadosDe, terciariosDe } from './wow-bonus.js';
+import {
+  BONUS_TERTIARIES,
+  escolherItemLevel,
+  exibeValorDoTerciario,
+  statsAdicionadosDe,
+  terciariosDe,
+} from './wow-bonus.js';
+
+describe('exibeValorDoTerciario', () => {
+  it('indestructible é flag — não mostra o número calculado', () => {
+    expect(exibeValorDoTerciario(BONUS_TERTIARIES.INDESTRUCTIBLE)).toBe(false);
+  });
+
+  it('avoidance/leech/speed mostram o valor normal', () => {
+    expect(exibeValorDoTerciario(BONUS_TERTIARIES.AVOIDANCE)).toBe(true);
+    expect(exibeValorDoTerciario(BONUS_TERTIARIES.LEECH)).toBe(true);
+    expect(exibeValorDoTerciario(BONUS_TERTIARIES.SPEED)).toBe(true);
+  });
+});
 
 describe('terciariosDe', () => {
   it('deriva o terciário do statId E devolve a alocação junto', () => {
