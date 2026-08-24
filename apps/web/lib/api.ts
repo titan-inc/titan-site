@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   attendanceReportSchema,
+  guildRosterSchema,
   lootHistoryFacetsSchema,
   lootHistoryPageSchema,
   lootCouncilPanelSchema,
@@ -16,6 +17,7 @@ import {
   vagaListSchema,
   vagaSchema,
   type AttendanceReport,
+  type GuildRosterResponse,
   type LootHistoryFacets,
   type LootHistoryPage,
   type LootCouncilPanel,
@@ -118,6 +120,31 @@ export async function getRoster(): Promise<Roster | null> {
     if (!res.ok) return null;
 
     const parsed = rosterSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Roster completo da guilda (~590). **Só oficial** — battletag é dado pessoal.
+ *
+ * Diferente de `getRoster()`, que é o time de raid. Null quando a API recusa
+ * (403 para quem não é oficial) ou está fora do ar.
+ */
+export async function getGuildRoster(): Promise<GuildRosterResponse | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/guild-roster`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      // Generoso: com o cache do Nest frio, a primeira leitura busca ~590
+      // membros na Blizzard antes de esquentar.
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = guildRosterSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

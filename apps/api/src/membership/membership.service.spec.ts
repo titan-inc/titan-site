@@ -12,8 +12,11 @@ import { MembershipService } from './membership.service';
 const rosterMember = (name: string, realmSlug: string, rank: number): RosterMember => ({
   name,
   nameKey: name.toLowerCase(),
+  realm: realmSlug,
   realmSlug,
   rank,
+  level: 80,
+  wowClass: null,
 });
 
 /**

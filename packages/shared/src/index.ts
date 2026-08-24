@@ -4,6 +4,7 @@ export * from './attendance.js';
 export * from './bonus-decode.js';
 export * from './wow-bonus.js';
 export * from './wow-data-file.js';
+export * from './guild-roster.js';
 export * from './health.js';
 export * from './item-computation.js';
 export * from './item-formula.js';

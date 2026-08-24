@@ -81,8 +81,24 @@ describe('OpsService.checkOauth', () => {
   function snapshot(overrides: Partial<RosterSnapshot> = {}): RosterSnapshot {
     return {
       members: [
-        { name: 'Zenithus', nameKey: 'zenithus', realmSlug: 'azralon', rank: 4 },
-        { name: 'Chefe', nameKey: 'chefe', realmSlug: 'azralon', rank: 0 },
+        {
+          name: 'Zenithus',
+          nameKey: 'zenithus',
+          realm: 'Azralon',
+          realmSlug: 'azralon',
+          rank: 4,
+          level: 80,
+          wowClass: null,
+        },
+        {
+          name: 'Chefe',
+          nameKey: 'chefe',
+          realm: 'Azralon',
+          realmSlug: 'azralon',
+          rank: 0,
+          level: 80,
+          wowClass: null,
+        },
       ],
       fetchedAt: Date.now(),
       stale: false,
