@@ -230,7 +230,7 @@ export class LootLinesRepository {
   findItems(itemIds: number[]): Promise<CatalogItemRow[]> {
     return this.prisma.wowItem.findMany({
       where: { itemId: { in: itemIds } },
-      select: { itemId: true, name: true, icon: true, equipLoc: true },
+      select: { itemId: true, name: true, icon: true, equipLoc: true, itemSubclass: true },
     });
   }
 
@@ -364,6 +364,9 @@ const historySelect = {
   awardedAt: true,
   winner: { select: { ...characterSelect, class: true } },
   itemId: true,
+  // O `itemString` cru — TIT-135: `WowItemStatsService.calcularVarios` (o
+  // payload de stats) chaveia por ele, não por `itemId`.
+  itemString: true,
   difficulty: true,
   votes: true,
   playerNote: true,
@@ -378,4 +381,5 @@ export type CatalogItemRow = {
   name: string | null;
   icon: string | null;
   equipLoc: string | null;
+  itemSubclass: string | null;
 };

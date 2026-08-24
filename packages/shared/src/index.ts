@@ -8,6 +8,7 @@ export * from './health.js';
 export * from './item-computation.js';
 export * from './item-formula.js';
 export * from './item-string.js';
+export * from './item-view.js';
 export * from './journal-dump.js';
 export * from './loot-catalog.js';
 export * from './loot-catalog-file.js';

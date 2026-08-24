@@ -25,8 +25,17 @@ import { notaSchema } from './nota.js';
 export const recebidoAntesSchema = z.object({
   awardedAt: z.string().datetime(),
 
-  /** Do catálogo. Nulo quando o item ainda não foi enriquecido. */
-  itemName: z.string().nullable(),
+  /**
+   * Do catálogo. Nulo quando o item ainda não foi enriquecido.
+   *
+   * `name`, não `itemName` — TIT-135: as outras três formas de item do
+   * shared chamam este campo de `name` (`itemViewSchema`), e o mesmo campo
+   * grafado de dois jeitos no mesmo pacote é o que a Regra 2 existe pra
+   * impedir. `recebidoAntes` continua fora da unificação (é uma ENTREGA, não
+   * um item — ver o comentário de `itemViewSchema`); só o nome do campo
+   * muda.
+   */
+  name: z.string().nullable(),
   icon: z.string().nullable(),
 
   /** `HEAD`, `TRINKET`. É o que responde "ela já levou anel esta semana?". */
