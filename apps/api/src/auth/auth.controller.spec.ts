@@ -37,6 +37,15 @@ describe('AuthController popup OAuth', () => {
     expect(cookie).toHaveBeenCalledTimes(1);
   });
 
+  // Sem isto, um `popup` esquecido de uma tentativa abandonada decide o destino
+  // de um login posterior por página inteira — e o TTL de 6h torna isso
+  // provável, não teórico. Ver TIT-144.
+  it('start sem mode APAGA um cookie de modo antigo', () => {
+    const { res, clearCookie } = response();
+    controller.start(res);
+    expect(clearCookie).toHaveBeenCalledWith('titan_oauth_mode', { path: '/' });
+  });
+
   it('start em popup grava cookie com as mesmas flags do state', () => {
     const { res, cookie } = response();
     controller.start(res, undefined, 'popup');
@@ -44,11 +53,21 @@ describe('AuthController popup OAuth', () => {
       httpOnly: true,
       sameSite: 'lax',
       secure: false,
-      maxAge: 10 * 60 * 1000,
+      maxAge: 6 * 60 * 60 * 1000,
       path: '/',
     };
     expect(cookie).toHaveBeenNthCalledWith(1, 'titan_oauth_state', 'state-token', options);
     expect(cookie).toHaveBeenNthCalledWith(2, 'titan_oauth_mode', 'popup', options);
+  });
+
+  // A janela do login tem que cobrir 2FA e recuperação de senha. Dez minutos
+  // não cobria, e os dois cookies vencendo juntos carregavam a home dentro do
+  // popup — o sintoma que abriu a TIT-144.
+  it('a janela do login é de 6 horas', () => {
+    const { res, cookie } = response();
+    controller.start(res, undefined, 'popup');
+    const [, , opcoes] = cookie.mock.calls[0] as [string, string, { maxAge: number }];
+    expect(opcoes.maxAge).toBe(21600000);
   });
 
   it('start ignora qualquer outro mode', () => {
