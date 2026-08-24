@@ -15,6 +15,9 @@ function sessionUser(overrides: Partial<SessionUser> = {}): SessionUser {
     hasInternalAccess: false,
     matchedCharacter: null,
     characterCount: 1,
+    // O guard não lê a lista; está aqui porque `characters` virou obrigatório
+    // no SessionUser na TIT-126, para o select de personagem da sessão de loot.
+    characters: [{ name: 'Fulano', realm: 'azralon', region: 'us' as const }],
     verifiedAt: null,
     ...overrides,
   };
