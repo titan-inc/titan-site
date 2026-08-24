@@ -30,6 +30,31 @@ function destinoLogin(
     : `${webUrl}/oauth/callback?status=erro&motivo=${resultado}`;
 }
 
+/**
+ * Quanto tempo o login tem para terminar, contado do clique no botão.
+ *
+ * Seis horas, e não dez minutos como até 24/08/2026 (TIT-144). Dez minutos não
+ * cobria senha errada, 2FA no celular ou recuperação de senha — e quando os
+ * dois cookies venciam juntos, o callback caía no ramo sem popup e carregava a
+ * home dentro da janelinha.
+ *
+ * **Encurtar isto não era o que segurava o CSRF.** O `state` é `httpOnly`:
+ * quem ataca não lê o valor, então não consegue casar com o `state` da
+ * querystring. O que protege é a comparação, não o relógio.
+ *
+ * O preço é uma janela maior para um cookie de modo esquecido, e é por isso
+ * que `start()` agora limpa o de modo quando o login não é por popup.
+ */
+const OAUTH_COOKIE_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** Flags comuns aos dois cookies de OAuth. O TTL vai à parte, por clareza. */
+const OAUTH_COOKIE = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+} as const;
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} é obrigatória (ver .env.example)`);
@@ -62,21 +87,15 @@ export class AuthController {
 
     // O `state` protege o callback contra CSRF: guardamos em cookie e
     // comparamos no retorno. Sem isso, um terceiro poderia forjar um callback.
-    res.cookie(STATE_COOKIE, state, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 10 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie(STATE_COOKIE, state, { ...OAUTH_COOKIE, maxAge: OAUTH_COOKIE_TTL_MS });
+
+    // O cookie de modo é gravado OU apagado, nunca deixado como estava. Só
+    // gravar deixaria um `popup` velho decidir o destino de um login posterior
+    // feito por página inteira — ver `OAUTH_COOKIE_TTL_MS`.
     if (mode === 'popup') {
-      res.cookie(MODE_COOKIE, 'popup', {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 10 * 60 * 1000,
-        path: '/',
-      });
+      res.cookie(MODE_COOKIE, 'popup', { ...OAUTH_COOKIE, maxAge: OAUTH_COOKIE_TTL_MS });
+    } else {
+      res.clearCookie(MODE_COOKIE, { path: '/' });
     }
 
     res.redirect(this.auth.buildAuthorizeUrl(state, redirectUri, forceLogin));
