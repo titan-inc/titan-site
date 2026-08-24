@@ -153,6 +153,7 @@ export class SnapshotsRepository {
         highestKey: true,
         seasonRuns: true,
         seasonRunsTimed: true,
+        recordedAt: true,
       },
     });
   }

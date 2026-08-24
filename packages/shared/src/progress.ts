@@ -84,6 +84,19 @@ export const progressReportSchema = z.object({
    */
   mythicPlusOpen: z.boolean(),
 
+  /**
+   * Quando o job mediu esta semana pela última vez.
+   *
+   * A foto do period corrente é reescrita a cada rodada, então isto é a leitura
+   * mais recente, não o instante em que a semana começou.
+   *
+   * **A tela precisa mostrar isto.** O roster lê o Raider.IO na hora do request
+   * e esta tela lê o que o job gravou — as duas mostram "ilvl" e vão divergir
+   * enquanto o job não roda de novo. Sem a data, quem abre as duas conclui que
+   * uma está errada; com a data, a diferença se explica sozinha.
+   */
+  recordedAt: z.string().datetime(),
+
   /** Médias do time na semana. Nulas quando ninguém tem o dado. */
   average: z.object({
     itemLevel: z.number().nullable(),
