@@ -9,7 +9,13 @@ import type { SnapshotsRepository } from './snapshots.repository';
  * `characterId` é determinístico a partir de nome+realm, só para o teste
  * comparar a mesma pessoa entre semanas.
  */
-const linha = (nome: string, period: number, itemLevel: number | null, realm = 'Azralon') => ({
+const linha = (
+  nome: string,
+  period: number,
+  itemLevel: number | null,
+  realm = 'Azralon',
+  recordedAt = new Date('2026-08-24T13:00:00Z'),
+) => ({
   period,
   characterId: `char:${toCharacterKey(nome)}|${toRealmMatchKey(realm)}`,
   character: {
@@ -23,6 +29,7 @@ const linha = (nome: string, period: number, itemLevel: number | null, realm = '
   highestKey: null,
   seasonRuns: null,
   seasonRunsTimed: null,
+  recordedAt,
 });
 
 const char = (name: string, realm = 'Azralon'): TeamCharacter => ({
@@ -67,6 +74,33 @@ describe('ProgressService', () => {
       repo as unknown as SnapshotsRepository,
       wowaudit as unknown as WowAuditService,
     );
+  });
+
+  it('data o relatório pela medição mais recente da semana', async () => {
+    // O job grava as linhas juntas, mas o backfill de chaves pode tocar uma
+    // depois. A tela promete "medido em", então vale a mais nova.
+    repo.findSeasonSnapshots.mockResolvedValue([
+      linha('Fulano', 1074, 300, 'Azralon', new Date('2026-08-24T10:00:00Z')),
+      linha('Beltrano', 1074, 280, 'Azralon', new Date('2026-08-24T15:00:00Z')),
+    ]);
+
+    const report = await service.getReport();
+
+    expect(report?.recordedAt).toBe('2026-08-24T15:00:00.000Z');
+  });
+
+  it('não data pela linha de quem já saiu do time', async () => {
+    // Sicrano sai do relatório pelo filtro do time; a data dele iria junto e
+    // faria a tela dizer que a semana foi medida depois do que foi.
+    repo.findSeasonSnapshots.mockResolvedValue([
+      linha('Fulano', 1074, 300, 'Azralon', new Date('2026-08-24T10:00:00Z')),
+      linha('Beltrano', 1074, 280, 'Azralon', new Date('2026-08-24T11:00:00Z')),
+      linha('Sicrano', 1074, 147, 'Azralon', new Date('2026-08-24T23:00:00Z')),
+    ]);
+
+    const report = await service.getReport();
+
+    expect(report?.recordedAt).toBe('2026-08-24T11:00:00.000Z');
   });
 
   it('tira da semana corrente quem não está mais no time', async () => {

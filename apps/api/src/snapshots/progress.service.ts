@@ -63,6 +63,11 @@ export class ProgressService {
       corrente,
     );
 
+    // Inalcançável: `atual` saiu destes snapshots, e `somenteDoTime` devolve a
+    // lista sem filtro em vez de vazia. Está aqui porque a data do relatório não tem
+    // resposta para uma semana sem linha nenhuma.
+    if (daSemana.length === 0) return null;
+
     // Média do time na semana. É o que o raid leader compara contra cada um.
     const average = {
       itemLevel: media(daSemana.map((s) => s.itemLevel)),
@@ -96,10 +101,16 @@ export class ProgressService {
       name: s.name,
     });
 
+    // A rodada do job grava as linhas da semana juntas, mas o backfill de
+    // chaves pode ter tocado uma delas depois. A mais recente é o que responde
+    // "quando isto foi medido".
+    const medidoEm = Math.max(...daSemana.map((s) => s.recordedAt.getTime()));
+
     return {
       season: opcao(escolhida),
       availableSeasons: seasons.map(opcao),
       period: atual,
+      recordedAt: new Date(medidoEm).toISOString(),
       weekInSeason: atual - escolhida.firstPeriod + 1,
       periodCount: escolhida.periodCount,
       // Sem slug do Raider.IO, o M+ desta season ainda não abriu — ver

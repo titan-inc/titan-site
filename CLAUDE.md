@@ -378,6 +378,23 @@ Por isso job de gravação (evento de roster, snapshot semanal) entra **antes** 
 
 Corolário: falha de coleta é **lacuna**, nunca zero. Gravar 0 porque a API caiu vira "a pessoa parou de jogar" — mentira que o gráfico conta com cara de verdade.
 
+#### Duas telas sobre o mesmo número vão divergir — e devem (24/08/2026)
+
+Roster e progressão mostram o **ilvl da mesma pessoa** com números diferentes. Não são fontes diferentes: as duas chamam `RaiderIoService.getProgress()`. O que difere é o relógio — o roster lê no request (cache de 1h), a progressão lê o que o job `snapshot-semanal` gravou.
+
+**Igualar os dois é a correção errada**, e é o instinto de quem chega. As telas respondem perguntas diferentes:
+
+|            | roster                       | progressão                         |
+| ---------- | ---------------------------- | ---------------------------------- |
+| responde   | como está cada um **agora**  | a **foto da semana**               |
+| serve para | decidir rotação hoje à noite | `Δ semana` significar alguma coisa |
+
+Snapshot perseguindo o valor ao vivo transforma o delta em ruído; roster lendo o snapshot fica velho e perde a função. O registro semanal é o que esta regra manda guardar.
+
+O que se faz é **encurtar o relógio e datar a tela**: o job roda de hora em hora, e o `ProgressReport` carrega `recordedAt`, que a tela mostra. Encurtar reduz a diferença, datar é o que a explica — tela que mostra número sem dizer de quando é convida a conclusão de que a outra está errada.
+
+Régua para caso novo: **duas telas sobre o mesmo dado precisam dizer de que momento cada uma fala.** Não é detalhe de UI, é o que separa "duas leituras" de "um bug". Ver TIT-143.
+
 ### Derivar automático, humano corrige, guardar a correção
 
 Vale para tudo que gera dado sobre o comportamento de uma pessoa.
