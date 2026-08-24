@@ -10,8 +10,11 @@ import { OfficersService } from './officers.service';
 const rosterMember = (name: string, realmSlug: string, rank: number): RosterMember => ({
   name,
   nameKey: name.normalize('NFC').toLowerCase(),
+  realm: realmSlug,
   realmSlug,
   rank,
+  level: 80,
+  wowClass: null,
 });
 
 const snapshot = (members: RosterMember[]): RosterSnapshot => ({

@@ -8,8 +8,16 @@ export interface RosterMember {
   name: string;
   /** Identidade, via toCharacterKey(): minúsculas COM acento. Para comparar. */
   nameKey: string;
+  /** Realm como a Blizzard exibe ("Area 52"). Para mostrar — ver `realmSlug` para comparar. */
+  realm: string;
   realmSlug: string;
   rank: number;
+  level: number;
+  /**
+   * Nome da classe como a Blizzard devolve ("Mage"), sem tradução. Nulo é
+   * lacuna (a fonte não trouxe), nunca "sem classe".
+   */
+  wowClass: string | null;
 }
 
 /** Personagem de uma conta autenticada. */
@@ -405,15 +413,23 @@ export class BlizzardService implements OnModuleInit {
     const data = (await res.json()) as {
       members?: Array<{
         rank: number;
-        character: { name: string; realm: { slug: string } };
+        character: {
+          name: string;
+          level: number;
+          playable_class?: { name?: string };
+          realm: { name: string; slug: string };
+        };
       }>;
     };
 
     const members: RosterMember[] = (data.members ?? []).map((m) => ({
       name: m.character.name,
       nameKey: toCharacterKey(m.character.name),
+      realm: m.character.realm.name,
       realmSlug: toSlug(m.character.realm.slug),
       rank: m.rank,
+      level: m.character.level,
+      wowClass: m.character.playable_class?.name ?? null,
     }));
 
     this.rosterCache = { members, fetchedAt: Date.now() };

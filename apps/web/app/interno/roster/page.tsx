@@ -22,17 +22,11 @@ export default async function RosterPage() {
   const roster = await getRoster();
 
   return (
-    <main className="flex flex-1 flex-col gap-6">
-      <div>
-        <p className="text-pedra font-mono text-xs tracking-widest uppercase">Time de raid</p>
-        <h1 className="text-fg mt-2 text-[34px] leading-[1.05] font-extrabold tracking-[-0.02em]">
-          Roster
-        </h1>
-        <p className="text-fg-muted mt-2 text-sm">
-          Quem está no time hoje, segundo o WoWAudit. Item level e score de M+ vêm do Raider.IO.
-          Clique no cabeçalho para ordenar.
-        </p>
-      </div>
+    <>
+      <p className="text-fg-muted text-sm">
+        Quem está no time hoje, segundo o WoWAudit. Item level e score de M+ vêm do Raider.IO.
+        Clique no cabeçalho para ordenar.
+      </p>
 
       {roster === null ? (
         <p className="border-border text-fg-muted rounded-lg border border-dashed p-5 text-sm">
@@ -55,6 +49,6 @@ export default async function RosterPage() {
           </p>
         </>
       )}
-    </main>
+    </>
   );
 }

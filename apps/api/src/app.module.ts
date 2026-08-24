@@ -7,6 +7,7 @@ import { ApplicationsModule } from './applications/applications.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
+import { GuildRosterModule } from './guild-roster/guild-roster.module';
 import { LootCatalogModule } from './loot-catalog/loot-catalog.module';
 import { LootLinesModule } from './loot-lines/loot-lines.module';
 import { LootSessionsModule } from './loot-sessions/loot-sessions.module';
@@ -31,6 +32,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     AuthModule,
     InternalModule,
     RosterModule,
+    GuildRosterModule,
     SnapshotsModule,
     RaidProgressModule,
     AttendanceModule,
