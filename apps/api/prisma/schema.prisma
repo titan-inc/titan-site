@@ -244,6 +244,21 @@ model GameSeason {
   /// Primeiro period da season. `periodCorrente - firstPeriod + 1` é a semana.
   firstPeriod Int
 
+  /// O period em que o M+ desta season de fato ABRIU.
+  ///
+  /// `firstPeriod` é o period do **patch**, que é o que a Blizzard publica. O
+  /// M+ abre uma semana depois, e é o M+ que a tela de progressão mede — contar
+  /// a semana a partir do patch adianta o número em um, em toda season.
+  ///
+  /// **Observado, não calculado.** Quem grava é o job, na primeira rodada em
+  /// que o slug do Raider.IO já é o desta season — o mesmo sinal que decide o
+  /// aviso de pré-season. `firstPeriod + 1` seria promessa: acertaria hoje e
+  /// erraria em silêncio no dia em que o intervalo mudasse.
+  ///
+  /// Nulo = a season abriu antes de a gente estar olhando. A leitura cai de
+  /// volta em `firstPeriod`, que é o comportamento anterior à TIT-145.
+  mplusFirstPeriod Int?
+
   /// Quantos periods a season tem até agora.
   periodCount Int
 

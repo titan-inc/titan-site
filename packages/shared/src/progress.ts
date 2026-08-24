@@ -36,6 +36,20 @@ export const progressRowSchema = z.object({
    * Número **completo**: o Raider.IO acumula desde o início da season. Somar
    * as semanas do WoWAudit daria um total menor, porque ele só tem histórico
    * a partir de quando passou a acompanhar o time.
+   *
+   * **Conta chave de qualquer nível, e isso é decisão, não descuido.** O
+   * indicador existe para ver quem está se esforçando; quem ainda não aguenta
+   * uma +7 continua tendo o esforço contado, que é justamente a pessoa sobre
+   * quem o número precisa dizer alguma coisa. Filtrar por nível transformaria
+   * "está jogando" em "está jogando bem" — outra pergunta, e uma que a Regra 7
+   * manda pensar duas vezes antes de exibir em tabela comparativa.
+   *
+   * Isto vai voltar como suposto bug: a **página** do Raider.IO mostra uma
+   * tabela de runs contando só de +7 para cima, então ela sempre dará um número
+   * menor que o nosso. Conferido em 24/08/2026 num personagem real — nosso 66
+   * no tempo batia com a API e com o addon no jogo; os 54 da página eram a soma
+   * de +7 para cima, deixando 12 chaves de fora. Não é divergência para
+   * corrigir; é a página respondendo outra pergunta.
    */
   keysInSeason: z.number().nullable(),
 
@@ -65,10 +79,20 @@ export const progressReportSchema = z.object({
   /** Semana do jogo mostrada. */
   period: z.number().int(),
 
-  /** 1 na primeira semana da season. */
+  /**
+   * 1 na primeira semana **de M+** da season.
+   *
+   * Conta da abertura do M+, não do patch: a season de M+ abre uma semana
+   * depois, e é o M+ que este relatório mede. Até 24/08/2026 contava do patch e
+   * dizia "semana 2" na primeira semana de M+, em toda season (TIT-145).
+   *
+   * Numa season que abriu antes de o site existir não há observação da
+   * abertura, e aí volta a contar do patch — errado do mesmo jeito de antes,
+   * mas só onde não há como saber.
+   */
   weekInSeason: z.number().int(),
 
-  /** Quantas semanas a season tem até agora. */
+  /** Quantas semanas de M+ a season tem até agora. Não conta a do patch. */
   periodCount: z.number().int(),
 
   /**

@@ -39,12 +39,18 @@ const char = (name: string, realm = 'Azralon'): TeamCharacter => ({
   role: 'Heal',
 });
 
-const seasonRow = (id: number, startedAt: string, raiderioSlug: string | null = 'season-mn-1') => ({
+const seasonRow = (
+  id: number,
+  startedAt: string,
+  raiderioSlug: string | null = 'season-mn-1',
+  mplusFirstPeriod: number | null = null,
+) => ({
   id,
   patch: '12.0',
   name: `Season ${id}`,
   raiderioSlug,
   firstPeriod: 1055,
+  mplusFirstPeriod,
   periodCount: 20,
   startedAt: new Date(startedAt),
 });
@@ -74,6 +80,46 @@ describe('ProgressService', () => {
       repo as unknown as SnapshotsRepository,
       wowaudit as unknown as WowAuditService,
     );
+  });
+
+  describe('a semana da season conta do M+, não do patch', () => {
+    // `firstPeriod` é o period do PATCH; o M+ abre uma semana depois. Contar do
+    // patch dizia "semana 2 de 2" com o M+ aberto havia uma semana — TIT-145.
+    it('desconta a semana em que o M+ ainda estava fechado', async () => {
+      const season = seasonRow(17, '2026-03-17T00:00:00Z', 'season-mn-1', 1056);
+      repo.listSeasons.mockResolvedValue([season]);
+      repo.findSeasonSnapshots.mockResolvedValue([linha('Fulano', 1057, 300)]);
+
+      const report = await service.getReport();
+
+      // period 1057 com o M+ aberto desde 1056: segunda semana de M+.
+      expect(report?.weekInSeason).toBe(2);
+      // 20 periods desde o patch, mas um deles foi a semana fechada.
+      expect(report?.periodCount).toBe(19);
+    });
+
+    it('a primeira semana de M+ é a semana 1, não a 2', async () => {
+      const season = seasonRow(17, '2026-03-17T00:00:00Z', 'season-mn-1', 1056);
+      repo.listSeasons.mockResolvedValue([season]);
+      repo.findSeasonSnapshots.mockResolvedValue([linha('Fulano', 1056, 300)]);
+
+      const report = await service.getReport();
+
+      expect(report?.weekInSeason).toBe(1);
+    });
+
+    // Season que abriu antes de o site existir não tem como saber, e aí o
+    // certo é não piorar: cai de volta no comportamento anterior.
+    it('sem o period observado, cai de volta no firstPeriod', async () => {
+      const season = seasonRow(17, '2026-03-17T00:00:00Z', 'season-mn-1', null);
+      repo.listSeasons.mockResolvedValue([season]);
+      repo.findSeasonSnapshots.mockResolvedValue([linha('Fulano', 1057, 300)]);
+
+      const report = await service.getReport();
+
+      expect(report?.weekInSeason).toBe(3);
+      expect(report?.periodCount).toBe(20);
+    });
   });
 
   it('data o relatório pela medição mais recente da semana', async () => {
