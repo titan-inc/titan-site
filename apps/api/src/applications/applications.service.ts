@@ -24,7 +24,7 @@ export class ApplicationsService {
     }
 
     try {
-      await this.discord.send(buildApplicationEmbed(application));
+      await this.discord.send('apply', buildApplicationEmbed(application));
       this.logger.log('Candidatura entregue ao Discord.');
       return { delivered: true };
     } catch (error: unknown) {

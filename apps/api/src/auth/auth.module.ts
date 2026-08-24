@@ -3,12 +3,12 @@ import { BlizzardModule } from '../blizzard/blizzard.module';
 import { AuthController } from './auth.controller';
 import { AuthRepository } from './auth.repository';
 import { AuthService } from './auth.service';
-import { MemberGuard } from './session.guard';
+import { MemberGuard, RosterGuard } from './session.guard';
 
 @Module({
   imports: [BlizzardModule],
   controllers: [AuthController],
-  providers: [AuthService, AuthRepository, MemberGuard],
-  exports: [AuthService, MemberGuard],
+  providers: [AuthService, AuthRepository, MemberGuard, RosterGuard],
+  exports: [AuthService, MemberGuard, RosterGuard],
 })
 export class AuthModule {}

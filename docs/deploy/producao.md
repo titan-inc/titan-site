@@ -59,8 +59,14 @@ Mesma lista do `.env.example`, com estas diferenças:
 | `OPS_TRIGGER_TOKEN`     | Gerar um novo, não reusar o de dev. Protege `/internal/ops/*` (ver `docs/ops.md` e TIT-109) — além disso, bloqueada no domínio público pelo Caddy, só alcançável de dentro do container ou por túnel SSH. |
 
 Todo o resto (`BLIZZARD_CLIENT_ID/SECRET`, `GUILD_*`, `DISCORD_APPLY_WEBHOOK_URL`,
-`WOW_AUDIT_KEY`, `WARCRAFTLOGS_*`, `API_PORT`) segue o mesmo significado do
-`.env.example` — só troca o valor real pelo de produção.
+`DISCORD_MPLUS_WEBHOOK_URL`, `DISCORD_MPLUS_ROLE_ID`, `WOW_AUDIT_KEY`,
+`WARCRAFTLOGS_*`, `API_PORT`) segue o mesmo significado do `.env.example` — só
+troca o valor real pelo de produção.
+
+Um cuidado só, nos webhooks do Discord: são **dois canais diferentes** e a api
+recusa subir se as duas URLs forem iguais. O de candidatura é o canal privado da
+liderança; o de M+ é o `#míticas-pluses`, aberto à guilda. Apontar um para o
+outro vaza dado pessoal de candidato para a guilda inteira.
 
 ## Gerando POSTGRES_PASSWORD (e qualquer segredo que vai dentro de uma URL)
 

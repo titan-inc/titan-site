@@ -24,6 +24,16 @@ const ITENS = [
 ] as const;
 
 /**
+ * Home e M+ é tudo que existe para quem está na guilda mas acima do corte de
+ * rank. As outras seções são do time de raid e mandariam a pessoa para uma
+ * tela que a recusa — link que não leva a lugar nenhum é pior que link ausente.
+ */
+const ITENS_SEM_ACESSO = [{ segment: null, href: '/interno', label: 'Home' }] as const;
+
+/** M+ não é raid: aparece para qualquer pessoa com personagem no roster. */
+const ITEM_MPLUS = { segment: 'mplus', href: '/interno/mplus', label: 'M+' } as const;
+
+/**
  * Seção de liderança. Fora de ITENS porque não é para todo mundo.
  *
  * Esconder o link é cortesia, não proteção: quem digitar a URL é barrado pela
@@ -33,10 +43,18 @@ const ITENS_OFICIAL = [
   { segment: 'oficiais', href: '/interno/oficiais', label: 'Oficiais' },
 ] as const;
 
-export function SidebarNav({ oficial = false }: { oficial?: boolean }) {
+export function SidebarNav({
+  oficial = false,
+  acessoInterno = true,
+}: {
+  oficial?: boolean;
+  /** Rank dentro do corte. Falso = membro da guilda sem a área do time de raid. */
+  acessoInterno?: boolean;
+}) {
   // Hook de client component: o layout é server component e importa este.
   const atual = useSelectedLayoutSegment();
-  const itens = oficial ? [...ITENS, ...ITENS_OFICIAL] : ITENS;
+  const base = acessoInterno ? ITENS : ITENS_SEM_ACESSO;
+  const itens = [...base, ITEM_MPLUS, ...(oficial ? ITENS_OFICIAL : [])];
 
   return (
     <nav aria-label="Área interna" className="flex gap-1 md:flex-col">
