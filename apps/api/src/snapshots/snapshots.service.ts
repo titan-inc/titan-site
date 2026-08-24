@@ -51,15 +51,26 @@ export class SnapshotsService {
   }
 
   /**
-   * Diário, e não semanal, de propósito.
+   * De hora em hora, e não semanal, de propósito.
    *
    * A foto é sempre do period corrente, e o upsert atualiza a mesma linha —
    * então a semana converge para o valor final até o reset, e a última gravação
    * antes da virada é o fechamento. Rodar uma vez por semana daria o mesmo
    * resultado no caso feliz, mas **perderia a semana inteira** se aquela única
    * execução falhasse.
+   *
+   * Era diário até 24/08/2026 (TIT-143). Duas coisas melhoraram com a hora:
+   *
+   * - o fechamento da semana fica no máximo 1h antes do reset, em vez de 24h;
+   * - a defasagem contra a tela de roster, que lê o Raider.IO no request, cai
+   *   de ~25h para ~1h. Como as duas passam pelo mesmo cache de 1h do
+   *   `RaiderIoService`, na maior parte das visitas o número é o mesmo.
+   *
+   * As duas telas continuam podendo divergir, e devem: uma é o agora, a outra é
+   * a foto da semana. Por isso o relatório carrega `recordedAt` — encurtar o
+   * relógio reduz a diferença, dizer a data é o que a explica.
    */
-  @Cron(CronExpression.EVERY_DAY_AT_10AM, { name: 'snapshot-semanal' })
+  @Cron(CronExpression.EVERY_HOUR, { name: 'snapshot-semanal' })
   async snapshotScheduled(): Promise<void> {
     try {
       await this.takeSnapshot();
@@ -162,6 +173,23 @@ export class SnapshotsService {
 
     const recorded = await this.repo.saveSnapshots(entradas);
     const withoutItemLevel = entradas.filter((e) => e.itemLevel === null).length;
+
+    // A primeira rodada com o M+ aberto carimba em que period ele abriu. É o
+    // que a tela usa para contar a semana da season, e o `firstPeriod` da
+    // Blizzard não serve: aquele é o period do PATCH, uma semana antes.
+    //
+    // Grava a observação em vez de derivar do calendário, pelo mesmo motivo que
+    // `mythicPlusAberto()` olha o slug em vez de somar sete dias: offset fixo é
+    // promessa, e quebra sem gerar erro.
+    if (
+      mythicPlusOpen &&
+      (await this.repo.marcarAberturaDoMplus(season.id, season.currentPeriod))
+    ) {
+      this.logger.log(
+        `M+ da season ${season.id} abriu no period ${season.currentPeriod} ` +
+          `(patch foi no ${season.firstPeriod})`,
+      );
+    }
 
     this.logger.log(
       `Snapshot period=${season.currentPeriod} season=${season.id} ` +

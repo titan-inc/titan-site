@@ -13,6 +13,8 @@ import {
   raidProgressReportSchema,
   rosterSchema,
   sessionUserSchema,
+  vagaListSchema,
+  vagaSchema,
   type AttendanceReport,
   type LootHistoryFacets,
   type LootHistoryPage,
@@ -25,6 +27,8 @@ import {
   type RaidProgressReport,
   type Roster,
   type SessionUser,
+  type Vaga,
+  type VagaList,
 } from '@titan/shared';
 import { z } from 'zod';
 import { cookies } from 'next/headers';
@@ -270,6 +274,49 @@ export async function getLootHistoryFacets(season?: string): Promise<LootHistory
     if (!res.ok) return null;
 
     const parsed = lootHistoryFacetsSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Vagas de M+ abertas.
+ *
+ * Basta ter personagem no roster — **não** passa pelo corte de rank, ao
+ * contrário de tudo que está acima. M+ não é raid.
+ *
+ * Null quando a API recusa ou está fora do ar; a tela trata como "sem dado".
+ */
+export async function getVagas(): Promise<VagaList | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/mplus/vagas`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = vagaListSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Uma vaga — a página que o anúncio no Discord linka. */
+export async function getVaga(id: string): Promise<Vaga | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/mplus/vagas/${encodeURIComponent(id)}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = vagaSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

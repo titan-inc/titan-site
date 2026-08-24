@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_MplusVagaCriar1
+createdAt: 2026-08-24T11:00:00.000000
+updatedAt: 2026-08-24T11:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_Mplus1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"vagas": {"tank": 0, "healer": 1, "dps": 2}, "quando": "2026-08-25T23:00:00.000Z", "keyMin": 10, "keyMax": 12, "faltando": ["lust"], "observacao": "Fechando o vault."}'
+bodyType: application/json
+description: 'RosterGuard. Grava a vaga e publica o anúncio no canal de M+ do Discord. AJUSTE `quando` ANTES DE ENVIAR: é sempre UTC, tem que estar no futuro e no máximo 6 dias à frente (VAGA_AGENDAMENTO_MAX_DIAS) — data vencida volta 400 do criarVagaSchema, não erro de servidor. keyMin/keyMax: 0 é M0, e +1 não existe. Publica de verdade no Discord; em Local isso depende do DISCORD_MPLUS_WEBHOOK_URL do seu .env.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Criar vaga (anuncia no Discord)'
+sortPriority: 2000
+url: ${[ base_url ]}/internal/mplus/vagas
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

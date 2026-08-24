@@ -49,9 +49,11 @@ export default async function RosterPage() {
 
           <RosterTable characters={roster.characters} />
 
+          {/* O par da nota na tela de progressão — ver TIT-143. */}
           <p className="text-fg-subtle text-xs">
-            {roster.characters.length} personagens · atualizado em{' '}
-            {new Date(roster.fetchedAt).toLocaleString('pt-BR')}
+            {roster.characters.length} personagens · leitura de agora, feita em{' '}
+            {new Date(roster.fetchedAt).toLocaleString('pt-BR')}. A progressão mostra a foto da
+            semana, então o ilvl lá pode estar atrás deste.
           </p>
         </>
       )}

@@ -13,6 +13,7 @@ import { LootSessionsModule } from './loot-sessions/loot-sessions.module';
 import { HealthModule } from './health/health.module';
 import { InternalModule } from './internal/internal.module';
 import { MembershipModule } from './membership/membership.module';
+import { MplusModule } from './mplus/mplus.module';
 import { OfficersModule } from './officers/officers.module';
 import { OpsModule } from './ops/ops.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -44,6 +45,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     LootSessionsModule,
     HealthModule,
     ApplicationsModule,
+    MplusModule,
     OpsModule,
   ],
   controllers: [AppController],

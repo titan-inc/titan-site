@@ -41,6 +41,23 @@ export class SnapshotsRepository {
   }
 
   /**
+   * Carimba o period em que o M+ da season abriu — só se ainda não houver um.
+   *
+   * O `where` com `mplusFirstPeriod: null` é o que torna isto idempotente e
+   * seguro: a primeira rodada com o M+ aberto grava, e nenhuma rodada posterior
+   * empurra o valor para frente. Sem isso, o job carimbaria a semana corrente
+   * toda vez e a season pareceria começar hoje, sempre.
+   */
+  async marcarAberturaDoMplus(seasonId: number, period: number): Promise<boolean> {
+    const { count } = await this.prisma.gameSeason.updateMany({
+      where: { id: seasonId, mplusFirstPeriod: null },
+      data: { mplusFirstPeriod: period },
+    });
+
+    return count > 0;
+  }
+
+  /**
    * Grava a foto da semana.
    *
    * Upsert pela chave (period, realm, nome): rodar o job duas vezes na mesma
@@ -99,6 +116,7 @@ export class SnapshotsRepository {
         name: true,
         raiderioSlug: true,
         firstPeriod: true,
+        mplusFirstPeriod: true,
         periodCount: true,
         startedAt: true,
       },
@@ -115,6 +133,7 @@ export class SnapshotsRepository {
         name: true,
         raiderioSlug: true,
         firstPeriod: true,
+        mplusFirstPeriod: true,
         periodCount: true,
         startedAt: true,
       },
@@ -153,6 +172,7 @@ export class SnapshotsRepository {
         highestKey: true,
         seasonRuns: true,
         seasonRunsTimed: true,
+        recordedAt: true,
       },
     });
   }

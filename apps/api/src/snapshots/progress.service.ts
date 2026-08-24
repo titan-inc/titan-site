@@ -14,6 +14,32 @@ function media(valores: Array<number | null>): number | null {
   return presentes.reduce((a, b) => a + b, 0) / presentes.length;
 }
 
+/**
+ * Em que semana **do M+** a season está, e quantas ela tem.
+ *
+ * `firstPeriod` é o period do PATCH; o M+ abre uma semana depois. Contar a
+ * partir do patch adiantava o número em um e inflava o total com a semana em
+ * que o M+ estava fechado — em toda season (TIT-145).
+ *
+ * `mplusFirstPeriod` é o period observado da abertura, carimbado pelo job.
+ * Quando é nulo — season que abriu antes de a gente estar olhando — cai de
+ * volta em `firstPeriod`, que é o comportamento anterior. Errado do mesmo
+ * jeito de antes, mas só onde não há como saber, e nunca pior.
+ */
+function semanaDaSeason(
+  season: { firstPeriod: number; mplusFirstPeriod: number | null; periodCount: number },
+  atual: number,
+): { weekInSeason: number; periodCount: number } {
+  const inicio = season.mplusFirstPeriod ?? season.firstPeriod;
+  const semanasFechadas = inicio - season.firstPeriod;
+
+  return {
+    weekInSeason: atual - inicio + 1,
+    // O total encolhe junto: a semana do patch não é semana de M+.
+    periodCount: season.periodCount - semanasFechadas,
+  };
+}
+
 /** Diferença que só existe quando os dois lados existem. */
 function delta(a: number | null, b: number | null): number | null {
   return a === null || b === null ? null : a - b;
@@ -63,6 +89,11 @@ export class ProgressService {
       corrente,
     );
 
+    // Inalcançável: `atual` saiu destes snapshots, e `somenteDoTime` devolve a
+    // lista sem filtro em vez de vazia. Está aqui porque a data do relatório não tem
+    // resposta para uma semana sem linha nenhuma.
+    if (daSemana.length === 0) return null;
+
     // Média do time na semana. É o que o raid leader compara contra cada um.
     const average = {
       itemLevel: media(daSemana.map((s) => s.itemLevel)),
@@ -96,12 +127,17 @@ export class ProgressService {
       name: s.name,
     });
 
+    // A rodada do job grava as linhas da semana juntas, mas o backfill de
+    // chaves pode ter tocado uma delas depois. A mais recente é o que responde
+    // "quando isto foi medido".
+    const medidoEm = Math.max(...daSemana.map((s) => s.recordedAt.getTime()));
+
     return {
       season: opcao(escolhida),
       availableSeasons: seasons.map(opcao),
       period: atual,
-      weekInSeason: atual - escolhida.firstPeriod + 1,
-      periodCount: escolhida.periodCount,
+      recordedAt: new Date(medidoEm).toISOString(),
+      ...semanaDaSeason(escolhida, atual),
       // Sem slug do Raider.IO, o M+ desta season ainda não abriu — ver
       // `SnapshotsService.mythicPlusAberto()`.
       mythicPlusOpen: escolhida.raiderioSlug !== null,

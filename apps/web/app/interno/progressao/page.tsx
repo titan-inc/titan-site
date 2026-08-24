@@ -39,12 +39,23 @@ export default async function ProgressaoPage({
 
       {report === null ? (
         <p className="border-border text-fg-muted rounded-lg border border-dashed p-5 text-sm">
-          Ainda não há semana gravada. O snapshot roda diariamente e a primeira foto aparece aqui
-          assim que ele rodar.
+          Ainda não há semana gravada. O snapshot roda de hora em hora e a primeira foto aparece
+          aqui assim que ele rodar.
         </p>
       ) : (
         <>
           <ProgressTable report={report} />
+
+          {/*
+            A data existe porque esta tela e a de roster mostram "ilvl" e vão
+            divergir: lá é a leitura de agora, aqui é o que o job gravou. Sem a
+            data, quem abre as duas conclui que uma está errada.
+          */}
+          <p className="text-fg-subtle text-xs">
+            Foto da semana, medida em {new Date(report.recordedAt).toLocaleString('pt-BR')}. O
+            roster mostra a leitura de agora, então os dois números podem diferir até a próxima
+            rodada do snapshot.
+          </p>
 
           <p className="text-fg-subtle text-xs">
             Este relatório vale mais no começo da season. Conforme ela avança, quem faz chave está

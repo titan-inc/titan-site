@@ -118,6 +118,19 @@ rotacionar na origem, não só reescrever o histórico). Vale ainda mais para
   arquivo grande. O body vem com `{}` de placeholder; colar o JSON real
   antes de enviar.
 
+## A request que publica no Discord
+
+`mplus/Criar vaga` posta uma mensagem de verdade no canal de M+ assim que
+responde 201, e **`mplus/Apagar vaga` não desfaz isso** — o DELETE apaga a
+linha do site, a mensagem fica. Confira a environment ativa antes de
+enviar, mesmo motivo do aviso do `ops/`: em `Local` o alvo é o
+`DISCORD_MPLUS_WEBHOOK_URL` do seu `.env`, em `Prod` é o canal onde a
+guilda lê.
+
+O corpo salvo tem `quando` fixo, e ele **vence**: o `criarVagaSchema` recusa
+data no passado e mais de 6 dias à frente (`VAGA_AGENDAMENTO_MAX_DIAS`).
+Ajuste antes de enviar — o 400 que volta é do schema, não bug da API.
+
 ## Rotas de `internal/ops/*`
 
 Autorizadas por `X-Ops-Token` (`OpsTokenGuard`), não por cookie de sessão —

@@ -9,7 +9,13 @@ import type { SnapshotsRepository } from './snapshots.repository';
  * `characterId` é determinístico a partir de nome+realm, só para o teste
  * comparar a mesma pessoa entre semanas.
  */
-const linha = (nome: string, period: number, itemLevel: number | null, realm = 'Azralon') => ({
+const linha = (
+  nome: string,
+  period: number,
+  itemLevel: number | null,
+  realm = 'Azralon',
+  recordedAt = new Date('2026-08-24T13:00:00Z'),
+) => ({
   period,
   characterId: `char:${toCharacterKey(nome)}|${toRealmMatchKey(realm)}`,
   character: {
@@ -23,6 +29,7 @@ const linha = (nome: string, period: number, itemLevel: number | null, realm = '
   highestKey: null,
   seasonRuns: null,
   seasonRunsTimed: null,
+  recordedAt,
 });
 
 const char = (name: string, realm = 'Azralon'): TeamCharacter => ({
@@ -32,12 +39,18 @@ const char = (name: string, realm = 'Azralon'): TeamCharacter => ({
   role: 'Heal',
 });
 
-const seasonRow = (id: number, startedAt: string, raiderioSlug: string | null = 'season-mn-1') => ({
+const seasonRow = (
+  id: number,
+  startedAt: string,
+  raiderioSlug: string | null = 'season-mn-1',
+  mplusFirstPeriod: number | null = null,
+) => ({
   id,
   patch: '12.0',
   name: `Season ${id}`,
   raiderioSlug,
   firstPeriod: 1055,
+  mplusFirstPeriod,
   periodCount: 20,
   startedAt: new Date(startedAt),
 });
@@ -67,6 +80,73 @@ describe('ProgressService', () => {
       repo as unknown as SnapshotsRepository,
       wowaudit as unknown as WowAuditService,
     );
+  });
+
+  describe('a semana da season conta do M+, não do patch', () => {
+    // `firstPeriod` é o period do PATCH; o M+ abre uma semana depois. Contar do
+    // patch dizia "semana 2 de 2" com o M+ aberto havia uma semana — TIT-145.
+    it('desconta a semana em que o M+ ainda estava fechado', async () => {
+      const season = seasonRow(17, '2026-03-17T00:00:00Z', 'season-mn-1', 1056);
+      repo.listSeasons.mockResolvedValue([season]);
+      repo.findSeasonSnapshots.mockResolvedValue([linha('Fulano', 1057, 300)]);
+
+      const report = await service.getReport();
+
+      // period 1057 com o M+ aberto desde 1056: segunda semana de M+.
+      expect(report?.weekInSeason).toBe(2);
+      // 20 periods desde o patch, mas um deles foi a semana fechada.
+      expect(report?.periodCount).toBe(19);
+    });
+
+    it('a primeira semana de M+ é a semana 1, não a 2', async () => {
+      const season = seasonRow(17, '2026-03-17T00:00:00Z', 'season-mn-1', 1056);
+      repo.listSeasons.mockResolvedValue([season]);
+      repo.findSeasonSnapshots.mockResolvedValue([linha('Fulano', 1056, 300)]);
+
+      const report = await service.getReport();
+
+      expect(report?.weekInSeason).toBe(1);
+    });
+
+    // Season que abriu antes de o site existir não tem como saber, e aí o
+    // certo é não piorar: cai de volta no comportamento anterior.
+    it('sem o period observado, cai de volta no firstPeriod', async () => {
+      const season = seasonRow(17, '2026-03-17T00:00:00Z', 'season-mn-1', null);
+      repo.listSeasons.mockResolvedValue([season]);
+      repo.findSeasonSnapshots.mockResolvedValue([linha('Fulano', 1057, 300)]);
+
+      const report = await service.getReport();
+
+      expect(report?.weekInSeason).toBe(3);
+      expect(report?.periodCount).toBe(20);
+    });
+  });
+
+  it('data o relatório pela medição mais recente da semana', async () => {
+    // O job grava as linhas juntas, mas o backfill de chaves pode tocar uma
+    // depois. A tela promete "medido em", então vale a mais nova.
+    repo.findSeasonSnapshots.mockResolvedValue([
+      linha('Fulano', 1074, 300, 'Azralon', new Date('2026-08-24T10:00:00Z')),
+      linha('Beltrano', 1074, 280, 'Azralon', new Date('2026-08-24T15:00:00Z')),
+    ]);
+
+    const report = await service.getReport();
+
+    expect(report?.recordedAt).toBe('2026-08-24T15:00:00.000Z');
+  });
+
+  it('não data pela linha de quem já saiu do time', async () => {
+    // Sicrano sai do relatório pelo filtro do time; a data dele iria junto e
+    // faria a tela dizer que a semana foi medida depois do que foi.
+    repo.findSeasonSnapshots.mockResolvedValue([
+      linha('Fulano', 1074, 300, 'Azralon', new Date('2026-08-24T10:00:00Z')),
+      linha('Beltrano', 1074, 280, 'Azralon', new Date('2026-08-24T11:00:00Z')),
+      linha('Sicrano', 1074, 147, 'Azralon', new Date('2026-08-24T23:00:00Z')),
+    ]);
+
+    const report = await service.getReport();
+
+    expect(report?.recordedAt).toBe('2026-08-24T11:00:00.000Z');
   });
 
   it('tira da semana corrente quem não está mais no time', async () => {

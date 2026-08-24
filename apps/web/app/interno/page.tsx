@@ -50,6 +50,22 @@ export default async function InternoPage() {
           </p>
         </div>
 
+        {/* M+ não é raid, então não passa pelo corte de rank. É a única coisa
+            que este estado recebe hoje, e sem este link ela seria inalcançável
+            justamente para quem ela foi feita. */}
+        <div className="border-border bg-surface space-y-3 rounded-lg border p-5 text-sm">
+          <p className="text-fg font-medium">Mítica+ é aberto para toda a guilda</p>
+          <p className="text-fg-muted">
+            Precisa de gente para uma key? Anuncie a vaga e ela vai para o canal de M+ no Discord.
+          </p>
+          <Link
+            href="/interno/mplus"
+            className="text-accent inline-flex min-h-11 items-center underline"
+          >
+            Anunciar uma vaga de M+
+          </Link>
+        </div>
+
         {/* Estado sem saída: sem isto, quem não tem acesso só pode sair pelo
             botão do navegador. A volta para a landing é a ação principal aqui —
             não há nada a fazer nesta página. */}

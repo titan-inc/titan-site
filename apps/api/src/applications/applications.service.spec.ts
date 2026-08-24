@@ -25,7 +25,9 @@ describe('ApplicationsService', () => {
   it('envia exatamente uma vez e só então confirma a entrega', async () => {
     await expect(service.apply(candidatura)).resolves.toEqual({ delivered: true });
     expect(discord.send).toHaveBeenCalledTimes(1);
+    // O destino é o do recrutamento, nunca o canal aberto de M+.
     expect(discord.send).toHaveBeenCalledWith(
+      'apply',
       expect.objectContaining({ allowed_mentions: { parse: [] } }),
     );
   });

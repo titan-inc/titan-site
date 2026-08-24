@@ -108,6 +108,20 @@ Não existe exceção: desde 09/08/2026 o único dado de gente de fora — candi
 
 **Isto não relaxa a Regra 5.** Filtro sem guard no Nest não é filtro, é enfeite: a tela promete uma organização que o backend não entrega. Endpoint interno sem guard continua sendo bug.
 
+#### Nem toda tela interna passa pelo corte (12/08/2026)
+
+M+ não é raid, então o corte de rank não filtra nada em `/interno/mplus` — basta ter personagem no roster. É a primeira coisa que o **estado do meio** recebe, e o motivo é o desta seção: o corte serve para manter a ferramenta do time de raid legível, não para guardar segredo.
+
+Por isso existem **três** guards, e o nome mais simples não é o mais permissivo:
+
+| guard          | exige                                     | quem passa            |
+| -------------- | ----------------------------------------- | --------------------- |
+| `RosterGuard`  | sessão + personagem no roster             | qualquer um na guilda |
+| `MemberGuard`  | o acima + rank <= `GUILD_RANK_ACCESS_MAX` | o time de raid        |
+| `OfficerGuard` | o acima + ser oficial                     | a liderança           |
+
+Endpoint novo continua exigindo guard; a escolha é qual. Ver `docs/specs/mplus-vaga-discord.md`.
+
 ### O processo não pode depender de uma pessoa estar disponível
 
 Três pessoas mantêm o site, e o objetivo é que **nenhuma precise estar disponível para a guilda funcionar**. É requisito, não conforto: é o que faz oficial sair automático do rank e o que proíbe acesso que só se conquista rodando migration.
@@ -364,6 +378,23 @@ Por isso job de gravação (evento de roster, snapshot semanal) entra **antes** 
 
 Corolário: falha de coleta é **lacuna**, nunca zero. Gravar 0 porque a API caiu vira "a pessoa parou de jogar" — mentira que o gráfico conta com cara de verdade.
 
+#### Duas telas sobre o mesmo número vão divergir — e devem (24/08/2026)
+
+Roster e progressão mostram o **ilvl da mesma pessoa** com números diferentes. Não são fontes diferentes: as duas chamam `RaiderIoService.getProgress()`. O que difere é o relógio — o roster lê no request (cache de 1h), a progressão lê o que o job `snapshot-semanal` gravou.
+
+**Igualar os dois é a correção errada**, e é o instinto de quem chega. As telas respondem perguntas diferentes:
+
+|            | roster                       | progressão                         |
+| ---------- | ---------------------------- | ---------------------------------- |
+| responde   | como está cada um **agora**  | a **foto da semana**               |
+| serve para | decidir rotação hoje à noite | `Δ semana` significar alguma coisa |
+
+Snapshot perseguindo o valor ao vivo transforma o delta em ruído; roster lendo o snapshot fica velho e perde a função. O registro semanal é o que esta regra manda guardar.
+
+O que se faz é **encurtar o relógio e datar a tela**: o job roda de hora em hora, e o `ProgressReport` carrega `recordedAt`, que a tela mostra. Encurtar reduz a diferença, datar é o que a explica — tela que mostra número sem dizer de quando é convida a conclusão de que a outra está errada.
+
+Régua para caso novo: **duas telas sobre o mesmo dado precisam dizer de que momento cada uma fala.** Não é detalhe de UI, é o que separa "duas leituras" de "um bug". Ver TIT-143.
+
 ### Derivar automático, humano corrige, guardar a correção
 
 Vale para tudo que gera dado sobre o comportamento de uma pessoa.
@@ -472,7 +503,7 @@ Localmente a ordem errada passa, porque o `dist` sobrou de um build anterior. S�
 
 Nada de credencial no repositório. Tudo em `.env` local, documentado em `.env.example` com valores vazios.
 
-Nunca commitar: `DATABASE_URL` de produção, `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`, `SESSION_SECRET`, `DISCORD_APPLY_WEBHOOK_URL`.
+Nunca commitar: `DATABASE_URL` de produção, `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`, `SESSION_SECRET`, `DISCORD_APPLY_WEBHOOK_URL`, `DISCORD_MPLUS_WEBHOOK_URL`.
 
 A URL do webhook do Discord carrega o próprio token no caminho: quem tem a URL posta no canal. Ela é segredo **de backend** — nunca com prefixo `NEXT_PUBLIC_`, que o Next embute no bundle do browser. Se vazar, rotacionar é **apagar o webhook nas configurações do canal e criar outro**; reescrever o histórico do git não invalida a URL antiga.
 
