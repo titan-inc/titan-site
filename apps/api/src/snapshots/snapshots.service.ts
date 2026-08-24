@@ -174,6 +174,23 @@ export class SnapshotsService {
     const recorded = await this.repo.saveSnapshots(entradas);
     const withoutItemLevel = entradas.filter((e) => e.itemLevel === null).length;
 
+    // A primeira rodada com o M+ aberto carimba em que period ele abriu. É o
+    // que a tela usa para contar a semana da season, e o `firstPeriod` da
+    // Blizzard não serve: aquele é o period do PATCH, uma semana antes.
+    //
+    // Grava a observação em vez de derivar do calendário, pelo mesmo motivo que
+    // `mythicPlusAberto()` olha o slug em vez de somar sete dias: offset fixo é
+    // promessa, e quebra sem gerar erro.
+    if (
+      mythicPlusOpen &&
+      (await this.repo.marcarAberturaDoMplus(season.id, season.currentPeriod))
+    ) {
+      this.logger.log(
+        `M+ da season ${season.id} abriu no period ${season.currentPeriod} ` +
+          `(patch foi no ${season.firstPeriod})`,
+      );
+    }
+
     this.logger.log(
       `Snapshot period=${season.currentPeriod} season=${season.id} ` +
         `(${patch ?? 'patch?'}, semana ${season.weekInSeason}/${season.periodCount}) — ` +

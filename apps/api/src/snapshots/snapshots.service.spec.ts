@@ -47,6 +47,7 @@ describe('SnapshotsService', () => {
   const repo = {
     upsertSeason: jest.fn(),
     saveSnapshots: jest.fn(),
+    marcarAberturaDoMplus: jest.fn(),
     findSeasonByRaiderioSlug: jest.fn(),
     setRaiderioSlug: jest.fn(),
   };
@@ -78,6 +79,8 @@ describe('SnapshotsService', () => {
     });
     gameVersion.getPatchLabel.mockResolvedValue('12.0');
     repo.upsertSeason.mockResolvedValue(undefined);
+    // Já carimbado: o padrão é a season em andamento, não a abertura.
+    repo.marcarAberturaDoMplus.mockResolvedValue(false);
     // O caso normal: o slug que o Raider.IO responde é o da season corrente.
     repo.findSeasonByRaiderioSlug.mockResolvedValue({ id: 17 });
     repo.setRaiderioSlug.mockResolvedValue(undefined);
@@ -227,6 +230,33 @@ describe('SnapshotsService', () => {
       await service.takeSnapshot();
 
       expect(gravados()[0]?.itemLevel).toBe(293.06);
+    });
+
+    it('não carimba a abertura enquanto o M+ está fechado', async () => {
+      preSeason();
+
+      await service.takeSnapshot();
+
+      expect(repo.marcarAberturaDoMplus).not.toHaveBeenCalled();
+    });
+
+    // O period do PATCH não serve para contar a semana da season: o M+ abre uma
+    // semana depois, e é o M+ que a tela mede. Carimbar a abertura observada é
+    // o que conserta o "semana 2 de 2" com o M+ aberto havia uma semana.
+    it('carimba o period em que o M+ abriu, e não o do patch', async () => {
+      blizzard.getCurrentSeason.mockResolvedValue(season({ id: 18, currentPeriod: 1077 }));
+      raiderio.getProgress.mockResolvedValue({
+        itemLevel: 293.06,
+        mythicPlusScore: 180.4,
+        season: 'season-mn-2',
+        seasonRuns: 4,
+        seasonRunsTimed: 3,
+      });
+      repo.findSeasonByRaiderioSlug.mockResolvedValue(null);
+
+      await service.takeSnapshot();
+
+      expect(repo.marcarAberturaDoMplus).toHaveBeenCalledWith(18, 1077);
     });
 
     it('quando o M+ abre, a season adota o slug e volta a gravar', async () => {

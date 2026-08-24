@@ -65,10 +65,20 @@ export const progressReportSchema = z.object({
   /** Semana do jogo mostrada. */
   period: z.number().int(),
 
-  /** 1 na primeira semana da season. */
+  /**
+   * 1 na primeira semana **de M+** da season.
+   *
+   * Conta da abertura do M+, não do patch: a season de M+ abre uma semana
+   * depois, e é o M+ que este relatório mede. Até 24/08/2026 contava do patch e
+   * dizia "semana 2" na primeira semana de M+, em toda season (TIT-145).
+   *
+   * Numa season que abriu antes de o site existir não há observação da
+   * abertura, e aí volta a contar do patch — errado do mesmo jeito de antes,
+   * mas só onde não há como saber.
+   */
   weekInSeason: z.number().int(),
 
-  /** Quantas semanas a season tem até agora. */
+  /** Quantas semanas de M+ a season tem até agora. Não conta a do patch. */
   periodCount: z.number().int(),
 
   /**
