@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import type { OfficerGrant } from '@prisma/client';
+import type { Character } from '@prisma/client';
 import type { BlizzardService, RosterMember, RosterSnapshot } from '../blizzard/blizzard.service';
-import type { OfficersRepository } from './officers.repository';
+import type { CharactersRepository } from '../characters/characters.repository';
+import type { OfficerGrantWithCharacter, OfficersRepository } from './officers.repository';
 import { OfficersService } from './officers.service';
 
 // Dados fictícios de propósito — nada de nome real de membro em fixture, ver a
@@ -19,16 +20,35 @@ const snapshot = (members: RosterMember[]): RosterSnapshot => ({
   stale: false,
 });
 
-const dbGrant = (over: Partial<OfficerGrant> = {}): OfficerGrant => ({
-  id: 'grant-1',
+const dbCharacter = (over: Partial<Character> = {}): Character => ({
+  id: 'char-fulano',
   nameKey: 'fulano',
-  realmSlug: 'azralon',
+  realmKey: 'azralon',
   name: 'Fulano',
-  realm: 'azralon',
-  grantedBy: 'Chefe#1234',
-  grantedAt: new Date('2026-08-09T12:00:00Z'),
+  realm: 'Azralon',
+  class: null,
+  createdAt: new Date('2026-08-09T12:00:00Z'),
+  updatedAt: new Date('2026-08-09T12:00:00Z'),
   ...over,
 });
+
+const dbGrant = (
+  over: {
+    id?: string;
+    grantedBy?: string;
+    grantedAt?: Date;
+    character?: Partial<Character>;
+  } = {},
+): OfficerGrantWithCharacter => {
+  const character = dbCharacter(over.character);
+  return {
+    id: over.id ?? 'grant-1',
+    characterId: character.id,
+    grantedBy: over.grantedBy ?? 'Chefe#1234',
+    grantedAt: over.grantedAt ?? new Date('2026-08-09T12:00:00Z'),
+    character,
+  };
+};
 
 /**
  * O service lê o corte de oficial de `loadGuildConfig()`, que valida o ambiente
@@ -48,17 +68,19 @@ describe('OfficersService', () => {
     findById: jest.fn(),
     delete: jest.fn(),
     count: jest.fn(),
-    findKnownCharacterKeys: jest.fn(),
+    findKnownCharacters: jest.fn(),
   };
+  const characters = { resolverDoRoster: jest.fn() };
 
   let service: OfficersService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     repo.findAll.mockResolvedValue([]);
-    repo.findKnownCharacterKeys.mockResolvedValue([]);
+    repo.findKnownCharacters.mockResolvedValue([]);
     repo.upsert.mockResolvedValue(dbGrant());
     repo.count.mockResolvedValue(5);
+    characters.resolverDoRoster.mockResolvedValue('char-resolved');
     blizzard.getGuildRosterSnapshot.mockResolvedValue(
       snapshot([rosterMember('Fulano', 'azralon', 2)]),
     );
@@ -66,22 +88,24 @@ describe('OfficersService', () => {
     service = new OfficersService(
       repo as unknown as OfficersRepository,
       blizzard as unknown as BlizzardService,
+      characters as unknown as CharactersRepository,
     );
   });
 
   describe('grant', () => {
-    it('grava a grafia da Blizzard, não a digitada', async () => {
-      // O que a pessoa digitou casa por slug, mas o que vai para o banco tem
-      // que ser o nameKey da Blizzard — é ele que o login grava em
-      // GuildCharacter, e os dois precisam casar depois.
+    it('resolve a identidade pela grafia da Blizzard, não a digitada', async () => {
+      // O que a pessoa digitou casa por slug, mas quem resolve a identidade é
+      // `resolverDoRoster` com a grafia do roster — é ela que o login grava em
+      // `Character`, e as duas precisam casar depois.
       blizzard.getGuildRosterSnapshot.mockResolvedValue(
         snapshot([rosterMember('Jocí', 'azralon', 4)]),
       );
 
       await service.grant({ name: 'joci', realm: 'Azralon' }, 'Chefe#1234');
 
+      expect(characters.resolverDoRoster).toHaveBeenCalledWith({ name: 'Jocí', realm: 'azralon' });
       expect(repo.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ nameKey: 'jocí', name: 'Jocí', realmSlug: 'azralon' }),
+        expect.objectContaining({ characterId: 'char-resolved', grantedBy: 'Chefe#1234' }),
       );
     });
 
@@ -199,10 +223,24 @@ describe('OfficersService', () => {
   describe('list', () => {
     it('marca como vinculado o grant que casa com uma conta existente', async () => {
       repo.findAll.mockResolvedValue([
-        dbGrant({ id: 'g1', nameKey: 'fulano', realmSlug: 'azralon' }),
-        dbGrant({ id: 'g2', nameKey: 'sicrano', realmSlug: 'azralon', name: 'Sicrano' }),
+        dbGrant({
+          id: 'g1',
+          character: { id: 'char-fulano', nameKey: 'fulano', realmKey: 'azralon' },
+        }),
+        dbGrant({
+          id: 'g2',
+          character: {
+            id: 'char-sicrano',
+            nameKey: 'sicrano',
+            realmKey: 'azralon',
+            name: 'Sicrano',
+          },
+        }),
       ]);
-      repo.findKnownCharacterKeys.mockResolvedValue([{ nameKey: 'fulano', realmSlug: 'azralon' }]);
+      // "Conhecido" agora é por characterId — é ele que casa direto com o grant.
+      repo.findKnownCharacters.mockResolvedValue([
+        { characterId: 'char-fulano', nameKey: 'fulano', realmKey: 'azralon' },
+      ]);
 
       const { grants } = await service.list();
 
@@ -279,7 +317,9 @@ describe('OfficersService', () => {
       blizzard.getGuildRosterSnapshot.mockResolvedValue(
         snapshot([rosterMember('Chefe', 'azralon', 0), rosterMember('Oficial', 'azralon', 1)]),
       );
-      repo.findKnownCharacterKeys.mockResolvedValue([{ nameKey: 'chefe', realmSlug: 'azralon' }]);
+      repo.findKnownCharacters.mockResolvedValue([
+        { characterId: 'char-chefe', nameKey: 'chefe', realmKey: 'azralon' },
+      ]);
 
       const { byRank } = await service.list();
 

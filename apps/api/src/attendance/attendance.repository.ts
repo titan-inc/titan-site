@@ -15,10 +15,8 @@ export interface RaidNightInput {
 }
 
 export interface AttendanceInput {
-  nameKey: string;
-  realmKey: string;
-  name: string;
-  realm: string;
+  /** Identidade já resolvida — quem resolve é o `CharactersRepository`. */
+  characterId: string;
   signup: string | null;
   raided: boolean | null;
   firstPull: number | null;
@@ -51,12 +49,12 @@ export class AttendanceRepository {
       }),
 
       ...entries.map((e) => {
-        const { nameKey, realmKey, ...campos } = e;
+        const { characterId, ...campos } = e;
         return this.prisma.raidAttendance.upsert({
           where: {
-            raidNightId_realmKey_nameKey: { raidNightId: id, realmKey, nameKey },
+            raidNightId_characterId: { raidNightId: id, characterId },
           },
-          create: { raidNightId: id, nameKey, realmKey, ...campos },
+          create: { raidNightId: id, characterId, ...campos },
           update: campos,
         });
       }),
@@ -70,7 +68,9 @@ export class AttendanceRepository {
     return this.prisma.raidNight.findMany({
       orderBy: { date: 'desc' },
       take: limite,
-      include: { attendance: { orderBy: [{ name: 'asc' }] } },
+      include: {
+        attendance: { include: { character: true }, orderBy: [{ character: { name: 'asc' } }] },
+      },
     });
   }
 
@@ -82,17 +82,17 @@ export class AttendanceRepository {
    * não na tela — assim o dado dos outros nem trafega, e um bug de render não
    * vira vazamento.
    *
-   * Recebe a lista de personagens porque uma conta tem N, e o histórico da
+   * Recebe a lista de ids porque uma conta tem N personagens, e o histórico da
    * pessoa é o de todos eles juntos. Ver Regra 4.
    */
-  listForCharacters(chars: Array<{ realmKey: string; nameKey: string }>, limite: number) {
-    if (chars.length === 0) return Promise.resolve([]);
+  listForCharacters(characterIds: string[], limite: number) {
+    if (characterIds.length === 0) return Promise.resolve([]);
 
     return this.prisma.raidAttendance.findMany({
-      where: { OR: chars.map((c) => ({ realmKey: c.realmKey, nameKey: c.nameKey })) },
+      where: { characterId: { in: characterIds } },
       orderBy: { raidNight: { date: 'desc' } },
       take: limite,
-      include: { raidNight: true },
+      include: { raidNight: true, character: true },
     });
   }
 

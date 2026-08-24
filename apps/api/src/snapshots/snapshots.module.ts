@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { BlizzardModule } from '../blizzard/blizzard.module';
+import { CharactersModule } from '../characters/characters.module';
 import { GameVersionModule } from '../gameversion/gameversion.module';
 import { RaiderIoModule } from '../raiderio/raiderio.module';
 import { WowAuditModule } from '../wowaudit/wowaudit.module';
@@ -14,7 +15,14 @@ import { SnapshotsService } from './snapshots.service';
  * assim o Prisma continua confinado a um repository só, como manda a Regra 3.
  */
 @Module({
-  imports: [AuthModule, BlizzardModule, WowAuditModule, RaiderIoModule, GameVersionModule],
+  imports: [
+    AuthModule,
+    BlizzardModule,
+    CharactersModule,
+    WowAuditModule,
+    RaiderIoModule,
+    GameVersionModule,
+  ],
   controllers: [ProgressController],
   providers: [SnapshotsService, SnapshotsRepository, ProgressService],
   // O repository sai do módulo porque `GameSeason` é daqui e o seletor de

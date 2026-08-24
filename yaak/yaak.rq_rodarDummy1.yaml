@@ -1,0 +1,49 @@
+type: http_request
+model: http_request
+id: rq_rodarDummy1
+createdAt: 2026-08-16T18:00:00
+updatedAt: 2026-08-22T13:40:31.162286800
+workspaceId: wk_8LmjjnEbam
+folderId: fl_9Bmwti7obm
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'TIT-68, ferramenta de teste do realtime. Sobe N dummies 100% sintéticos que entram na sessão e, a cada ~2s, respondem (aberta) ou reagem a um reabrir do loot master (deliberando). Para sozinha ao encerrar ou após 10min (kill switch). Fire-and-forget: devolve na hora. 409 se já tem uma simulação rodando nesta sessão; 400 se a sessão já encerrou.'
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+method: POST
+name: Rodar dummies na sessão
+sortPriority: 1000.0
+url: ${[ base_url ]}/internal/ops/loot-sessions/:id/rodar-dummies
+urlParameters:
+- enabled: false
+  name: quantidade
+  value: '6'
+  id: EpY4SxHZCT
+- enabled: true
+  name: :id
+  value: cmsw6og6n000ti0pgwp553zhk
+  id: path-placeholder:0
+- enabled: true
+  name: ''
+  value: ''
+  id: gjzGMX7y0m
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

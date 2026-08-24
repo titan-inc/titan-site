@@ -15,7 +15,16 @@ import { ZodError, type ZodType } from 'zod';
  * este o código que depende disso.
  */
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
-  constructor(private readonly schema: ZodType<T>) {}
+  /**
+   * `rotulo` troca o "Corpo do request" da mensagem. Serve para o mesmo pipe
+   * validar query string sem mentir sobre onde estava o erro — quem recebe
+   * "Corpo do request inválido" depois de mandar `?difficulty=mitico` procura
+   * o problema no lugar errado.
+   */
+  constructor(
+    private readonly schema: ZodType<T>,
+    private readonly rotulo = 'Corpo do request',
+  ) {}
 
   transform(value: unknown): T {
     try {
@@ -25,7 +34,7 @@ export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
         // Caminho + mensagem, para o cliente saber QUAL campo recusou. Sem o
         // caminho, "Invalid input" num corpo de 10 campos não ajuda ninguém.
         throw new BadRequestException({
-          message: 'Corpo do request inválido',
+          message: `${this.rotulo} inválido`,
           issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
         });
       }

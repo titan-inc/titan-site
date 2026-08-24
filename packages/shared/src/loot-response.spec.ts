@@ -108,16 +108,39 @@ describe('matchLegacyResponse', () => {
 });
 
 describe('LOOT_RESPONSES', () => {
-  it('semeia os sete slugs, seis de jogador e um de loot master', () => {
+  it('semeia dez slugs: seis de jogador, três de loot master e um de sistema', () => {
     expect(Object.values(LOOT_RESPONSES).sort()).toEqual([
       'banking',
       'bis',
+      'disenchant',
       'minor',
+      'no_interest',
+      'noop',
       'offspec',
       'pass',
       'transmog',
       'upgrade',
     ]);
+  });
+
+  it('as razões de loot master não se confundem com o que o jogador declara', () => {
+    // `no_interest` é o conselho diante de uma peça que ninguém quis. `pass` é a
+    // pessoa abrindo mão, e `noop` é ela não ter dito nada. Três coisas.
+    const doLootMaster = [
+      LOOT_RESPONSES.BANKING,
+      LOOT_RESPONSES.DISENCHANT,
+      LOOT_RESPONSES.NO_INTEREST,
+    ];
+
+    expect(doLootMaster).not.toContain(LOOT_RESPONSES.PASS);
+    expect(doLootMaster).not.toContain(LOOT_RESPONSES.NOOP);
+  });
+
+  it('`noop` e `pass` são slugs diferentes, e é o ponto', () => {
+    // `pass` é declaração — a pessoa olhou a peça e abriu mão. `noop` é
+    // silêncio de quem estava na sessão. Colapsar os dois faria o histórico
+    // afirmar uma escolha que ninguém fez.
+    expect(LOOT_RESPONSES.NOOP).not.toBe(LOOT_RESPONSES.PASS);
   });
 
   it('o slug de resposta NÃO é enum fechado', () => {

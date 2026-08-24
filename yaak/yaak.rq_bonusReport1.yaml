@@ -1,0 +1,41 @@
+type: http_request
+model: http_request
+id: rq_bonusReport1
+createdAt: 2026-08-16T20:00:00
+updatedAt: 2026-08-22T13:39:40.442233300
+workspaceId: wk_8LmjjnEbam
+folderId: fl_CxptjTBENa
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'TIT-82/TIT-140. "O que ainda não conhecemos": varre LootLine e LootSessionItem já gravados, extrai os bonusIds que não estão no dicionário e os itemId sem WowItem cadastrado, ordenados por frequência — mais itensSemDadoNoBuild (item no catálogo sem WowItemData no build conferido, TIT-136). ?build= escolhe qual build conferir; sem ele, cai no ativo — dá para validar um build recém-carregado antes de wow-data-activate. Sem chamada externa — só o que já está no banco. Vale rodar depois de todo patch.'
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+method: GET
+name: Bonus unknown report
+sortPriority: 1000.0
+url: ${[ base_url ]}/internal/ops/bonus-unknown-report
+urlParameters:
+- enabled: false
+  name: build
+  value: 12.1.0.69299
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_LootSessStatus1
+createdAt: 2026-08-15T18:00:00.000000
+updatedAt: 2026-08-15T18:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_LootSessions1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"status": "aberta"}'
+bodyType: application/json
+description: 'OfficerGuard. Uma rota para todas as transições (rascunho → aberta → deliberando → encerrada), porque quem decide o que é permitido é podeTransicionar() no shared. Fechar a fase de roll (aberta → deliberando) grava o silêncio de quem estava na sessão como noop. Encerrar exige toda peça entregue.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Mudar o status da sessão'
+sortPriority: 7000
+url: ${[ base_url ]}/internal/loot-sessions/:id/status
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { toSlug } from '@titan/shared';
+import cuid from 'cuid';
 import { BlizzardService } from '../blizzard/blizzard.service';
+import { CharactersRepository } from '../characters/characters.repository';
 
 interface Match {
   input: string;
@@ -35,6 +37,11 @@ export interface OauthCheckResult {
   matches?: Match[];
 }
 
+export interface FixCharacterIdsResult {
+  corrigidos: number;
+  trocas: Array<{ de: string; para: string }>;
+}
+
 function contarPorRank(membros: Array<{ rank: number }>): RankCount[] {
   const byRank = new Map<number, number>();
   for (const m of membros) byRank.set(m.rank, (byRank.get(m.rank) ?? 0) + 1);
@@ -56,7 +63,12 @@ function contarPorRank(membros: Array<{ rank: number }>): RankCount[] {
  */
 @Injectable()
 export class OpsService {
-  constructor(private readonly blizzard: BlizzardService) {}
+  private readonly logger = new Logger(OpsService.name);
+
+  constructor(
+    private readonly blizzard: BlizzardService,
+    private readonly characters: CharactersRepository,
+  ) {}
 
   /**
    * Roster via Raider.IO (pública, sem auth). Crawleado — pode estar
@@ -152,5 +164,31 @@ export class OpsService {
       rankDistribution: contarPorRank(snapshot.members),
       matches,
     };
+  }
+
+  /**
+   * Corrige os ids de identidade que o backfill da TIT-132 criou em uuid, em
+   * vez do `cuid()` que a aplicação sempre usou.
+   *
+   * Sequencial de propósito, não `Promise.all`: são só 69 linhas hoje, é
+   * operação rara (idempotente — depois da primeira rodada não sobra id fora
+   * do padrão), e não há motivo pra arriscar contenção de lock por
+   * paralelismo numa correção que roda uma vez.
+   *
+   * `ON UPDATE CASCADE` nas 11 FKs faz o resto — ver
+   * `CharactersRepository.renomearId`.
+   */
+  async fixCharacterIds(): Promise<FixCharacterIdsResult> {
+    const idsForaDoPadrao = await this.characters.findIdsForaDoPadrao();
+    const trocas: Array<{ de: string; para: string }> = [];
+
+    for (const idAntigo of idsForaDoPadrao) {
+      const idNovo = cuid();
+      await this.characters.renomearId(idAntigo, idNovo);
+      trocas.push({ de: idAntigo, para: idNovo });
+    }
+
+    this.logger.log(`fix-character-ids: ${trocas.length} id(s) corrigido(s) de uuid para cuid`);
+    return { corrigidos: trocas.length, trocas };
   }
 }

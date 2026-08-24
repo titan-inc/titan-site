@@ -20,13 +20,18 @@
     "db:status": "pwsh -NoProfile -File scripts/db.ps1 status",
     "db:logs": "pwsh -NoProfile -File scripts/db.ps1 logs",
     "db:psql": "pwsh -NoProfile -File scripts/db.ps1 psql",
+    "dump:escape": "node scripts/escape-dump.js",
+    "gerar-db2": "tsx scripts/db2/index.ts",
+    "typecheck:db2": "tsc --noEmit -p scripts/db2/tsconfig.json",
     "migrate": "pnpm --filter api exec prisma migrate dev",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\""
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

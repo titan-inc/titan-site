@@ -2,6 +2,11 @@ import 'server-only';
 
 import {
   attendanceReportSchema,
+  lootHistoryFacetsSchema,
+  lootHistoryPageSchema,
+  lootCouncilPanelSchema,
+  lootSessionDetailSchema,
+  lootSessionSummarySchema,
   myAttendanceSchema,
   officerListSchema,
   progressReportSchema,
@@ -11,6 +16,11 @@ import {
   vagaListSchema,
   vagaSchema,
   type AttendanceReport,
+  type LootHistoryFacets,
+  type LootHistoryPage,
+  type LootCouncilPanel,
+  type LootSessionDetail,
+  type LootSessionSummary,
   type MyAttendance,
   type OfficerList,
   type ProgressReport,
@@ -20,6 +30,7 @@ import {
   type Vaga,
   type VagaList,
 } from '@titan/shared';
+import { z } from 'zod';
 import { cookies } from 'next/headers';
 import { API_URL, SESSION_COOKIE } from './config';
 
@@ -222,6 +233,54 @@ export async function getOfficers(): Promise<OfficerList | null> {
 }
 
 /**
+ * Uma página do histórico de loot, já filtrada.
+ *
+ * Os filtros são repassados como vieram da URL — quem valida é o schema do
+ * shared no Nest, e um valor inválido volta 400, que aqui vira `null`. Validar
+ * dos dois lados criaria duas regras para divergirem.
+ */
+export async function getLootHistory(
+  filtros: Record<string, string>,
+): Promise<LootHistoryPage | null> {
+  const query = new URLSearchParams(filtros).toString();
+
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-history?${query}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootHistoryPageSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** As opções dos filtros, dentro da season pedida. */
+export async function getLootHistoryFacets(season?: string): Promise<LootHistoryFacets | null> {
+  const query = season ? `?season=${encodeURIComponent(season)}` : '';
+
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-history/facets${query}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootHistoryFacetsSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Vagas de M+ abertas.
  *
  * Basta ter personagem no roster — **não** passa pelo corte de rank, ao
@@ -276,6 +335,78 @@ export async function getMyAttendance(): Promise<MyAttendance | null> {
     if (!res.ok) return null;
 
     const parsed = myAttendanceSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * As sessões de loot que ainda não encerraram.
+ *
+ * Normalmente é uma só. A lista existe porque duas raids na mesma noite
+ * acontecem, e porque uma sessão em rascunho convive com a que está aberta.
+ */
+export async function getLootSessions(): Promise<LootSessionSummary[] | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-sessions`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = z.array(lootSessionSummarySchema).safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Uma sessão, do ponto de vista de quem pediu.
+ *
+ * O que vem aqui **depende da fase**: na de roll, só a própria resposta; depois
+ * que ela fecha, a de todo mundo. Quem decide é a API (TIT-131), e a tela
+ * renderiza o que chegou — se ela filtrasse, o conteúdo estaria a um F12 de
+ * distância.
+ */
+export async function getLootSession(id: string): Promise<LootSessionDetail | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-sessions/${encodeURIComponent(id)}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootSessionDetailSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O painel do conselho de uma sessão. **Só oficial.**
+ *
+ * Nulo quando a API recusa, e é o que se quer: a página chama sem perguntar
+ * quem está olhando, e quem responde 403 é o `OfficerGuard`. Decidir aqui
+ * duplicaria a regra num lugar que não manda nela — Regra 5.
+ */
+export async function getLootCouncilPanel(id: string): Promise<LootCouncilPanel | null> {
+  try {
+    const res = await fetch(`${API_URL}/internal/loot-sessions/${encodeURIComponent(id)}/painel`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = lootCouncilPanelSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

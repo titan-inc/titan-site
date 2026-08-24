@@ -1,3 +1,9 @@
+import {
+  chaveDe,
+  indice,
+  type CharactersRepository,
+  type PersonagemDaFonte,
+} from '../characters/characters.repository';
 import type {
   ReportParticipation,
   WarcraftLogsService,
@@ -5,6 +11,9 @@ import type {
 import type { PlannedRaid, WowAuditService } from '../wowaudit/wowaudit.service';
 import type { AttendanceInput, AttendanceRepository } from './attendance.repository';
 import { AttendanceService } from './attendance.service';
+
+/** Id determinístico a partir da chave, só para o teste comparar. */
+const idDoPersonagem = (p: PersonagemDaFonte): string => `char:${indice(chaveDe(p))}`;
 
 process.env.GUILD_NAME = 'Guilda de Teste';
 process.env.GUILD_REALM = 'Realm de Teste';
@@ -34,6 +43,11 @@ describe('AttendanceService', () => {
   const wowaudit = { getPlannedRaids: jest.fn(), getRaidSignups: jest.fn() };
   const wcl = { getRaidParticipation: jest.fn() };
   const repo = { saveNight: jest.fn() };
+  const characters = {
+    resolverVarios: jest.fn((personagens: PersonagemDaFonte[]) =>
+      Promise.resolve(new Map(personagens.map((p) => [indice(chaveDe(p)), idDoPersonagem(p)]))),
+    ),
+  };
 
   let service: AttendanceService;
 
@@ -48,7 +62,20 @@ describe('AttendanceService', () => {
     >;
     return calls[0]?.[0];
   };
-  const de = (nome: string) => gravados().find((g) => g.name === nome);
+  /**
+   * A linha gravada desta pessoa, achada pelo nome que foi mandado resolver.
+   *
+   * `AttendanceInput` só tem `characterId` — o nome já não viaja com a linha.
+   * Por isso o achado passa por quem `resolverVarios` recebeu nesta rodada.
+   */
+  const de = (nome: string) => {
+    const pessoa = (characters.resolverVarios.mock.calls as unknown as Array<[PersonagemDaFonte[]]>)
+      .flatMap((args) => args[0])
+      .find((p) => p.name === nome);
+    if (!pessoa) return undefined;
+
+    return gravados().find((g) => g.characterId === idDoPersonagem(pessoa));
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -61,6 +88,7 @@ describe('AttendanceService', () => {
       wowaudit as unknown as WowAuditService,
       wcl as unknown as WarcraftLogsService,
       repo as unknown as AttendanceRepository,
+      characters as unknown as CharactersRepository,
     );
   });
 
@@ -83,8 +111,11 @@ describe('AttendanceService', () => {
 
     await service.sync();
 
+    // Uma linha só: com a chave estrita (toSlug), "Area 52" do signup e
+    // "Area52" do log virariam duas identidades — a pessoa apareceria como
+    // "sumiu" e "apareceu sem confirmar" ao mesmo tempo.
     expect(gravados()).toHaveLength(1);
-    expect(de('Fulano')).toMatchObject({ realmKey: 'area52', signup: 'Present', raided: true });
+    expect(de('Fulano')).toMatchObject({ signup: 'Present', raided: true });
   });
 
   it('log sem pull de boss é SEM DADO, nunca falta coletiva', async () => {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { BlizzardModule } from '../blizzard/blizzard.module';
+import { CharactersModule } from '../characters/characters.module';
 import { OfficersController } from './officers.controller';
 import { OfficersRepository } from './officers.repository';
 import { OfficersService } from './officers.service';
@@ -17,7 +18,7 @@ import { OfficersService } from './officers.service';
  * módulo, ler é de quem resolve a sessão.
  */
 @Module({
-  imports: [AuthModule, BlizzardModule],
+  imports: [AuthModule, BlizzardModule, CharactersModule],
   controllers: [OfficersController],
   providers: [OfficersService, OfficersRepository],
 })

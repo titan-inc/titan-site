@@ -14,6 +14,20 @@ alcançável de dentro do container (`docker compose exec`) ou por túnel SSH
 
 Em dev local (`pnpm dev`), a base é `http://localhost:3001`.
 
+Todas as rotas abaixo (e o resto da API) também estão prontas como requests
+na collection do Yaak em `yaak/` — ver `yaak/README.md` — se preferir
+testar por lá em vez de `curl`.
+
+**Corpo até 20mb neste prefixo**, contra 16kb no resto da app (`main.ts`). As
+rotas que carregam arquivo — `catalog-load`, `loot-import-rc` e (quando a
+TIT-140 existir) a carga do dado do cliente do WoW — não caberiam no teto
+público: o maior catálogo tem 92 KB, o export do RC tem 304 KB, e o dado do
+cliente do WoW já passa de 4,9 MB (TIT-139) e cresce a cada patch. O teto
+público existe para o `/applications`, que é anônimo; aqui não há ator anônimo,
+mas o teto continua existindo contra engano de operador (`--data-binary @` com o
+caminho errado), que é o modo de falha da TIT-109. Subido de 2mb pra 20mb na
+TIT-139, quando 2mb se provou pequeno demais.
+
 ## Como implementar uma rota nova
 
 Segue o mesmo desenho das sete que já existem — **nunca** chama
@@ -111,50 +125,182 @@ curl "http://localhost:3001/internal/ops/catalog-instances?filtro=voidspire" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
 ```
 
+## Catálogo — listar itemIds cadastrados (TIT-82/TIT-136)
+
+Sem script antigo equivalente. Todo `itemId` que já existe no dicionário
+(`WowItem`) — serve para filtrar db2 gigantes pelos itens que interessam
+antes de carregar, em vez de trazer o arquivo inteiro. O caso concreto é o
+`ItemSparse.db2` (~59MB) da TIT-136: filtrado por esta lista vira algumas
+centenas de linhas, contra milhares se o filtro fosse "expansão atual".
+
+**Quem decide o recorte é o catálogo, não uma regra paralela** — se um dia a
+guilda catalogar uma raid a mais, o filtro acompanha sozinho.
+
+```bash
+curl "http://localhost:3001/internal/ops/catalog-item-ids" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "total": 842, "itemIds": [249276, 249277, ...] }
+```
+
 ## Catálogo — gerar
 
 Era `pnpm --filter api catalog:generate <id> --saida <arquivo.json> [--slug <slug>] [--journal <arquivo>]`.
 
 **Não escreve arquivo** — o container é efêmero. Devolve o JSON gerado no
 corpo da resposta; salva local e segue o mesmo fluxo de revisão + commit de
-antes:
+antes.
+
+> **O nome do arquivo é `<journalInstanceId>_<slug>.json`.** O prefixo existe
+> para o `ls` sair em ordem **cronológica**: o id do journal cresce com o
+> tempo, e o nome sozinho ordenava por alfabeto — `aberrus` antes de
+> `vault-of-the-incarnates`, que veio duas seasons depois.
+>
+> É o mesmo id que vai no corpo da requisição, então não há um segundo número
+> a descobrir. Renomeados em 22/08/2026.
 
 ```bash
 curl -X POST "http://localhost:3001/internal/ops/catalog-generate" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"journalInstanceId": 1307, "slug": "the-voidspire"}' \
-  -o catalogo/the-voidspire.json
+  -o catalogo/1307_the-voidspire.json
 ```
 
 Com a colagem do `/tilc journal` do addon (substitui `--journal <arquivo>` —
 cola o conteúdo direto no campo `journalDump`, em vez de apontar pra um
-arquivo que não existe dentro do container):
+arquivo que não existe dentro do container). **Colar o dump cru direto no
+corpo quebra o JSON** — quebra de linha/tab sem escape dentro de uma string
+não é JSON válido — então primeiro escapa com `pnpm dump:escape`
+(`scripts/escape-dump.js`):
 
 ```bash
+pnpm dump:escape dump.txt          # grava dump.json ao lado
+
 curl -X POST "http://localhost:3001/internal/ops/catalog-generate" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$(node -e 'console.log(JSON.stringify({journalInstanceId: 1307, journalDump: require("fs").readFileSync("dump.txt", "utf8")}))')" \
-  -o catalogo/the-voidspire.json
+  -o catalogo/1307_the-voidspire.json
 ```
+
+(o `curl` acima ainda escapa inline com `node -e` porque o body inteiro,
+`journalInstanceId` incluso, é montado na hora; `pnpm dump:escape` é o mesmo
+`JSON.stringify`, só que gravado em arquivo — útil sozinho pro Yaak, abaixo.)
+
+Pelo Yaak: aponte a variável `catalog_dump_path` (environment `Local`) pro
+`dump.json` gerado por `pnpm dump:escape`, e o request `internal/ops/Catalog
+generate` lê com `${[ fs.readFile(path=catalog_dump_path) ]}` — ver
+`yaak/README.md`. **Não dá pra apontar direto pro `.txt` cru**: o Yaak não
+escapa o conteúdo sozinho nesse meio-tempo — `json.escape()` não funciona na
+versão atual da CLI (testado em 15/08/2026, devolve o texto sem escapar, sem
+erro nenhum) — daí o arquivo intermediário ser obrigatório, não estilo.
+
+**Aqueça o cache do Journal antes de colar o `/tilc journal`.** O cliente só
+devolve dado confiável de um item do Encounter Journal depois que ele já
+passou pelo cache local — descoberto em 14/08/2026 (ver TIT-124), gerando
+`filterType` como `?` ou com valores como `-1`/`-4` numa raid cujo Journal
+não tinha sido aberto na sessão. Isso não quebra mais o parser (`filterType`
+é lido e descartado de propósito, ver `packages/shared/src/journal-dump.ts`),
+mas o mesmo cache frio pode devolver a lista de **specs** incompleta para um
+item — e essa vai para o catálogo sem nenhuma validação de completude, em
+silêncio.
+
+Antes de rodar `/tilc journal`: abra o Encounter Journal do jogo naquela
+raid (idealmente visite cada boss) para aquecer o cache, ou rode o comando
+de exportação mais de uma vez e compare as colagens — as duas formas
+resolveram o sintoma na prática.
 
 ## Catálogo — carregar no banco
 
 Era `pnpm --filter api catalog:load <arquivo.json> [--sem-conferencia]`.
 
+### Quais arquivos entram — e por que cinco ficam de fora
+
+**O histórico de produção começa em Midnight S1** (TIT-142). São **6 raids,
+286 itens**:
+
+```
+1305_sporefall              1314_the-dreamrift
+1307_the-voidspire          1317_the-tidebound-grotto
+1308_march-on-quel-danas    1320_the-venomous-abyss
+```
+
+Os outros cinco arquivos de `apps/api/catalogo/` — `1200_vault-of-the-incarnates`,
+`1207_amirdrassil-the-dreams-hope`, `1208_aberrus-the-shadowed-crucible`,
+`1273_nerub-ar-palace`, `1296_liberation-of-undermine`, `1302_manaforge-omega`
+— **existem no repositório de propósito e NÃO são carregados.**
+
+Eles são o artefato do trabalho da TIT-124: gerá-los de novo custa dump do
+journal e curadoria, e apagá-los faria a próxima pessoa achar que nunca
+existiram. **Carregar "para completar" é o erro que este parágrafo existe para
+evitar** — traria 741 itens de raids que a guilda não vai ter no histórico.
+
+> O histórico importado do RCLootCouncil (TIT-53) **já cabe inteiro em
+> Midnight**: o export vai de 17/03 a 25/06/2026, e as raids nele são The
+> Voidspire e The Dreamrift. Não há lacuna a aceitar.
+
 ```bash
 curl -X POST "http://localhost:3001/internal/ops/catalog-load" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/the-voidspire.json")}))')"
+  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/1307_the-voidspire.json")}))')"
 
 # sem conferência contra o Warcraft Logs (só se ele estiver fora do ar):
 curl -X POST "http://localhost:3001/internal/ops/catalog-load" \
   -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/the-voidspire.json"), semConferencia: true}))')"
+  -d "$(node -e 'console.log(JSON.stringify({catalog: require("./catalogo/1307_the-voidspire.json"), semConferencia: true}))')"
 ```
+
+Pelo Yaak: aponte a variável `catalog_json_path` (environment `Local`) pro
+`.json` do catálogo (já gerado, sem passo extra nenhum), e o request
+`internal/ops/Catalog load` lê com
+`${[ fs.readFile(path=catalog_json_path) ]}` — ver `yaak/README.md`. Mais
+simples que o `Catalog generate`: `catalog` no corpo é um **valor JSON**, não
+uma string, então `fs.readFile()` puro já produz JSON válido — sem precisar
+de `pnpm dump:escape`.
+
+## Histórico — importar o export do RCLootCouncil
+
+Rota nova (TIT-53), sem script antigo equivalente. O arquivo vai no corpo, igual
+ao `catalog-load`: o container não tem o arquivo e é efêmero.
+
+**Idempotente** pelo campo `id` do RC (`servertime-índice`). Rodar de novo
+atualiza as mesmas linhas e devolve os mesmos números.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/loot-import-rc" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @rclootcouncil_export.json
+```
+
+Resposta do export real (445 registros, 17/03 a 25/06/2026):
+
+```json
+{
+  "lidos": 445,
+  "gravados": 294,
+  "descartados": 151,
+  "bossResolvido": 217,
+  "bossNaoResolvido": 77,
+  "semDificuldade": 0
+}
+```
+
+- **`descartados`** são bonus roll e personal loot — foram direto para o jogador,
+  sem decisão do conselho a registrar. Descarte é resultado esperado, não erro.
+- **`bossNaoResolvido`** é o nome do boss que não casou com o catálogo, por vir
+  traduzido ou como `Unknown`. A linha entra assim mesmo, com o nome cru; exigir
+  o vínculo recusaria histórico legítimo.
+
+**Rótulo de resposta desconhecido recusa o arquivo inteiro**, com `400` listando
+todas as combinações novas de uma vez. É deliberado: rótulo não mapeado é lacuna,
+e gravar o resto em silêncio esconderia que faltou histórico. Acrescentar o rótulo
+é um PR de uma linha em `packages/shared/src/loot-response.ts`.
 
 ## Sonda de roster (Raider.IO)
 
@@ -181,3 +327,298 @@ fresco (`force: true`), mas se já existir cache de uma chamada anterior
 bem-sucedida, uma falha degrada pra ele em vez de estourar — por isso o
 campo `stale` na resposta: `stale: true` significa que aquilo **não** é uma
 validação fresca da credencial.
+
+## Correção dos ids do backfill de identidade (TIT-132)
+
+`Character.id` é `@default(cuid())`, mas isso é avaliado em JS pelo Prisma —
+não existe em SQL puro. O backfill de 16/08/2026 criou as 69 identidades
+daquela rodada com `gen_random_uuid()`, então elas saíram em uuid em vez do
+cuid que a aplicação sempre gerou (e continua gerando, em todo `resolver()`/
+`resolverVarios()`/`resolverDoRoster()` do `CharactersRepository`).
+
+Sem corpo — a operação não recebe parâmetro.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/fix-character-ids" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{
+  "corrigidos": 69,
+  "trocas": [{ "de": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "para": "cmsv4ocyc00005opg4hxu00tl" }]
+}
+```
+
+**Não derruba nenhuma constraint.** Os 11 FKs que apontam para `Character.id`
+são `ON UPDATE CASCADE` (conferido no `pg_constraint`) — o `UPDATE` no id
+propaga sozinho para as tabelas filhas, sem janela em que uma referência
+fique órfã.
+
+**Idempotente**: o teste é o hífen (cuid nunca tem, uuid sempre tem), então
+rodar de novo depois de corrigido não acha mais nenhum id fora do padrão e
+devolve `corrigidos: 0`.
+
+## O dado do cliente do WoW — gerar (TIT-137/TIT-139)
+
+O modelo no banco está pronto (TIT-137), o gerador também (TIT-139), e a
+carga/ativação/conferência fecham a corrente (TIT-140, seção logo abaixo).
+
+**Não é rota de ops** — diferente do `catalog-generate`, que depende das
+APIs da Blizzard já configuradas na app. O gerador lê ~282 MB de arquivo
+local e não toca a app nenhuma; roda em `/scripts` da raiz, na sua máquina,
+nunca em produção. Ver "Onde mora, e por que não é rota de ops" na TIT-139.
+
+### A cada patch
+
+1. `/run print(GetBuildInfo())` no jogo — anota o build (`12.1.0.69299`).
+2. Extrai os 41 arquivos do `wow.export` para `localdocs/wow.export/` — a
+   lista e as palavras de busca do filtro estão em `docs/db2-do-cliente.md`.
+3. Carrega os `.sql` num SQLite local (`localdocs/wow.export/wow.db`) — o
+   procedimento está em "Como analisar: banco local, descartável" na mesma
+   doc. O gerador lê o `wow.db`, nunca reprocessa os `.sql`.
+4. Roda o gerador, com a API de pé (`pnpm dev:api`) e `OPS_TRIGGER_TOKEN` no
+   `.env`:
+
+   ```bash
+   pnpm gerar-db2 --build 12.1.0.69299
+   ```
+
+   Por padrão lê `localdocs/wow.export/` e escreve
+   `localdocs/wow-data-<build>.json` — os dois têm flag (`--pasta`,
+   `--saida`) se precisar apontar pra outro lugar. `--api` aponta pra API
+   (default `http://localhost:3001`).
+
+5. Confere o relatório no fim da saída: itens do catálogo sem linha no
+   `ItemSparse` (lacuna — verificar se o patch já lançou o item), `Type` do
+   `ItemBonus` sem decodificação alcançado (matéria-prima pra próxima rodada
+   de pesquisa em `docs/db2-do-cliente.md`), e o tamanho gerado.
+
+### A auto-conferência é o portão, sem flag de pular
+
+Antes de montar qualquer tabela, o gerador roda os espécimes de
+`docs/db2-fixture-de-itens.json` contra o `wow.db` e **recusa emitir o
+arquivo** se algum não fechar exatamente:
+
+```
+--- auto-conferência ---
+fixture fechou: 199 valores conferidos, 0 divergências
+```
+
+Divergência imprime `especime`/`campo`/`esperado`/`calculado` para cada
+valor que não bateu, e o processo sai com código 1 sem escrever nada. Não
+existe `--skip-check`: um item level ou um stat errado nunca chega ao
+arquivo, porque o arquivo não é gerado. Ver "Como ele se confere" na TIT-139
+para o porquê disso ser mais forte que teste de CI.
+
+### Não versionar o arquivo gerado
+
+`localdocs/` está no `.gitignore`. O `wow-data-<build>.json` fica lá — é
+dado extraído do cliente, e o repositório é público (mesma regra do
+`wow.export` bruto).
+
+## O dado do cliente do WoW — carregar, ativar e conferir (TIT-140)
+
+Três rotas, e a separação entre elas é o ponto: **carregar é inofensivo,
+ativar é o que a guilda enxerga.**
+
+### Carregar
+
+Sobe o `.json` que o gerador emitiu — mesmo padrão do `catalog-load`/
+`loot-import-rc`, o arquivo vai no corpo porque o container não tem o
+arquivo e é efêmero. Valida contra `wowDataFileSchema` e grava tudo numa
+transação, em lotes (`contextos` sozinho passa de 650 mil parâmetros, acima
+do limite de 65.535 por statement do Postgres).
+
+**NUNCA ativa.** Recarregar o MESMO build apaga as linhas dele e regrava do
+zero — não faz merge. Se o build recarregado for o que está ativo agora, o
+campo `aviso` da resposta avisa em voz alta.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/wow-data-load" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @localdocs/wow-data-12.1.0.69299.json
+```
+
+```json
+{
+  "build": "12.1.0.69299",
+  "novo": true,
+  "ativo": false,
+  "linhas": { "itens": 963, "bonuses": 10085, "contextos": 163207, "escalas": 1300 }
+}
+```
+
+### Conferir (antes de ativar)
+
+Estende o `bonus-unknown-report` (seção abaixo) com `?build=` — dá para
+validar um build recém-carregado, do PTR, **antes** de ativá-lo. Confere →
+ativa, nessa ordem.
+
+```bash
+curl "http://localhost:3001/internal/ops/bonus-unknown-report?build=12.1.0.69299" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+### Ativar
+
+Rota própria — nunca um flag escondido dentro da carga. Troca qual build a
+guilda enxerga: desativa o atual e ativa o pedido na MESMA transação (o
+índice parcial único do `WowDataBuild` recusa dois builds ativos ao mesmo
+tempo, e fazer isso em dois comandos separados abriria uma janela com ZERO
+builds ativos).
+
+Recusa (404) build que nunca foi carregado. Voltar atrás é a MESMA chamada,
+com o build anterior — instantâneo, sem regerar nada.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/wow-data-activate?build=12.1.0.69299" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "build": "12.1.0.69299", "anterior": "12.0.5.68201" }
+```
+
+> **O `POST /internal/ops/bonus-load` foi REMOVIDO** (TIT-137). Ele subia um
+> dicionário `bonusId -> significado` curado à mão a partir do wago.tools, com
+> um campo `kind` singular — e medido no build 12.1.0, **19% dos bonus ids
+> carregam mais de um significado ao mesmo tempo**, então o modelo que ele
+> preenchia não representava o que um bonus faz.
+>
+> O procedimento de curadoria manual que vivia aqui saiu junto, inclusive a
+> regra de "nunca inferir significado de `Type`/`Value`". Ela estava certa
+> quando foi escrita — ninguém tinha decodificado os `Type` — e a premissa caiu:
+> hoje eles estão decodificados contra o SimulationCraft e 21 espécimes reais,
+> um a um, em `docs/db2-do-cliente.md`.
+
+## Dicionário de bonus IDs — relatório de desconhecidos (TIT-82/TIT-140)
+
+Sem script antigo equivalente. Consulta sobre dado que **já temos
+guardado** — não faz chamada externa nenhuma:
+
+- **bônus desconhecidos**: varre os `itemString` de `LootLine` e
+  `LootSessionItem`, extrai os `bonusIds` com o `parseItemString()` do
+  shared, e subtrai o que o build conferido conhece.
+- **itens não catalogados**: `itemId` que aparece no histórico/sessões e
+  não tem `WowItem` cadastrado — falha de CATALOGAÇÃO.
+- **itens sem dado no build**: `itemId` que **está** no catálogo mas o build
+  conferido não trouxe `WowItemData` dele — falha de CARGA (TIT-136). Pergunta
+  diferente da anterior: aquela é sobre o que a liderança nunca cadastrou,
+  esta é sobre o que já foi cadastrado e o build não cobre.
+
+`?build=` escolhe qual build conferir — sem ele, cai no **ativo**. É o que
+deixa validar um build recém-carregado (o PTR) antes de `wow-data-activate`.
+
+As listas de bonus/item **não catalogado** vêm ordenadas por frequência —
+quantas linhas cada id afeta. `itensSemDadoNoBuild` não tem frequência (cada
+item só existe uma vez no catálogo), vem ordenada por `itemId`.
+
+**Sem build para conferir (nem `?build=`, nem ativo), tudo aparece como
+desconhecido/sem dado** — e isso é a verdade, não um caso de borda. É o
+estado antes da primeira carga.
+
+```bash
+curl "http://localhost:3001/internal/ops/bonus-unknown-report" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+
+# conferindo um build específico, antes de ativá-lo:
+curl "http://localhost:3001/internal/ops/bonus-unknown-report?build=12.1.0.69299" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{
+  "build": "12.1.0.69299",
+  "bonusIds": [
+    { "bonusId": 9226, "ocorrencias": 38 },
+    { "bonusId": 1485, "ocorrencias": 12 }
+  ],
+  "itemIds": [{ "itemId": 249999, "ocorrencias": 3 }],
+  "itensSemDadoNoBuild": [249276]
+}
+```
+
+## Regerar o histórico de uma sessão de loot council (TIT-69)
+
+O encerramento de uma sessão (`POST /internal/loot-sessions/:id/status` com
+`status: "encerrada"`) já grava as linhas de histórico (`LootLine`, com
+`source: "live_session"`) na MESMA transação que muda o status — ver o
+comentário de `LootSessionsRepository.encerrarComHistorico`. Esta rota é a
+rede de segurança para quando isso não bastar: sessão que ficou encerrada sem
+histórico (dado de antes desta atomicidade, ou intervenção manual no banco).
+
+Sem corpo — o único parâmetro é o id da sessão, no caminho. Recusa (400)
+sessão que ainda não encerrou: regerar histórico de decisão em andamento não
+faz sentido, porque os awards ainda podem mudar.
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/loot-sessions/<id>/regerar-historico" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "linhas": 3 }
+```
+
+**Idempotente**: a chave é `LootSessionItem.id` (`LootLine.externalId`), única
+por peça — rodar de novo atualiza as mesmas linhas em vez de duplicar.
+Segura por construção, roda quantas vezes quiser.
+
+## Gerar uma colagem de teste (TIT-68)
+
+Ferramenta de teste do realtime da sessão ao vivo — não é fluxo de produção.
+Sorteia um boss REAL do catálogo (com ao menos 3 drops cadastrados numa
+dificuldade) e devolve o texto pronto para colar em "Iniciar sessão" na
+área interna. Não cria a sessão sozinha, só poupa montar uma colagem válida
+à mão.
+
+```bash
+curl "http://localhost:3001/internal/ops/loot-sessions/gerar-colagem" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{ "paste": "TILC/1\tencounter=3176\tencounterName=...\n..." }
+```
+
+400 se o catálogo não tiver nenhum boss com pelo menos 3 itens cadastrados
+numa dificuldade — gere/carregue o catálogo antes (`catalog-generate` /
+`catalog-load`, acima).
+
+## Simular jogadores numa sessão de loot (TIT-68)
+
+Ferramenta de teste do realtime — não é fluxo de produção. Sobe N
+personagens 100% sintéticos (`Dummy1..DummyN`, nunca um personagem real —
+ver o comentário de `LootSessionDummiesService`), entra com eles na sessão
+e, a cada ~2s, faz 1–2 ações dependendo da fase atual:
+
+- **`aberta`**: um dummy responde a uma peça (escolhe opção, às vezes com
+  nota). Responder de novo na mesma peça É a edição — não é caminho à parte.
+- **`deliberando`**: só reage se o loot master reabriu a resposta de um
+  dummy (`resposta-do-conselho`/reabrir); sem isso, fica ocioso no ciclo.
+- **`encerrada`**: para sozinha.
+
+Kill switch de 10 minutos a partir do INÍCIO da simulação (não da criação
+da sessão) — o que vier primeiro entre isso e a sessão encerrar.
+
+Fire-and-forget: a rota devolve na hora, o loop roda em segundo plano
+dentro do próprio processo da api (Regra 8 — nada de `NestFactory`).
+
+```bash
+curl -X POST "http://localhost:3001/internal/ops/loot-sessions/<id>/rodar-dummies?quantidade=6" \
+  -H "X-Ops-Token: $OPS_TRIGGER_TOKEN"
+```
+
+```json
+{
+  "dummies": [{ "name": "Dummy1", "realm": "TestDummy" }, ...],
+  "killSwitchAt": "2026-08-16T19:11:01.158Z"
+}
+```
+
+`?quantidade=` é opcional (padrão 6, clamp 2–10). 400 se a sessão já
+encerrou; 409 se já existe uma simulação rodando para aquela sessão — uma
+por vez, chame de novo depois que a anterior parar (kill switch, sessão
+encerrada, ou a api reiniciar — o estado é em memória).

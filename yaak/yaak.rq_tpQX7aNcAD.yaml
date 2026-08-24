@@ -1,0 +1,41 @@
+type: http_request
+model: http_request
+id: rq_tpQX7aNcAD
+createdAt: 2026-08-15T00:16:27.808458900
+updatedAt: 2026-08-22T13:41:07.573143300
+workspaceId: wk_8LmjjnEbam
+folderId: fl_JCWQzsozJU
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+method: GET
+name: Catalog instances
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/ops/catalog-instances
+urlParameters:
+- enabled: false
+  name: filtro
+  value: ''
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

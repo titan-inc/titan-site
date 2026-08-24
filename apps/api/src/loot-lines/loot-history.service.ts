@@ -1,0 +1,408 @@
+import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import {
+  LOOT_RESPONSE_KINDS,
+  splitNomeRealm,
+  toCharacterKey,
+  toRealmMatchKey,
+  type LootHistoryEntry,
+  type LootHistoryFacets,
+  type LootHistoryPage,
+  type LootHistoryQuery,
+} from '@titan/shared';
+import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
+import {
+  LootLinesRepository,
+  type CatalogItemRow,
+  type LootHistoryRow,
+} from './loot-lines.repository';
+
+/**
+ * Nenhum item casa com isto, e é o ponto.
+ *
+ * Usado quando o filtro de slot não encontra item nenhum no catálogo: a resposta
+ * certa é lista vazia, não "ignora o filtro e devolve tudo". `itemId IN ()` é
+ * inválido em SQL, então precisa de um valor impossível — e `itemId` é sempre
+ * positivo.
+ */
+const NENHUM_ITEM = -1;
+
+/**
+ * Id que não existe, para o filtro de personagem que não casou.
+ *
+ * Devolver lista vazia é a resposta certa: nome que não existe é filtro sem
+ * resultado, não erro. Sem o sentinela, o `where` sairia sem a condição e a
+ * tela mostraria o histórico INTEIRO como se fosse daquela pessoa.
+ */
+const NENHUMA_IDENTIDADE = 'nenhuma-identidade';
+
+@Injectable()
+export class LootHistoryService {
+  private readonly guild: GuildConfig;
+
+  constructor(private readonly repo: LootLinesRepository) {
+    this.guild = loadGuildConfig();
+  }
+
+  /**
+   * Uma página do histórico, com os filtros aplicados.
+   *
+   * Três consultas, não uma: as linhas, a contagem (junto, na mesma transação)
+   * e os itens do catálogo. O item vem à parte porque não há FK entre linha de
+   * loot e catálogo — ver `findItems`.
+   */
+  async consultar(filtros: LootHistoryQuery): Promise<LootHistoryPage> {
+    const where = await this.montarWhere(filtros);
+    const { linhas, total } = await this.repo.findHistoryPage(
+      where,
+      filtros.page,
+      filtros.pageSize,
+    );
+
+    const itens = await this.buscarItens(linhas);
+
+    return {
+      entries: linhas.map((linha) => montarEntrada(linha, itens)),
+      total,
+      page: filtros.page,
+      pageSize: filtros.pageSize,
+    };
+  }
+
+  /**
+   * As opções dos filtros, dentro da season escolhida.
+   *
+   * Quatro consultas de agregação, todas sobre poucas centenas de linhas. A
+   * lista de seasons vem sem filtro de propósito: é o seletor de season.
+   */
+  async facets(season: number | undefined): Promise<LootHistoryFacets> {
+    const where: Prisma.LootLineWhereInput = season === undefined ? {} : { seasonId: season };
+
+    // A faceta de personagem responde "quem recebeu loot", não "quem aparece
+    // numa linha" — ver o comentário em `montarWhere`. Sem isso, quem carrega o
+    // banco da guilda apareceria no seletor com uma contagem que não bate com o
+    // que a lista mostra depois de selecionar.
+    const wherePersonagem: Prisma.LootLineWhereInput = {
+      ...where,
+      responseKind: LOOT_RESPONSE_KINDS.PLAYER,
+    };
+
+    const [porSeason, porPersonagem, porBoss, porItem] = await Promise.all([
+      this.repo.contarPorSeason(),
+      this.repo.contarPorPersonagem(wherePersonagem),
+      this.repo.contarPorBoss(where),
+      this.repo.contarPorItem(where),
+    ]);
+
+    const [seasons, characters, bosses, slots] = await Promise.all([
+      this.montarSeasons(porSeason),
+      this.montarPersonagens(porPersonagem),
+      this.montarBosses(porBoss),
+      this.montarSlots(porItem),
+    ]);
+
+    return { seasons, characters, bosses, slots };
+  }
+
+  /**
+   * Agrupa por identidade e busca os nomes — a mesma forma das outras três
+   * facetas, que já agrupam por id e resolvem o rótulo depois.
+   *
+   * Antes o `groupBy` levava as quatro colunas de identidade junto e ganhava a
+   * grafia de graça. O efeito colateral era uma pessoa com duas grafias virar
+   * **duas opções** no filtro, com as mesmas chaves. Por id isso não acontece.
+   *
+   * O `value` continua sendo `Nome-Realm`, e não o id: ele vai para a URL, e
+   * link que circula no Discord precisa ser legível — Regra 7. Quem desmonta é
+   * o `montarWhere`, resolvendo para identidade.
+   */
+  private async montarPersonagens(
+    porPersonagem: Array<{ winnerCharacterId: string; _count: number }>,
+  ): Promise<LootHistoryFacets['characters']> {
+    const nomes = new Map(
+      (await this.repo.findCharacterNames(porPersonagem.map((p) => p.winnerCharacterId))).map(
+        (c) => [c.id, c],
+      ),
+    );
+
+    return porPersonagem
+      .flatMap((p) => {
+        const identidade = nomes.get(p.winnerCharacterId);
+        // Identidade some do banco só se alguém apagar à mão, e o FK recusa.
+        // Se acontecer, a opção some do filtro em vez de virar linha sem nome.
+        if (!identidade) return [];
+
+        return [
+          {
+            name: identidade.name,
+            realm: identidade.realm,
+            value: `${identidade.name}-${identidade.realm}`,
+            total: p._count,
+          },
+        ];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Mais recente primeiro, e a fatia sem season por último. */
+  private async montarSeasons(
+    porSeason: Array<{ seasonId: number | null; _count: number }>,
+  ): Promise<LootHistoryFacets['seasons']> {
+    const ids = porSeason.map((s) => s.seasonId).filter((id): id is number => id !== null);
+    const nomes = new Map((await this.repo.findSeasonNames(ids)).map((s) => [s.id, s.name]));
+
+    return porSeason
+      .map((s) => ({
+        id: s.seasonId,
+        // Season que sumiu da GameSeason ainda tem histórico apontando para ela;
+        // mostrar o id cru é melhor que esconder as entregas.
+        name:
+          s.seasonId === null ? 'Sem season' : (nomes.get(s.seasonId) ?? `Season ${s.seasonId}`),
+        total: s._count,
+      }))
+      .sort((a, b) => (b.id ?? -1) - (a.id ?? -1));
+  }
+
+  private async montarBosses(
+    porBoss: Array<{ encounterId: string | null; _count: number }>,
+  ): Promise<LootHistoryFacets['bosses']> {
+    const ids = porBoss.map((b) => b.encounterId).filter((id): id is string => id !== null);
+    if (ids.length === 0) return [];
+
+    const rotulos = new Map((await this.repo.findEncounterLabels(ids)).map((e) => [e.id, e]));
+
+    return porBoss
+      .flatMap((b) => {
+        const rotulo = b.encounterId === null ? undefined : rotulos.get(b.encounterId);
+        if (!rotulo || b.encounterId === null) return [];
+
+        return [
+          {
+            encounterId: b.encounterId,
+            name: rotulo.name,
+            raid: rotulo.raid.name,
+            total: b._count,
+          },
+        ];
+      })
+      .sort((a, b) => a.raid.localeCompare(b.raid) || a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Slot sai somando as entregas de cada item por `equipLoc`.
+   *
+   * Não é `groupBy` direto porque não há FK entre linha de loot e catálogo. Item
+   * fora do catálogo não entra: sem `equipLoc` não há slot a oferecer.
+   */
+  private async montarSlots(
+    porItem: Array<{ itemId: number; _count: number }>,
+  ): Promise<LootHistoryFacets['slots']> {
+    if (porItem.length === 0) return [];
+
+    const itens = await this.repo.findItems(porItem.map((i) => i.itemId));
+    const slotDoItem = new Map(itens.map((i) => [i.itemId, i.equipLoc]));
+
+    const totais = new Map<string, number>();
+    for (const item of porItem) {
+      const slot = slotDoItem.get(item.itemId);
+      if (!slot) continue;
+      totais.set(slot, (totais.get(slot) ?? 0) + item._count);
+    }
+
+    return [...totais]
+      .map(([equipLoc, total]) => ({ equipLoc, total }))
+      .sort((a, b) => a.equipLoc.localeCompare(b.equipLoc));
+  }
+
+  /** Os filtros da query viram o `where` do Prisma. */
+  private async montarWhere(filtros: LootHistoryQuery): Promise<Prisma.LootLineWhereInput> {
+    const where: Prisma.LootLineWhereInput = {};
+
+    // Ausente é "todas as seasons", e não um estado de erro: é opção da tela.
+    if (filtros.season !== undefined) where.seasonId = filtros.season;
+
+    // `Nome-Realm` da URL vira identidade aqui. Nome que não existe devolve
+    // lista vazia, e não erro: filtro que não casa é resultado vazio.
+    //
+    // Filtrar por personagem é perguntar "o que ESTA PESSOA recebeu", e por
+    // isso soma `responseKind = player`: linha de `loot_master` tem essa
+    // pessoa como `winnerCharacterId` só porque ela guardou a peça no banco,
+    // não porque a pediu. É a mesma consulta que o índice
+    // `[winnerCharacterId, awardedAt]` do schema documenta como "o histórico
+    // desta pessoa" — sem o filtro, quem carrega o banco apareceria com
+    // histórico de peças que nunca usou.
+    const chaves = identidadeDoPersonagem(filtros.character);
+    if (chaves) {
+      const identidade = await this.repo.findCharacterByKeys(chaves.nameKey, chaves.realmKey);
+      where.winnerCharacterId = identidade?.id ?? NENHUMA_IDENTIDADE;
+      where.responseKind = LOOT_RESPONSE_KINDS.PLAYER;
+    }
+
+    const janela = janelaDeDatas(filtros.from, filtros.to, this.guild.timezone);
+    if (janela) where.awardedAt = janela;
+
+    if (filtros.encounterId) where.encounterId = filtros.encounterId;
+    if (filtros.difficulty) where.difficulty = filtros.difficulty;
+
+    if (filtros.slot) {
+      const itemIds = await this.repo.findItemIdsBySlot(filtros.slot);
+      where.itemId = { in: itemIds.length > 0 ? itemIds : [NENHUM_ITEM] };
+    }
+
+    return where;
+  }
+
+  /** Um lookup dos itens desta página, sem repetir id. */
+  private async buscarItens(linhas: LootHistoryRow[]): Promise<Map<number, CatalogItemRow>> {
+    const ids = [...new Set(linhas.map((l) => l.itemId))];
+    if (ids.length === 0) return new Map();
+
+    const itens = await this.repo.findItems(ids);
+    return new Map(itens.map((item) => [item.itemId, item]));
+  }
+}
+
+/**
+ * `Fulano-Area52` → a identidade normalizada, do jeito que está gravada.
+ *
+ * `toCharacterKey` MANTÉM acento (Shrëwd e Shrêwd são pessoas diferentes) e
+ * `toRealmMatchKey` colapsa separador, que é o que faz `Area52` da fonte casar
+ * com `area-52` do roster — Regra 6.
+ *
+ * Sem hífen devolve `null`, e o filtro é ignorado em vez de recusar o request:
+ * nome sem realm não identifica ninguém, e barrar a tela inteira por causa de um
+ * campo mal preenchido é pior que mostrar tudo.
+ */
+function identidadeDoPersonagem(
+  bruto: string | undefined,
+): { nameKey: string; realmKey: string } | null {
+  if (!bruto) return null;
+
+  const par = splitNomeRealm(bruto);
+  if (!par) return null;
+
+  return { nameKey: toCharacterKey(par.name), realmKey: toRealmMatchKey(par.realm) };
+}
+
+/**
+ * A janela de datas, inclusiva nas duas pontas, **no fuso da guilda**.
+ *
+ * Não em UTC, e a diferença não é cosmética: a raid começa 21:00 BRT, que já é o
+ * dia seguinte em UTC. Medido nas 294 entregas importadas — todas caem entre
+ * 00:33 e 02:40 UTC, ou seja, **nenhuma** está no dia UTC em que a raid
+ * aconteceu. Filtrar `from=2026-03-17&to=2026-03-17` em UTC devolveria zero para
+ * a noite de 17/03.
+ *
+ * É o mesmo achado que o `attendance.service.ts` já registrava por outro
+ * caminho: por data UTC só 12 de 20 logs caíam numa data com raid marcada; pelo
+ * fuso da guilda, 19.
+ *
+ * O `to` vai até o fim do dia local. Sem isso, `to=<dia>` viraria meia-noite e
+ * esconderia a noite inteira — justamente a que a pessoa pediu.
+ */
+function janelaDeDatas(
+  from: string | undefined,
+  to: string | undefined,
+  timezone: string,
+): Prisma.DateTimeFilter | undefined {
+  if (!from && !to) return undefined;
+
+  const janela: Prisma.DateTimeFilter = {};
+  if (from) janela.gte = instanteLocal(from, '00:00:00.000', timezone);
+  if (to) janela.lte = instanteLocal(to, '23:59:59.999', timezone);
+
+  return janela;
+}
+
+/**
+ * `2026-03-17` + `00:00:00.000` no fuso da guilda → o instante UTC equivalente.
+ *
+ * Feito à mão porque não há biblioteca de data no projeto e o caso é estreito.
+ * O truque é medir o deslocamento do fuso **naquele instante** e descontá-lo.
+ *
+ * Uma passada basta para o fuso da guilda: o Brasil não tem horário de verão
+ * desde 2019, então `America/Sao_Paulo` é `-03:00` fixo. Em fuso com DST, um
+ * horário na hora exata da virada pode escorregar uma hora — aceitável para
+ * filtro de dia, e registrado aqui para não parecer descuido.
+ */
+function instanteLocal(dia: string, hora: string, timezone: string): Date {
+  const comoSeFosseUtc = new Date(`${dia}T${hora}Z`);
+  return new Date(comoSeFosseUtc.getTime() - deslocamentoDoFuso(comoSeFosseUtc, timezone));
+}
+
+/** Quanto o fuso está à frente do UTC naquele instante, em milissegundos. */
+function deslocamentoDoFuso(instante: Date, timezone: string): number {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instante);
+
+  const campo = (tipo: string): number => Number(partes.find((p) => p.type === tipo)?.value ?? 0);
+
+  // Os milissegundos vêm do próprio instante: o `Intl` só chega ao segundo, e
+  // sem isto eles vazariam para dentro do deslocamento. O sintoma foi um `lte`
+  // de 23:59:59.999 virar 00:00:00.998 do dia seguinte — quase invisível, e
+  // suficiente para a borda do filtro ficar errada.
+  const local =
+    Date.UTC(
+      campo('year'),
+      campo('month') - 1,
+      campo('day'),
+      campo('hour'),
+      campo('minute'),
+      campo('second'),
+    ) + instante.getUTCMilliseconds();
+
+  return local - instante.getTime();
+}
+
+/** Uma linha do banco vira uma entrada de tela. */
+function montarEntrada(
+  linha: LootHistoryRow,
+  itens: Map<number, CatalogItemRow>,
+): LootHistoryEntry {
+  const item = itens.get(linha.itemId);
+
+  return {
+    id: linha.id,
+    awardedAt: linha.awardedAt.toISOString(),
+
+    winner: {
+      name: linha.winner.name,
+      realm: linha.winner.realm,
+      nameKey: linha.winner.nameKey,
+      realmKey: linha.winner.realmKey,
+    },
+    winnerClass: linha.winner.class,
+
+    item: {
+      itemId: linha.itemId,
+      // Nulo, e não o `itemName` da linha: aquele vem localizado pelo cliente de
+      // quem era loot master, e o mesmo item apareceria em dois idiomas na
+      // mesma lista. Melhor faltar do que mentir — ver TIT-49.
+      name: item?.name ?? null,
+      icon: item?.icon ?? null,
+      equipLoc: item?.equipLoc ?? null,
+    },
+
+    boss: {
+      encounterId: linha.encounter?.id ?? null,
+      // Sem fallback para bruto de outra ferramenta desde a TIT-130: nulo é
+      // lacuna honesta, não `linha.rawBoss` picado por trás.
+      name: linha.encounter?.name ?? null,
+      raid: linha.encounter?.raid.name ?? null,
+    },
+
+    difficulty: linha.difficulty,
+    response: { slug: linha.responseOption.slug, label: linha.responseOption.label },
+    responseKind: linha.responseKind,
+    votes: linha.votes,
+    playerNote: linha.playerNote,
+  };
+}

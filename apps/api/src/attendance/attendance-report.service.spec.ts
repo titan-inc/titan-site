@@ -16,8 +16,7 @@ const noite = (over: Record<string, unknown> = {}) => ({
 
 const linha = (over: Record<string, unknown> = {}) => ({
   id: 'linha-1',
-  name: 'Fulano',
-  realm: 'Azralon',
+  character: { name: 'Fulano', realm: 'Azralon' },
   signup: 'Present',
   raided: true,
   firstPull: 1,
@@ -63,28 +62,19 @@ describe('AttendanceReportService', () => {
     expect(r.nights[0]?.entries[0]?.state).toBe('raidou');
   });
 
-  it('busca o histórico próprio pelos personagens da conta, com a chave frouxa de realm', async () => {
-    // O roster guarda `area-52` (toSlug) e a presença guarda `area52`
-    // (toRealmMatchKey). Sem a conversão, o histórico da pessoa vem vazio.
-    await service.getMine([{ name: 'Fulano', realmSlug: 'area-52' }]);
+  it('busca o histórico pelos ids dos personagens da conta', async () => {
+    // Quem resolve nome+realm para identidade agora é a sessão, no login
+    // (Regra 4). `getMine` só repassa os ids ao repositório.
+    await service.getMine(['char-fulano']);
 
-    expect(repo.listForCharacters).toHaveBeenCalledWith(
-      [{ nameKey: 'fulano', realmKey: 'area52' }],
-      expect.any(Number),
-    );
+    expect(repo.listForCharacters).toHaveBeenCalledWith(['char-fulano'], expect.any(Number));
   });
 
   it('soma os personagens da conta — a pessoa é a soma dos chars dela', async () => {
-    await service.getMine([
-      { name: 'Fulano', realmSlug: 'azralon' },
-      { name: 'Beltrano', realmSlug: 'illidan' },
-    ]);
+    await service.getMine(['char-fulano', 'char-beltrano']);
 
     expect(repo.listForCharacters).toHaveBeenCalledWith(
-      [
-        { nameKey: 'fulano', realmKey: 'azralon' },
-        { nameKey: 'beltrano', realmKey: 'illidan' },
-      ],
+      ['char-fulano', 'char-beltrano'],
       expect.any(Number),
     );
   });
@@ -96,7 +86,7 @@ describe('AttendanceReportService', () => {
       { ...linha({ id: 'b', raided: null }), raidNight: noite({ id: 2, bossPulls: null }) },
     ]);
 
-    const r = await service.getMine([{ name: 'Fulano', realmSlug: 'azralon' }]);
+    const r = await service.getMine(['char-fulano']);
 
     expect(r.nights).toHaveLength(2);
     expect(r.summary).toEqual({ counted: 1, present: 1, missed: 0 });
@@ -109,7 +99,7 @@ describe('AttendanceReportService', () => {
       { ...linha({ id: 'c', signup: 'Unknown', raided: false }), raidNight: noite({ id: 3 }) },
     ]);
 
-    const r = await service.getMine([{ name: 'Fulano', realmSlug: 'azralon' }]);
+    const r = await service.getMine(['char-fulano']);
 
     // Standby é banco declarado e Unknown é rotação. Nenhum dos dois é falta.
     expect(r.summary).toEqual({ counted: 3, present: 0, missed: 1 });

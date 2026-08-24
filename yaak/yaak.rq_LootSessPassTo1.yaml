@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_LootSessPassTo1
+createdAt: 2026-08-15T20:00:00.000000
+updatedAt: 2026-08-15T20:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_LootSessions1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"characterName": "", "characterRealm": "", "responseOptionSlug": "banking", "note": ""}'
+bodyType: application/json
+description: 'OfficerGuard, só em deliberando. A peça vai para alguém por decisão do loot master, não por interesse: o alvo pode ser qualquer PARTICIPANTE da sessão, e o que congela é a razão, não uma declaração. votes fica em 0. A razão precisa ser de kind loot_master (banking, disenchant, no_interest) — mandar bis aqui é recusado. O alvo precisa estar na sessão, e o motivo é do jogo: a janela de trade do WoW só existe para quem estava no grupo. A nota é opcional e vira histórico visível para toda a área interna.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Passar a peça (banking, disenchant, no interest)'
+sortPriority: 12500
+url: ${[ base_url ]}/internal/loot-sessions/:id/itens/:itemId/pass-item-to
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

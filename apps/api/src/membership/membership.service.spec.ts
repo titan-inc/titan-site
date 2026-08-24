@@ -1,3 +1,4 @@
+import { toCharacterKey, toRealmMatchKey } from '@titan/shared';
 import type { BlizzardService, RosterMember, RosterSnapshot } from '../blizzard/blizzard.service';
 import type {
   CharacterToRevalidate,
@@ -15,11 +16,16 @@ const rosterMember = (name: string, realmSlug: string, rank: number): RosterMemb
   rank,
 });
 
-/** Personagem guardado no banco. `rank` é o que a última rodada viu. */
-const dbChar = (name: string, rank: number, realmSlug = 'azralon'): CharacterToRevalidate => ({
+/**
+ * Personagem guardado no banco. `rank` é o que a última rodada viu.
+ *
+ * `nameKey`/`realmKey` são as chaves da identidade (Regra 6) — a mesma
+ * normalização que `Character` guarda, não o que foi digitado.
+ */
+const dbChar = (name: string, rank: number, realm = 'Azralon'): CharacterToRevalidate => ({
   id: `char-${name.toLowerCase()}`,
-  nameKey: name.toLowerCase(),
-  realmSlug,
+  nameKey: toCharacterKey(name),
+  realmKey: toRealmMatchKey(realm),
   rank,
 });
 

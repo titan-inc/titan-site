@@ -13,9 +13,8 @@ export interface SeasonInput {
 export interface SnapshotInput {
   period: number;
   seasonId: number;
-  nameKey: string;
-  realmSlug: string;
-  name: string;
+  /** Identidade já resolvida — quem resolve é o `CharactersRepository`. */
+  characterId: string;
   itemLevel: number | null;
   mythicPlusScore: number | null;
   keysDone: number | null;
@@ -52,10 +51,10 @@ export class SnapshotsRepository {
    */
   async saveSnapshots(entradas: SnapshotInput[]): Promise<number> {
     for (const e of entradas) {
-      const { period, realmSlug, nameKey, ...resto } = e;
+      const { period, characterId, ...resto } = e;
       await this.prisma.characterSnapshot.upsert({
-        where: { period_realmSlug_nameKey: { period, realmSlug, nameKey } },
-        create: { period, realmSlug, nameKey, ...resto },
+        where: { period_characterId: { period, characterId } },
+        create: { period, characterId, ...resto },
         update: { ...resto, recordedAt: new Date() },
       });
     }
@@ -74,19 +73,13 @@ export class SnapshotsRepository {
   async saveWeeklyKeys(
     period: number,
     seasonId: number,
-    entradas: Array<{
-      nameKey: string;
-      realmSlug: string;
-      name: string;
-      keysDone: number;
-      highestKey: number | null;
-    }>,
+    entradas: Array<{ characterId: string; keysDone: number; highestKey: number | null }>,
   ): Promise<number> {
     for (const e of entradas) {
-      const { nameKey, realmSlug, name, keysDone, highestKey } = e;
+      const { characterId, keysDone, highestKey } = e;
       await this.prisma.characterSnapshot.upsert({
-        where: { period_realmSlug_nameKey: { period, realmSlug, nameKey } },
-        create: { period, seasonId, nameKey, realmSlug, name, keysDone, highestKey },
+        where: { period_characterId: { period, characterId } },
+        create: { period, seasonId, characterId, keysDone, highestKey },
         // Só as chaves. itemLevel e score ficam como estão.
         update: { keysDone, highestKey },
       });
@@ -153,9 +146,8 @@ export class SnapshotsRepository {
       orderBy: { period: 'asc' },
       select: {
         period: true,
-        nameKey: true,
-        realmSlug: true,
-        name: true,
+        characterId: true,
+        character: { select: { name: true, realm: true, nameKey: true, realmKey: true } },
         itemLevel: true,
         keysDone: true,
         highestKey: true,

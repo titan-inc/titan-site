@@ -1,0 +1,33 @@
+type: http_request
+model: http_request
+id: rq_UQj4A4gZEd
+createdAt: 2026-08-15T00:16:26.653538400
+updatedAt: 2026-08-15T00:16:26.653542100
+workspaceId: wk_8LmjjnEbam
+folderId: fl_SUo2LgndeF
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Health check
+sortPriority: 0.0
+url: ${[ base_url ]}/health
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

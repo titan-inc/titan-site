@@ -1,11 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import {
-  toCharacterKey,
-  toSlug,
-  type ProgressReport,
-  type ProgressRow,
-  type SeasonOption,
-} from '@titan/shared';
+import type { ProgressReport, ProgressRow, SeasonOption } from '@titan/shared';
+import { chaveDe, indice } from '../characters/characters.repository';
 import { WowAuditService } from '../wowaudit/wowaudit.service';
 import { SnapshotsRepository } from './snapshots.repository';
 
@@ -76,14 +71,12 @@ export class ProgressService {
 
     const rows: ProgressRow[] = daSemana.map((s) => {
       const antes = anterior
-        ? (snapshots.find(
-            (o) => o.period === anterior && o.nameKey === s.nameKey && o.realmSlug === s.realmSlug,
-          ) ?? null)
+        ? (snapshots.find((o) => o.period === anterior && o.characterId === s.characterId) ?? null)
         : null;
 
       return {
-        name: s.name,
-        realm: s.realmSlug,
+        name: s.character.name,
+        realm: s.character.realm,
         itemLevel: s.itemLevel,
         itemLevelDelta: delta(s.itemLevel, antes?.itemLevel ?? null),
         itemLevelVsAverage: delta(s.itemLevel, average.itemLevel),
@@ -132,7 +125,7 @@ export class ProgressService {
    * Não custa salto de rede: `getTeamCharacters()` tem cache no service, e a
    * aba de roster já o mantém quente.
    */
-  private async somenteDoTime<T extends { nameKey: string; realmSlug: string }>(
+  private async somenteDoTime<T extends { character: { nameKey: string; realmKey: string } }>(
     daSemana: T[],
     corrente: boolean,
   ): Promise<T[]> {
@@ -141,7 +134,8 @@ export class ProgressService {
     let noTime: Set<string>;
     try {
       const time = await this.wowaudit.getTeamCharacters();
-      noTime = new Set(time.map((c) => `${toSlug(c.realm)}/${toCharacterKey(c.name)}`));
+      // Identidade na mesma chave que `Character` guarda — Regra 6.
+      noTime = new Set(time.map((c) => indice(chaveDe({ name: c.name, realm: c.realm }))));
     } catch (err: unknown) {
       // Regra 6: falha de API externa não derruba página. Sem a lista não dá
       // para filtrar, então sai sem filtro — uma linha a mais é o que já
@@ -151,7 +145,7 @@ export class ProgressService {
       return daSemana;
     }
 
-    const doTime = daSemana.filter((s) => noTime.has(`${s.realmSlug}/${s.nameKey}`));
+    const doTime = daSemana.filter((s) => noTime.has(indice(s.character)));
 
     // Zerar a semana inteira é sintoma de chave divergente ou de time vazio na
     // resposta, nunca de guilda sem ninguém — mesma leitura que o job faz ao

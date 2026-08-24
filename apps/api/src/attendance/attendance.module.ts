@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CharactersModule } from '../characters/characters.module';
 import { WarcraftLogsModule } from '../warcraftlogs/warcraftlogs.module';
 import { WowAuditModule } from '../wowaudit/wowaudit.module';
 import { AttendanceReportService } from './attendance-report.service';
@@ -14,7 +15,7 @@ import { AttendanceService } from './attendance.service';
  * leitura só toca o banco. Assim a tela não cai quando o WoWAudit cai.
  */
 @Module({
-  imports: [AuthModule, WowAuditModule, WarcraftLogsModule],
+  imports: [AuthModule, CharactersModule, WowAuditModule, WarcraftLogsModule],
   controllers: [AttendanceController],
   providers: [AttendanceService, AttendanceReportService, AttendanceRepository],
   exports: [AttendanceService],

@@ -17,7 +17,29 @@ async function bootstrap() {
   // número precisa mudar junto com o deploy — não aceite X-Forwarded-For livre.
   app.set('trust proxy', 1);
 
+  // As rotas de ops carregam arquivo — catálogo de raid, export do
+  // RCLootCouncil — e não cabem no teto público. Precisa vir ANTES do limite
+  // geral: o Express roda middleware em ordem e o primeiro parser que consumir
+  // o corpo vence.
+  //
+  // Teto maior, não ausência de teto. Aqui não existe ator anônimo (a porta é
+  // loopback no compose de produção, e o OpsTokenGuard exige token), mas existe
+  // engano de operador — `curl -d @arquivo` com o caminho errado. É o modo de
+  // falha da TIT-109: comando legítimo, de dentro da máquina, que consumiu
+  // memória demais numa instância de 1GB e derrubou a app inteira. Com teto
+  // isso vira 413.
+  //
+  // 20mb — subido de 2mb (TIT-139) depois de o dado do cliente do WoW sair
+  // maior que o teto antigo: 4,9 MB pro build 12.1.0, e cresce a cada patch
+  // (mais bônus, mais itens catalogados). 20mb ainda é um teto de verdade
+  // (~4x a carga de hoje), não ausência de um — o ponto da regra continua
+  // valendo. Não há setGlobalPrefix — o caminho no Nest é este mesmo, o
+  // `/api` é o Caddy que tira.
+  app.use('/internal/ops', json({ limit: '20mb' }));
+
   // Limita o corpo antes do Zod para que JSONs gigantes não consumam memória.
+  // Vale para tudo que não é ops, incluindo o /applications público — que é
+  // anônimo e dispara mensagem no Discord da liderança.
   app.use(json({ limit: '16kb' }));
 
   // Necessário para ler o cookie de sessão. Sem isso req.cookies é undefined e

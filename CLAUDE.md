@@ -388,7 +388,7 @@ Então o sistema grava o fato observável ("Não Raidou") e oferece ao raid lead
 
 ### Visibilidade do histórico
 
-Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico:
+Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico **de presença**:
 
 - **Oficial** vê o detalhe de qualquer pessoa.
 - **Membro** vê o próprio histórico, inteiro.
@@ -397,6 +397,24 @@ Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico:
 **O motivo é social, não sigilo.** O dado está aberto no Logs e no WoWAudit; o que o site evita é apresentá-lo pronto em forma de ranking, que gera treta e não ajuda o raid leader — quem lidera já tem o detalhe.
 
 A régua para caso novo é "isto vira comparação entre membros?", não "isto é confidencial?". Média da guilda passa; lista ordenada por falta, não.
+
+#### Loot é o caso que responde diferente (13/08/2026)
+
+**O histórico de loot é visível para todo mundo que entra na área interna.** Sem corte próprio, sem restrição por identidade: o endpoint usa o `MemberGuard`, igual ao do catálogo.
+
+Aplicar a régua acima dá resposta oposta à de presença, e o motivo é o que separa os dois casos:
+
+|                    | presença                                          | loot                             |
+| ------------------ | ------------------------------------------------- | -------------------------------- |
+| o que é            | **comportamento de uma pessoa**                   | **decisão que o conselho tomou** |
+| quem viu acontecer | ninguém — furo e banco são indistinguíveis no log | a raid inteira, ao vivo          |
+| o que expor faz    | expõe alguém                                      | torna o conselho auditável       |
+
+Quem estava na raid **viu** a peça ser distribuída. Esconder depois não guarda segredo nenhum — só torna a ferramenta pior que a memória das pessoas, que é o pior lugar onde uma ferramenta pode ficar. E o conselho decide melhor quando as decisões dele são visíveis.
+
+Isso **não** afrouxa nada de presença, que continua exatamente como está acima. E não cria permissão nova: o corte da área interna já é o time de raid, e um segundo corte com o mesmo valor só criaria dois lugares para divergirem em silêncio.
+
+Registrado como caso nomeado, e não como reversão, porque a régua não mudou — ela é que dá respostas diferentes para dados diferentes. Se alguém propuser abrir presença citando este parágrafo, a resposta é não: a diferença está na tabela.
 
 ## Regra 8 — Ferramenta de operação roda contra a app já rodando, nunca sobe instância própria
 
@@ -477,6 +495,30 @@ Se um segredo escapar: **tratar como comprometido e rotacionar na origem** (gera
 Também não versionar dado de membro ou candidatura: nada de dump de banco, print com Discord tag, ou fixture com nome real de pessoa. Usar dados fictícios em teste.
 
 O `.env.example` pode ter placeholder local (`postgresql://titan:titan@localhost:5432/...`) — é credencial de banco de desenvolvimento na sua máquina, não vale nada fora dela. Nunca colocar ali um valor que funcione em produção.
+
+## Collection Yaak (`yaak/`)
+
+Toda rota de `apps/api/src` tem uma request equivalente na collection do
+[Yaak](https://yaak.app) em `yaak/`, sincronizada com o app via Local
+Directory/Git Sync — ver `yaak/README.md` e TIT-123.
+
+**Endpoint novo, alterado ou removido no Nest — a request correspondente
+muda junto, no mesmo PR.** Sem isso a collection é mais uma fonte que
+discorda do código, do jeito que a Regra 2 já evita pro contrato e a Regra 7
+evita pro dado da guilda: desatualizada em silêncio é pior que ausente,
+porque parece confiável.
+
+- Endpoint novo → request na pasta do controller correspondente (uma pasta
+  por controller/módulo, espelhando `apps/api/src/*`).
+- Rota, método ou body mudou → edita a request existente, não duplica.
+- Endpoint removido → apaga a request.
+- Header/variável de autenticação nova → declara o **nome** vazio na
+  environment `Team` (sharable); valor real só em `Local`, que nunca
+  sincroniza. Nunca escrever segredo real na collection compartilhada — ver
+  `yaak/README.md`.
+
+Editar via app Yaak (GUI) ou via `yaak` CLI — os dois leem/escrevem a mesma
+base local, e o sync grava o YAML sozinho.
 
 ## Aviso sobre o Next 16
 

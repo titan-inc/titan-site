@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { toCharacterKey, toSlug } from '@titan/shared';
 import { BlizzardService, type RosterMember } from '../blizzard/blizzard.service';
+import { chaveDe, indice } from '../characters/characters.repository';
 import { MembershipRepository } from './membership.repository';
 
 /**
@@ -84,7 +84,10 @@ export class MembershipService {
     }
 
     const members = await this.repo.findMembers();
-    const byKey = new Map(roster.members.map((m) => [`${m.realmSlug}/${m.nameKey}`, m]));
+    // Identidade na mesma chave que `Character` guarda — Regra 6.
+    const byKey = new Map(
+      roster.members.map((m) => [indice(chaveDe({ name: m.name, realm: m.realmSlug })), m]),
+    );
 
     const toRevoke: string[] = [];
     const rankChanges: Array<{ id: string; rank: number }> = [];
@@ -106,10 +109,8 @@ export class MembershipService {
       const stillInRoster: Array<{ id: string; rank: number }> = [];
 
       for (const char of user.characters) {
-        // Normalizar dos dois lados, sempre — ver Regra 6 do CLAUDE.md. Os
-        // campos já são gravados normalizados; isto protege de linha escrita à
-        // mão. Nome usa toCharacterKey (mantém acento), realm usa toSlug.
-        const hit = byKey.get(`${toSlug(char.realmSlug)}/${toCharacterKey(char.nameKey)}`);
+        // `char.nameKey`/`char.realmKey` já são a chave da identidade — Regra 6.
+        const hit = byKey.get(indice(char));
 
         if (!hit) {
           charactersGone.push(char.id);

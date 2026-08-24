@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_np8kPabBfm
+createdAt: 2026-08-15T00:16:28.280548400
+updatedAt: 2026-08-22T16:17:26.775882200
+workspaceId: wk_8LmjjnEbam
+folderId: fl_JCWQzsozJU
+authentication: {}
+authenticationType: null
+body:
+  text: '{"catalog": ${[ fs.readFile(path=b64''QzpcVXNlcnNcYW5kcmVcd29ya3NwYWNlXHRpdGFuLXNpdGVcYXBwc1xhcGlcY2F0YWxvZ29cMTMxN190aGUtdGlkZWJvdW5kLWdyb3R0by5qc29u'', encoding=''utf8'') ]}}'
+bodyType: application/json
+description: 'Aponte a variável catalog_json_path (Local) para o .json de um catálogo já gerado (ex.: apps/api/catalogo/1307_the-voidspire.json ou a saída de ''Catalog generate''). Diferente do journalDump do Catalog generate, catalog aqui é um valor JSON, não uma string — fs.readFile() sozinho basta, sem pnpm dump:escape. Pra rodar sem conferência contra o Warcraft Logs (só se ele estiver fora do ar), edite o body e acrescente , "semConferencia": true antes de enviar.'
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Catalog load
+sortPriority: 3000.0
+url: ${[ base_url ]}/internal/ops/catalog-load
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

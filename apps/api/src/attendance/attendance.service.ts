@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { toCharacterKey, toRealmMatchKey } from '@titan/shared';
+import {
+  chaveDe,
+  CharactersRepository,
+  indice,
+  type PersonagemDaFonte,
+} from '../characters/characters.repository';
 import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
 import {
   WarcraftLogsService,
@@ -8,6 +14,14 @@ import {
 } from '../warcraftlogs/warcraftlogs.service';
 import { WowAuditService, type PlannedRaid } from '../wowaudit/wowaudit.service';
 import { AttendanceRepository, type AttendanceInput } from './attendance.repository';
+
+/** Uma pessoa da noite, antes de a identidade virar id. */
+interface PessoaDaNoite extends PersonagemDaFonte {
+  signup: string | null;
+  raided: boolean | null;
+  firstPull: number | null;
+  pulls: number | null;
+}
 
 export interface SyncResult {
   /** Noites de raid consideradas na janela. */
@@ -55,6 +69,7 @@ export class AttendanceService {
     private readonly wowaudit: WowAuditService,
     private readonly wcl: WarcraftLogsService,
     private readonly repo: AttendanceRepository,
+    private readonly characters: CharactersRepository,
   ) {
     this.guild = loadGuildConfig();
   }
@@ -220,18 +235,18 @@ export class AttendanceService {
      * Log sem pull não é prova de ausência, é ausência de prova.
      */
     const temEvidencia = bossPulls > 0;
-    const entradas = new Map<string, AttendanceInput>();
+    const pessoas = new Map<string, PessoaDaNoite>();
 
     for (const s of signups) {
       const chave = this.chave(s.name, s.realm);
       const participacao = doLog.get(chave);
 
-      entradas.set(chave, {
-        nameKey: s.nameKey,
-        realmKey: toRealmMatchKey(s.realm),
+      pessoas.set(chave, {
         name: s.name,
         // O realm do signup é a forma que a guilda reconhece ("Area 52"),
-        // melhor para exibir que a do WCL ("Area52").
+        // melhor para exibir que a do WCL ("Area52"). A identidade já existe
+        // no roster, então essa grafia não sobrescreve a da Blizzard —
+        // `resolver()` só preenche o que faltar.
         realm: s.realm,
         signup: s.status,
         // Sem evidência, `raided` é NULL — e null não é false. Noite sem pull
@@ -245,11 +260,9 @@ export class AttendanceService {
     // Quem apareceu no log sem ter feito signup. Existe de verdade — na noite
     // de 28/07 são três pessoas.
     for (const [chave, p] of doLog) {
-      if (entradas.has(chave)) continue;
+      if (pessoas.has(chave)) continue;
 
-      entradas.set(chave, {
-        nameKey: toCharacterKey(p.name),
-        realmKey: toRealmMatchKey(p.realm),
+      pessoas.set(chave, {
         name: p.name,
         realm: p.realm,
         signup: null,
@@ -258,6 +271,26 @@ export class AttendanceService {
         pulls: p.pulls,
       });
     }
+
+    // Uma chamada só para a noite inteira — resolver por linha seriam dezenas
+    // de idas ao banco por noite.
+    const identidades = await this.characters.resolverVarios([...pessoas.values()]);
+    const entradas: AttendanceInput[] = [...pessoas.values()].map((p) => {
+      const characterId = identidades.get(indice(chaveDe(p)));
+      if (!characterId) {
+        // Não deveria acontecer: toda pessoa de `pessoas` passou por
+        // `resolverVarios` antes desta chamada.
+        throw new Error(`identidade não resolvida para ${p.name}-${p.realm}`);
+      }
+
+      return {
+        characterId,
+        signup: p.signup,
+        raided: p.raided,
+        firstPull: p.firstPull,
+        pulls: p.pulls,
+      };
+    });
 
     const entries = await this.repo.saveNight(
       {
@@ -274,7 +307,7 @@ export class AttendanceService {
         // devolve signups a partir de 2026.
         hasSignups: signups.length > 0,
       },
-      [...entradas.values()],
+      entradas,
     );
 
     return { entries, hasEvidence: temEvidencia };

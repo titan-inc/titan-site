@@ -4,9 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 /** Personagem, como o job precisa dele para conferir contra o roster. */
 export interface CharacterToRevalidate {
   id: string;
-  /** Identidade via toCharacterKey() — COM acento. Ver Regra 6. */
+  /** As chaves da Regra 6, agora vindas da identidade. */
   nameKey: string;
-  realmSlug: string;
+  realmKey: string;
   rank: number;
 }
 
@@ -25,17 +25,31 @@ export class MembershipRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Todo mundo que hoje tem personagem no roster, com os personagens junto. */
-  findMembers(): Promise<MemberToRevalidate[]> {
-    return this.prisma.user.findMany({
+  async findMembers(): Promise<MemberToRevalidate[]> {
+    const membros = await this.prisma.user.findMany({
       where: { membership: 'member' },
       select: {
         id: true,
         guildRank: true,
         characters: {
-          select: { id: true, nameKey: true, realmSlug: true, rank: true },
+          select: {
+            id: true,
+            rank: true,
+            character: { select: { nameKey: true, realmKey: true } },
+          },
         },
       },
     });
+
+    return membros.map((m) => ({
+      ...m,
+      characters: m.characters.map((c) => ({
+        id: c.id,
+        nameKey: c.character.nameKey,
+        realmKey: c.character.realmKey,
+        rank: c.rank,
+      })),
+    }));
   }
 
   /**

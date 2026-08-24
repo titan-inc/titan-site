@@ -1,20 +1,54 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   catalogFileSchema,
   parseJournalDump,
+  rcExportSchema,
+  wowDataFileSchema,
   type CatalogFile,
   type RaidProgressReport,
+  type RcExport,
+  type WowDataFile,
 } from '@titan/shared';
 import { z } from 'zod';
 import { AttendanceService, type SyncResult } from '../attendance/attendance.service';
 import { BlizzardService } from '../blizzard/blizzard.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { LootCatalogGeneratorService } from '../loot-catalog/loot-catalog-generator.service';
+import { LootCatalogPasteGeneratorService } from '../loot-catalog/loot-catalog-paste-generator.service';
 import { LootCatalogService } from '../loot-catalog/loot-catalog.service';
+import { RcImportService, type RcImportResult } from '../loot-lines/rc-import.service';
+import {
+  LootSessionDummiesService,
+  type ResultadoRodarDummies,
+} from '../loot-sessions/loot-session-dummies.service';
+import { LootSessionsService } from '../loot-sessions/loot-sessions.service';
 import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { SnapshotsService, type SnapshotResult } from '../snapshots/snapshots.service';
+import {
+  WowDataLoaderService,
+  type WowDataActivateResult,
+  type WowDataLoadResult,
+} from '../wow-data/wow-data-loader.service';
+import {
+  WowDataReportService,
+  type RelatorioDeDesconhecidos,
+} from '../wow-data/wow-data-report.service';
 import { OpsTokenGuard } from './ops-token.guard';
-import { OpsService, type OauthCheckResult, type RosterProbeResult } from './ops.service';
+import {
+  OpsService,
+  type FixCharacterIdsResult,
+  type OauthCheckResult,
+  type RosterProbeResult,
+} from './ops.service';
 
 const catalogGenerateBodySchema = z.object({
   journalInstanceId: z.number().int().positive(),
@@ -47,6 +81,16 @@ function parseJanela(dias?: string, all?: string): Date | undefined {
 }
 
 /**
+ * `undefined` quando ausente ou não numérico — o clamp e o default vivem no
+ * `LootSessionDummiesService`, não aqui. Parâmetro de conveniência de
+ * ferramenta de dev, então cai no default em vez de recusar (diferente do
+ * `GUILD_OFFICER_RANK_MAX`, que é config de boot).
+ */
+function parseQuantidade(raw?: string): number | undefined {
+  return raw && /^\d+$/.test(raw) ? Number(raw) : undefined;
+}
+
+/**
  * Operações administrativas contra a app JÁ RODANDO — nunca sobe instância
  * própria.
  *
@@ -72,7 +116,13 @@ export class OpsController {
     private readonly catalogGenerator: LootCatalogGeneratorService,
     private readonly catalogService: LootCatalogService,
     private readonly raidProgress: RaidProgressService,
+    private readonly rcImport: RcImportService,
+    private readonly lootSessions: LootSessionsService,
+    private readonly pasteGenerator: LootCatalogPasteGeneratorService,
+    private readonly dummies: LootSessionDummiesService,
     private readonly ops: OpsService,
+    private readonly wowDataReport: WowDataReportService,
+    private readonly wowDataLoader: WowDataLoaderService,
   ) {}
 
   /** Era `pnpm --filter api probe:snapshot [--backfill]`. */
@@ -110,6 +160,21 @@ export class OpsController {
   async getRaidProgress(@Query('season') season?: string): Promise<RaidProgressReport | null> {
     const id = season && /^\d+$/.test(season) ? Number(season) : undefined;
     return this.raidProgress.getReport(id);
+  }
+
+  /**
+   * Todo `itemId` cadastrado no catálogo — TIT-82/TIT-136. Sem script
+   * antigo equivalente.
+   *
+   * Serve para filtrar db2 gigantes (`ItemSparse.db2`, ~59MB) pelos itens que
+   * interessam antes de carregar, no mesmo espírito do que a colagem do
+   * `/tilc journal` já resolve para o catálogo. Mesmo formato de resposta do
+   * `catalog-instances`.
+   */
+  @Get('catalog-item-ids')
+  async catalogItemIds(): Promise<{ total: number; itemIds: number[] }> {
+    const itemIds = await this.catalogService.listarItemIdsCatalogados();
+    return { total: itemIds.length, itemIds };
   }
 
   /** Era `pnpm --filter api catalog:generate --lista [filtro]`. */
@@ -155,6 +220,23 @@ export class OpsController {
     });
   }
 
+  /**
+   * Importa o export do RCLootCouncil — TIT-53.
+   *
+   * O arquivo vai no corpo, igual ao `catalog-load`, porque o container não tem
+   * o arquivo e é efêmero. São ~304 KB, acima do teto público de 16kb: quem
+   * libera é o `json({ limit: '20mb' })` do prefixo de ops no `main.ts`.
+   *
+   * Idempotente. Rodar de novo atualiza as mesmas linhas e devolve os mesmos
+   * números.
+   */
+  @Post('loot-import-rc')
+  async lootImportRc(
+    @Body(new ZodValidationPipe(rcExportSchema)) arquivo: RcExport,
+  ): Promise<RcImportResult> {
+    return this.rcImport.importar(arquivo);
+  }
+
   /** Era `node scripts/roster-probe.js "<Guilda>" <realm> [personagem...]`. */
   @Get('roster-probe')
   async rosterProbe(
@@ -172,5 +254,118 @@ export class OpsController {
   @Get('oauth-check')
   async oauthCheck(@Query('characters') characters?: string): Promise<OauthCheckResult> {
     return this.ops.checkOauth(parseCharacters(characters));
+  }
+
+  /**
+   * "O que ainda não conhecemos" — TIT-82, agora respondendo pelo build ativo
+   * (TIT-137) ou por qualquer build carregado (TIT-140).
+   *
+   * `?build=` deixa conferir um build ANTES de ativá-lo — valida o PTR sem
+   * ele estar no ar. Omitido, cai no build ativo, mesmo comportamento de
+   * sempre.
+   *
+   * SEM BUILD (nem `?build=`, nem ativo) responde "tudo desconhecido", que é
+   * a verdade — e é exatamente o que se quer ver antes da primeira carga.
+   *
+   * A carga que populava a tabela (`POST bonus-load`) FOI REMOVIDA junto com o
+   * `kind`: ela subia um dicionário curado à mão, e o modelo que ela preenchia
+   * deixou de existir. Quem repõe é a TIT-139 (gerador) mais a TIT-140
+   * (carga e ativação, logo abaixo).
+   */
+  @Get('bonus-unknown-report')
+  async bonusUnknownReport(@Query('build') build?: string): Promise<RelatorioDeDesconhecidos> {
+    return this.wowDataReport.gerar(build);
+  }
+
+  /**
+   * Sobe um build inteiro do gerador (TIT-139) — arquivo no corpo, mesmo
+   * padrão do `catalog-load`/`loot-import-rc` (o container não tem o
+   * arquivo, e é efêmero).
+   *
+   * **NUNCA ativa.** Carregar não muda o que a guilda vê — é o que permite
+   * preparar o PTR com calma antes da virada de patch. Recarregar o MESMO
+   * build regrava as linhas dele do zero; se for o build ativo, a resposta
+   * grita isso no campo `aviso`.
+   */
+  @Post('wow-data-load')
+  async wowDataLoad(
+    @Body(new ZodValidationPipe(wowDataFileSchema)) arquivo: WowDataFile,
+  ): Promise<WowDataLoadResult> {
+    return this.wowDataLoader.carregar(arquivo);
+  }
+
+  /**
+   * Troca qual build a guilda enxerga — TIT-140. Rota PRÓPRIA, separada da
+   * carga: carregar é inofensivo, ativar é o que estraga uma noite de raid se
+   * sair errado.
+   *
+   * Voltar atrás é a MESMA chamada, com o build anterior — instantâneo, sem
+   * regerar nada.
+   */
+  @Post('wow-data-activate')
+  async wowDataActivate(@Query('build') build?: string): Promise<WowDataActivateResult> {
+    if (!build) {
+      throw new BadRequestException('build é obrigatório');
+    }
+    return this.wowDataLoader.ativar(build);
+  }
+
+  /**
+   * Corrige os ids de identidade que o backfill da TIT-132 (16/08) criou em
+   * uuid — `cuid()` é `@default` avaliado em JS, não existe em SQL puro.
+   *
+   * Idempotente: rodar de novo não acha mais nenhum id fora do padrão e
+   * devolve `corrigidos: 0`. Sem corpo — nada a validar, a operação não
+   * recebe parâmetro nenhum.
+   */
+  @Post('fix-character-ids')
+  async fixCharacterIds(): Promise<FixCharacterIdsResult> {
+    return this.ops.fixCharacterIds();
+  }
+
+  /**
+   * Regera as linhas de histórico de uma sessão de loot council já encerrada
+   * — TIT-69, Regra 8.
+   *
+   * Rede de segurança: o encerramento já grava status e histórico na mesma
+   * transação, mas isto cobre o caso de uma sessão ter ficado encerrada sem
+   * linha nenhuma (dado de antes desta atomicidade, ou intervenção manual no
+   * banco). Idempotente — a chave é `LootSessionItem.id`, então rodar de novo
+   * atualiza as mesmas linhas em vez de duplicar.
+   *
+   * Sem corpo: o único parâmetro é o id da sessão, no caminho.
+   */
+  @Post('loot-sessions/:id/regerar-historico')
+  async regerarHistoricoDaSessao(@Param('id') id: string): Promise<{ linhas: number }> {
+    return { linhas: await this.lootSessions.regerarHistorico(id) };
+  }
+
+  /**
+   * Ferramenta de teste do realtime — TIT-68. Sorteia um boss REAL do
+   * catálogo (com ao menos 3 drops cadastrados numa dificuldade) e devolve a
+   * colagem pronta para colar em "Iniciar sessão" — não cria a sessão
+   * sozinha, só poupa montar uma colagem válida à mão.
+   */
+  @Get('loot-sessions/gerar-colagem')
+  async gerarColagemDeSessao(): Promise<{ paste: string }> {
+    return { paste: await this.pasteGenerator.gerarColagemAleatoria() };
+  }
+
+  /**
+   * Ferramenta de teste do realtime — TIT-68. Sobe N jogadores 100%
+   * sintéticos (`Dummy1..DummyN`, nunca personagem real) que entram na
+   * sessão e, a cada ~2s, respondem/comentam/editam em `aberta`, ou reagem a
+   * um `reabrirResposta` do loot master em `deliberando`. Para sozinha
+   * quando a sessão encerra, ou depois de 10min (kill switch).
+   *
+   * Fire-and-forget: devolve na hora, o loop roda em segundo plano.
+   * `?quantidade=` é opcional (padrão 6, clamp 2–10).
+   */
+  @Post('loot-sessions/:id/rodar-dummies')
+  async rodarDummiesNaSessao(
+    @Param('id') id: string,
+    @Query('quantidade') quantidade?: string,
+  ): Promise<ResultadoRodarDummies> {
+    return this.dummies.rodar(id, parseQuantidade(quantidade));
   }
 }

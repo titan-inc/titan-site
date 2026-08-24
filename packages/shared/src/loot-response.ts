@@ -31,9 +31,10 @@ export const LOOT_RESPONSES = {
   /**
    * Declarou não querer.
    *
-   * Acumula três situações que o RCLootCouncil separava — ausência de resposta,
-   * pass ativo no botão, e "not eligible". No nosso desenho o jogador **sempre**
-   * responde a todo loot, então `pass` é escolha, não lacuna.
+   * No import, acumula três situações que o RCLootCouncil separava — ausência de
+   * resposta, pass ativo no botão, e "not eligible". Na sessão ao vivo `pass` é
+   * **sempre escolha**: a pessoa olhou a peça e abriu mão. Silêncio tem linha
+   * própria, ver `NOOP`.
    *
    * E aparece como vencedor: num drop que ninguém quis, quem votou `pass` levou
    * por ter tirado o maior roll. Registro real de 28/04/2026 — não é dado sujo, e
@@ -41,13 +42,43 @@ export const LOOT_RESPONSES = {
    */
   PASS: 'pass',
   /**
+   * Estava na sessão e não se manifestou sobre a peça.
+   *
+   * **Não é `pass`.** Uma é escolha, a outra é ausência de escolha, e colapsar as
+   * duas faria o histórico afirmar uma declaração que não houve — o erro que a
+   * Regra 7 evita quando manda gravar o fato observável e nunca a inferência.
+   *
+   * Derivada pelo sistema quando a fase de roll fecha, nunca clicada: é a única
+   * do vocabulário com `kind = sistema`, e por isso não entra na lista de botões
+   * do jogador.
+   */
+  NOOP: 'noop',
+  /**
    * Foi para o banco da guilda, não para uma pessoa.
    *
-   * Única opção de **loot master** entre as semeadas: é decisão sobre o destino
-   * do item, não declaração de interesse. O próprio RCLootCouncil a marca com
-   * `isAwardReason=true`, e era o único rótulo assim nos 445 registros.
+   * Opção de **loot master**: é decisão sobre o destino do item, não declaração
+   * de interesse. O próprio RCLootCouncil a marca com `isAwardReason=true`, e
+   * era o único rótulo assim nos 445 registros do export.
+   *
+   * O vencedor continua sendo um personagem — alguém guardou a peça —, e quem
+   * marca o destino é esta resposta. Sem caso especial.
    */
   BANKING: 'banking',
+  /**
+   * Virou pó. Decisão do loot master, como `banking`.
+   */
+  DISENCHANT: 'disenchant',
+  /**
+   * Ninguém pediu, e o loot master escolheu alguém para ficar com ela.
+   *
+   * É a saída da peça que ninguém quis. Sem ela a sessão trava: desde a TIT-67
+   * entrega sem voto não sai sozinha, e peça sem dono segura o encerramento.
+   *
+   * **Não é `noop` nem `pass`.** Aquelas duas são sobre o que o jogador fez —
+   * abriu mão, ou não disse nada. Esta é sobre o que o conselho fez diante de
+   * uma peça que ninguém quis.
+   */
+  NO_INTEREST: 'no_interest',
 } as const;
 
 /**
@@ -59,6 +90,30 @@ export const LOOT_RESPONSES = {
  */
 export const lootResponseSlugSchema = z.string().min(1);
 export type LootResponseSlug = z.infer<typeof lootResponseSlugSchema>;
+
+/**
+ * O que uma resposta É, ao contrário do que ela diz — fechado, diferente do
+ * slug.
+ *
+ * Espelha o enum `LootResponseKind` do Prisma, mesmo padrão de `RAID_DIFFICULTIES`
+ * e `WowSpec`: o banco valida o que a tabela de opções grava, e o typecheck aqui
+ * pega divergência de digitação entre os dois lados.
+ *
+ * Diferente do slug, que a liderança estende livremente (TIT-64), o conjunto de
+ * `kind` é fixo — é o vocabulário que decide se uma entrega conta como recebida
+ * por alguém (TIT-130).
+ */
+export const LOOT_RESPONSE_KINDS = {
+  /** O jogador declara o quanto quer a peça. */
+  PLAYER: 'player',
+  /** Decisão do loot master sobre o destino do item, não interesse de ninguém. */
+  LOOT_MASTER: 'loot_master',
+  /** Derivada pelo sistema, nunca clicada por ninguém — hoje só `noop`. */
+  SISTEMA: 'sistema',
+} as const;
+
+export const lootResponseKindSchema = z.nativeEnum(LOOT_RESPONSE_KINDS);
+export type LootResponseKind = z.infer<typeof lootResponseKindSchema>;
 
 /** Um dos slugs semeados. Só para o tradutor e o seed — ver `LOOT_RESPONSES`. */
 export type SeededLootResponse = (typeof LOOT_RESPONSES)[keyof typeof LOOT_RESPONSES];

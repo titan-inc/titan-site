@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_catalogItemIds1
+createdAt: 2026-08-16T22:30:00
+updatedAt: 2026-08-22T13:41:07.573638200
+workspaceId: wk_8LmjjnEbam
+folderId: fl_JCWQzsozJU
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'TIT-82/TIT-136. Todo itemId já cadastrado no dicionário (WowItem) — serve pra filtrar db2 gigantes (ex.: ItemSparse.db2, ~59MB) pelos itens que interessam antes de carregar, em vez de trazer o arquivo inteiro.'
+headers:
+- enabled: true
+  name: X-Ops-Token
+  value: ${[ ops_token ]}
+  id: null
+method: GET
+name: Catalog item ids
+sortPriority: 1000.0
+url: ${[ base_url ]}/internal/ops/catalog-item-ids
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

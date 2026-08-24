@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_LootSessEnt1
+createdAt: 2026-08-15T18:00:00.000000
+updatedAt: 2026-08-15T18:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_LootSessions1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"characterName": "", "characterRealm": ""}'
+bodyType: application/json
+description: 'MemberGuard. Ato explícito, com um personagem da conta que esteja no roster (TIT-126). É daqui que a resposta herda o personagem — sem entrar, não se responde. Entrar de novo com outro char troca o personagem, mas só antes de ter respondido.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Entrar na sessão'
+sortPriority: 2000
+url: ${[ base_url ]}/internal/loot-sessions/:id/entrar
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
