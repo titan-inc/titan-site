@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_MplusVagasList1
+createdAt: 2026-08-24T11:00:00.000000
+updatedAt: 2026-08-24T11:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_Mplus1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'RosterGuard, e não MemberGuard: M+ não é raid, então o corte de GUILD_RANK_ACCESS_MAX não filtra nada aqui — basta ter personagem no roster. As vagas abertas, que é o que /interno/mplus abre.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Listar vagas abertas'
+sortPriority: 500
+url: ${[ base_url ]}/internal/mplus/vagas
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
