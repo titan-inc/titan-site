@@ -4,9 +4,14 @@
 # serviços, e nenhuma imagem é buildada aqui — web e api vêm prontas do
 # GitHub Container Registry (ver milestone 4, TIT-100/101).
 #
-# Migrations NÃO rodam automaticamente no boot da API (ver apps/api/Dockerfile).
-# Depois de um `docker compose -f docker-compose.prod.yml up -d`, rodar:
-#   docker compose -f docker-compose.prod.yml exec api ./node_modules/.bin/prisma migrate deploy
+# Migrations NÃO rodam no boot da API (ver apps/api/Dockerfile) — mas rodam no
+# deploy: o deploy.yml as aplica entre o `pull` e o `up -d` (TIT-146).
+#
+# À mão, num rollback ou conserto, o comando é:
+#   docker compose -f docker-compose.prod.yml run --rm api ./node_modules/.bin/prisma migrate deploy
+#
+# `run --rm`, e não `exec`: usa a imagem puxada, não o container no ar. Com os
+# dois iguais dá no mesmo; no meio de um deploy, não.
 
 services:
   postgres:
