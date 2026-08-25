@@ -121,4 +121,12 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 # Funciona nesta imagem porque `prisma` e `dotenv` sao dependencias de PRODUCAO
 # da API justamente para isto. Chamar pelo caminho do binario, nunca por
 # `pnpm exec` — fora de um workspace o pnpm tenta reinstalar e falha.
+#
+# Quem chama isso e o deploy.yml, entre o `pull` e o `up -d` (TIT-146). Ficar
+# fora do boot esta certo; o que estava errado era ficar fora de TUDO — por
+# meses o comando existiu so como este comentario, e producao rodou codigo
+# novo contra schema velho ate uma tela quebrar.
+#
+# O comando continua documentado aqui porque rollback e conserto a mao ainda
+# precisam dele.
 CMD ["node", "dist/main"]
