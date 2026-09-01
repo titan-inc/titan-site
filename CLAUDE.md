@@ -269,6 +269,29 @@ O arquivo é `apps/web/proxy.ts`. Chamava-se `middleware.ts` até o Next 16 reno
 
 Ao criar endpoint interno, o teste não é "a UI esconde?" — é "chamado sem cookie devolve 401?".
 
+### A sessão dura uma semana, e quem decide isso é o banco (01/09/2026)
+
+Dois relógios, de propósito — **igualá-los quebra o login**:
+
+|                     | vale                               | quem é              |
+| ------------------- | ---------------------------------- | ------------------- |
+| `Session.expiresAt` | 7 dias, contados do **último uso** | a autoridade        |
+| `maxAge` do cookie  | 30 dias                            | só o portador do id |
+
+O `expiresAt` desliza em `resolveSession()` (com folga de 1h, para não virar um `UPDATE` por request). O cookie precisa durar mais que ele porque **o deslizamento não tem como chegar ao browser**: quase toda leitura de sessão sai de um Server Component do Next, cujo `Set-Cookie` de resposta da API não é repassado adiante. Cookie órfão é inofensivo — não acha sessão, e as páginas de `/interno` mandam para `/?erro=sessao`.
+
+Era 12h fixas, justificado como "revalidar membership com frequência". Deixou de ser verdade com a TIT-25: o `MembershipService` revalida a cada 6h com a credencial da aplicação e **apaga as sessões** de quem perdeu acesso. O TTL curto não comprava revogação; comprava um login novo em quase toda visita — e cada login exercitava o fluxo mais frágil do código. Ver TIT-148.
+
+Consequência aceita: personagem **novo** só é descoberto no login, porque o roster da Blizzard não diz de qual conta cada personagem é. Com 12h isso se resolvia sozinho todo dia; agora leva uma semana. Não vale guardar refresh token de ninguém para encurtar isso.
+
+### O login é redirect de página inteira, nunca popup (01/09/2026)
+
+Foi popup até a TIT-148, com `window.open`, `BroadcastChannel`, polling e uma carência para adivinhar se a janela fechou por sucesso ou por desistência. Cinco peças coordenando o fim de um login, cada uma capaz de fazer um login **bem-sucedido** aparecer como erro de cancelamento — e foi o que aconteceu por semanas.
+
+Redirect não tem estado nenhum entre janelas: a resposta do callback já traz o cookie e já aponta para o destino. O botão é um `<a>`, então também funciona sem JavaScript.
+
+O destino viaja em `?de=`, validado por `destinoSeguro()` **nas duas pontas** do OAuth: só `/interno` e abaixo. Redirect controlado por querystring sem validação é open redirect, e um phishing que começa no nosso domínio é o que faz alguém digitar a senha da Battle.net sem desconfiar.
+
 ## Regra 6 — Chamadas a APIs externas
 
 Blizzard, Raider.IO e WarcraftLogs são chamadas **só pelo Nest**, nunca pelo browser.

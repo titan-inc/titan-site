@@ -11,43 +11,25 @@ import {
 import type { SessionUser } from '@titan/shared';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
+import { DESTINO_PADRAO, destinoSeguro } from './destino-login';
 
 export const SESSION_COOKIE = 'titan_session';
 const STATE_COOKIE = 'titan_oauth_state';
-const MODE_COOKIE = 'titan_oauth_mode';
-
-function destinoLogin(
-  webUrl: string,
-  popup: boolean,
-  resultado: 'ok' | 'cancelado' | 'state' | 'falha',
-): string {
-  // Sem popup, a falha volta para a home com o motivo na querystring: a home é
-  // o único lugar de login desde que `/entrar` saiu, e ela abre o mesmo modal
-  // do fluxo de popup. O sucesso continua indo direto para a área interna.
-  if (!popup) return resultado === 'ok' ? `${webUrl}/interno` : `${webUrl}/?erro=${resultado}`;
-  return resultado === 'ok'
-    ? `${webUrl}/oauth/callback?status=ok`
-    : `${webUrl}/oauth/callback?status=erro&motivo=${resultado}`;
-}
+const DESTINO_COOKIE = 'titan_oauth_destino';
 
 /**
  * Quanto tempo o login tem para terminar, contado do clique no botão.
  *
  * Seis horas, e não dez minutos como até 24/08/2026 (TIT-144). Dez minutos não
- * cobria senha errada, 2FA no celular ou recuperação de senha — e quando os
- * dois cookies venciam juntos, o callback caía no ramo sem popup e carregava a
- * home dentro da janelinha.
+ * cobria senha errada, 2FA no celular ou recuperação de senha.
  *
  * **Encurtar isto não era o que segurava o CSRF.** O `state` é `httpOnly`:
  * quem ataca não lê o valor, então não consegue casar com o `state` da
  * querystring. O que protege é a comparação, não o relógio.
- *
- * O preço é uma janela maior para um cookie de modo esquecido, e é por isso
- * que `start()` agora limpa o de modo quando o login não é por popup.
  */
 const OAUTH_COOKIE_TTL_MS = 6 * 60 * 60 * 1000;
 
-/** Flags comuns aos dois cookies de OAuth. O TTL vai à parte, por clareza. */
+/** Flags comuns aos cookies de OAuth. O TTL vai à parte, por clareza. */
 const OAUTH_COOKIE = {
   httpOnly: true,
   sameSite: 'lax',
@@ -70,33 +52,47 @@ export class AuthController {
   /**
    * Início do login: redireciona para o consent da Blizzard.
    *
+   * Navegação de página inteira, sempre. O popup saiu na TIT-148 — ele exigia
+   * `window.open`, `BroadcastChannel`, polling e uma carência para adivinhar se
+   * a janela fechou por sucesso ou por desistência, e cada peça dessas era um
+   * jeito de um login bem-sucedido não chegar na tela.
+   *
    * `?trocar=1` força a Blizzard a pedir credenciais de novo. Necessário porque
    * nosso logout não encerra a sessão da Blizzard — sem isso, quem tem duas
    * contas Battle.net não consegue trocar: o authorize devolve a mesma conta
    * na hora, sem mostrar tela nenhuma.
+   *
+   * `?de=/interno/...` é para onde voltar depois. Guardado em cookie, e não
+   * carregado no `state`, porque o `state` é comparado byte a byte no retorno e
+   * misturar destino nele faria a validação de CSRF depender de formatação.
    */
   @Get('battlenet')
-  start(
-    @Res() res: Response,
-    @Query('trocar') trocar?: string,
-    @Query('mode') mode?: string,
-  ): void {
+  start(@Res() res: Response, @Query('trocar') trocar?: string, @Query('de') de?: string): void {
     const state = this.auth.createOpaqueToken();
     const redirectUri = requireEnv('BLIZZARD_REDIRECT_URI');
     const forceLogin = trocar === '1';
+    const destino = destinoSeguro(de);
 
     // O `state` protege o callback contra CSRF: guardamos em cookie e
     // comparamos no retorno. Sem isso, um terceiro poderia forjar um callback.
     res.cookie(STATE_COOKIE, state, { ...OAUTH_COOKIE, maxAge: OAUTH_COOKIE_TTL_MS });
 
-    // O cookie de modo é gravado OU apagado, nunca deixado como estava. Só
-    // gravar deixaria um `popup` velho decidir o destino de um login posterior
-    // feito por página inteira — ver `OAUTH_COOKIE_TTL_MS`.
-    if (mode === 'popup') {
-      res.cookie(MODE_COOKIE, 'popup', { ...OAUTH_COOKIE, maxAge: OAUTH_COOKIE_TTL_MS });
+    // Gravado OU apagado, nunca deixado como estava: um destino esquecido de
+    // uma tentativa abandonada mandaria o login seguinte para a página errada,
+    // e com janela de 6h isso é provável, não teórico.
+    if (destino) {
+      res.cookie(DESTINO_COOKIE, destino, { ...OAUTH_COOKIE, maxAge: OAUTH_COOKIE_TTL_MS });
     } else {
-      res.clearCookie(MODE_COOKIE, { path: '/' });
+      res.clearCookie(DESTINO_COOKIE, { path: '/' });
     }
+
+    // Sem isto, quem começa o login e não volta é invisível: só o sucesso
+    // aparecia no log, então "não consigo entrar" não tinha onde ser conferido.
+    // Nada de identificável — a pessoa ainda não se identificou.
+    this.logger.log(
+      `Login iniciado: destino=${destino ?? DESTINO_PADRAO}` +
+        `${forceLogin ? ' trocar=1' : ''}${de && !destino ? ` (destino "${de}" recusado)` : ''}`,
+    );
 
     res.redirect(this.auth.buildAuthorizeUrl(state, redirectUri, forceLogin));
   }
@@ -111,22 +107,30 @@ export class AuthController {
     @Res() res: Response,
   ): Promise<void> {
     const webUrl = requireEnv('WEB_URL');
-    const expectedState = (req.cookies as Record<string, string> | undefined)?.[STATE_COOKIE];
-    const popup = (req.cookies as Record<string, string> | undefined)?.[MODE_COOKIE] === 'popup';
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const expectedState = cookies?.[STATE_COOKIE];
+
+    // Revalidado na volta, não só na ida: o cookie pode ter sido adulterado
+    // entre as duas pontas, e confiar nele por já ter passado uma vez é
+    // exatamente o erro que valida entrada uma vez só.
+    const destino = destinoSeguro(cookies?.[DESTINO_COOKIE]) ?? DESTINO_PADRAO;
 
     res.clearCookie(STATE_COOKIE, { path: '/' });
-    res.clearCookie(MODE_COOKIE, { path: '/' });
+    res.clearCookie(DESTINO_COOKIE, { path: '/' });
 
     // A pessoa pode simplesmente cancelar no consent. Não é erro do sistema.
     if (error) {
       this.logger.log(`Login cancelado ou recusado pela Blizzard: ${error}`);
-      res.redirect(destinoLogin(webUrl, popup, 'cancelado'));
+      res.redirect(`${webUrl}/?erro=cancelado`);
       return;
     }
 
     if (!code || !state || !expectedState || state !== expectedState) {
-      this.logger.warn('Callback com state inválido ou ausente');
-      res.redirect(destinoLogin(webUrl, popup, 'state'));
+      this.logger.warn(
+        `Callback com state inválido ou ausente (code=${code ? 'sim' : 'não'}, ` +
+          `state=${state ? 'sim' : 'não'}, cookie=${expectedState ? 'sim' : 'não'})`,
+      );
+      res.redirect(`${webUrl}/?erro=state`);
       return;
     }
 
@@ -140,19 +144,19 @@ export class AuthController {
         httpOnly: true,
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
-        maxAge: this.auth.sessionTtlMs,
+        maxAge: this.auth.sessionCookieMaxAgeMs,
         path: '/',
       });
 
-      // O destino é /interno para membro e não-membro: a própria página
-      // explica o estado. Mandar não-membro para um 403 seco vira dúvida no
-      // Discord — ver a discussão de três estados na TIT-20.
-      res.redirect(destinoLogin(webUrl, popup, 'ok'));
+      // O destino é interno para membro e não-membro: a própria página explica
+      // o estado. Mandar não-membro para um 403 seco vira dúvida no Discord —
+      // ver a discussão de três estados na TIT-20.
+      res.redirect(`${webUrl}${destino}`);
     } catch (err) {
       this.logger.error(
         `Falha ao concluir login: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
-      res.redirect(destinoLogin(webUrl, popup, 'falha'));
+      res.redirect(`${webUrl}/?erro=falha`);
     }
   }
 
