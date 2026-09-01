@@ -7,13 +7,6 @@ titaninc.com.br, www.titaninc.com.br {
 		respond 404
 	}
 
-	# Route handler do Next usado pelo browser para confirmar que o callback
-	# OAuth criou a sessão. Precisa vir antes do catch-all da API; handle_path
-	# removeria /api e mandaria /sessao para o Nest, que responde 404.
-	handle /api/sessao {
-		reverse_proxy web:3000
-	}
-
 	handle_path /api/* {
 		reverse_proxy api:3001
 	}

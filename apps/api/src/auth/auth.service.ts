@@ -14,8 +14,45 @@ import {
   type UserWithCharacters,
 } from './auth.repository';
 
-/** Duração da sessão. Curta o suficiente para revalidar membership com frequência. */
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+/**
+ * Duração da sessão, contada do último uso — ela desliza, não é fixa.
+ *
+ * Uma semana, e não 12h como até 01/09/2026 (TIT-148). O comentário antigo
+ * justificava o TTL curto com "revalidar membership com frequência", e isso
+ * deixou de ser verdade quando a TIT-25 entrou: o `MembershipService` roda a
+ * cada 6h com a credencial da aplicação, revoga quem saiu da guilda, atualiza
+ * rank e apaga as sessões de quem perdeu acesso. A revalidação nunca dependeu
+ * de alguém relogar.
+ *
+ * O que o TTL curto de fato causava era um login novo em quase toda visita —
+ * nos logs de produção, as mesmas contas relogando de 12 em 12 horas.
+ */
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Vida do cookie no browser. Maior que a da sessão **de propósito.**
+ *
+ * O `Session.expiresAt` do banco é quem decide, sempre; o cookie é só o
+ * portador do id. Precisa ser assim porque quem desliza a validade é o
+ * servidor, e o `Set-Cookie` dessa renovação não teria como chegar ao browser:
+ * quase toda leitura de sessão sai de um Server Component do Next, cujos
+ * headers de resposta da API não são repassados adiante.
+ *
+ * **Igualar os dois quebra o deslizamento** — a sessão continuaria viva no
+ * banco e o browser teria jogado o cookie fora. Cookie órfão é inofensivo: o
+ * `resolveSession` não acha a sessão e as páginas de `/interno` mandam para
+ * `/?erro=sessao`.
+ */
+const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Quanto a validade precisa ter andado para valer um `UPDATE`.
+ *
+ * Sem esta folga, toda página de `/interno` viraria uma escrita no banco, e uma
+ * navegação da área interna dispara várias. Uma hora de imprecisão numa janela
+ * de sete dias não muda nada para ninguém.
+ */
+const RENOVA_APOS_MS = 60 * 60 * 1000;
 
 /**
  * O personagem que representa a conta na tela: o de rank mais alto.
@@ -148,16 +185,49 @@ export class AuthService {
     return { sessionId, user };
   }
 
-  /** Resolve a sessão do cookie. Null = sem sessão válida. */
+  /**
+   * Resolve a sessão do cookie, e a renova de passagem. Null = sem sessão.
+   *
+   * A renovação é o que faz a semana contar do último uso em vez do login:
+   * quem entra no site pelo menos uma vez por semana não vê tela de login de
+   * novo. Quem some por mais tempo entra outra vez, e é o que se quer — é a
+   * revalidação de graça que sobra quando a sessão é longa.
+   *
+   * Renovar aqui, e não num job, porque este é o único ponto por onde todo uso
+   * de sessão passa: `/auth/me`, os guards de `/internal/*`, tudo.
+   */
   async resolveSession(sessionId: string | undefined): Promise<UserWithCharacters | null> {
     if (!sessionId) return null;
 
     const session = await this.repo.findSessionWithUser(sessionId);
-    if (!session) return null;
 
-    if (session.expiresAt.getTime() < Date.now()) {
+    // Cookie apresentado que não resolve. É o que a pessoa vive como "o site me
+    // deslogou sozinho", e até a TIT-148 não deixava rastro nenhum. Só o id
+    // interno; o valor do cookie é credencial e não vai para log.
+    if (!session) {
+      this.logger.log('Cookie de sessão apresentado sem sessão correspondente');
+      return null;
+    }
+
+    const agora = Date.now();
+
+    if (session.expiresAt.getTime() < agora) {
+      this.logger.log(
+        `Sessão expirada user=${session.userId} ` +
+          `(venceu há ${Math.round((agora - session.expiresAt.getTime()) / 60000)}min)`,
+      );
       await this.repo.deleteSession(sessionId);
       return null;
+    }
+
+    const novaValidade = new Date(agora + SESSION_TTL_MS);
+    if (novaValidade.getTime() - session.expiresAt.getTime() >= RENOVA_APOS_MS) {
+      const restava = session.expiresAt.getTime() - agora;
+      await this.repo.touchSession(sessionId, novaValidade);
+      this.logger.log(
+        `Sessão renovada user=${session.userId} ` +
+          `(restavam ${Math.round(restava / 3600000)}h de ${SESSION_TTL_MS / 3600000}h)`,
+      );
     }
 
     return session.user;
@@ -215,7 +285,12 @@ export class AuthService {
     };
   }
 
-  get sessionTtlMs(): number {
-    return SESSION_TTL_MS;
+  /**
+   * O que o controller põe no `maxAge` do cookie — NÃO é a duração da sessão.
+   *
+   * Ver `SESSION_COOKIE_MAX_AGE_MS`: quem decide validade é o banco.
+   */
+  get sessionCookieMaxAgeMs(): number {
+    return SESSION_COOKIE_MAX_AGE_MS;
   }
 }

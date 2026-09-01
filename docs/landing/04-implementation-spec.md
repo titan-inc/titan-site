@@ -1,6 +1,6 @@
 # Landing pública — especificação de implementação
 
-Versão 3.1 — 09/08/2026. `apps/api` permanece fora do escopo da landing, com uma exceção nominal já implementada: o controller de autenticação pode escolher o destino final do OAuth conforme o modo popup. Essa exceção não autoriza mudar sessão, membership, rank, guards, services, Prisma ou migrations.
+Versão 3.1 — 09/08/2026. `apps/api` permanece fora do escopo da landing, com uma exceção nominal já implementada: o controller de autenticação pode escolher o destino final do OAuth. Essa exceção não autoriza mudar sessão, membership, rank, guards, services, Prisma ou migrations.
 
 ## 1. Objetivo e arquitetura
 
@@ -24,9 +24,9 @@ Raid e dificuldade são exibidas por sigla (`lib/progressao/sigla.ts`), derivada
 
 ## 5. Login
 
-O caminho principal é o botão “Acesse com a Battle.net”. Ele abre `${API_URL}/auth/battlenet?mode=popup`, valida `postMessage` por origem/fonte/schema, fecha a janela e envia sucesso para `/interno`. Falha, cancelamento, bloqueio e timeout abrem o mesmo `<dialog>` acessível; o anúncio `aria-live` permanece. `/entrar` é o fallback funcional sem JavaScript.
+O caminho principal é o link “Acesse com a Battle.net”. **Desde a TIT-148 (01/09/2026) ele é um `<a>` para `${API_URL}/auth/battlenet`, em navegação de página inteira** — não há mais popup, `postMessage`, `BroadcastChannel` nem polling, e por isso não há mais fallback separado: o caminho principal já funciona sem JavaScript. Falha, cancelamento e `state` inválido voltam em `/?erro=…` e abrem o mesmo `<dialog>` acessível. O anúncio `aria-live` do botão saiu junto com o popup — não há mais estado assíncrono para narrar, e a navegação em si já é o feedback.
 
-No Nest, `auth.controller.ts` grava `titan_oauth_mode` apenas para `mode=popup`, com as mesmas flags e TTL do cookie de state. O callback limpa ambos e escolhe entre `/oauth/callback?...` e o destino histórico. State, `completeLogin`, cookie de sessão, TTL, logs, `me()` e `logout()` permanecem inalterados. O teste dedicado trava a fronteira. Nenhuma alteração em `apps/api` atribuível a essa rodada existe fora de `auth.controller.ts` e `auth.controller.spec.ts`; a conferência é contra o ponto de partida da branch, não contra `HEAD`.
+No Nest, `auth.controller.ts` grava `titan_oauth_destino` quando `?de=` aponta para dentro de `/interno`, com as mesmas flags e TTL do cookie de state, e o callback devolve ali. `titan_oauth_mode` não existe mais. State, `completeLogin`, `me()` e `logout()` permanecem inalterados; sessão, TTL e logs mudaram pela TIT-148, fora do escopo da landing.
 
 ## 6. Seções e área interna
 
@@ -51,6 +51,6 @@ Não usar `filter` repetido, `will-change` permanente, `Math.random()` em Server
 
 ## 9. Registro consolidado
 
-- v3.0 (09/08/2026): identidade Curse of Ula'tek, três famílias cromáticas, Grenze Gotisch, hero CSS + WebP, movimento material, roster estático validado e login em popup com destino direto.
+- v3.0 (09/08/2026): identidade Curse of Ula'tek, três famílias cromáticas, Grenze Gotisch, hero CSS + WebP, movimento material, roster estático validado e login em popup com destino direto (o popup saiu na TIT-148, 01/09/2026).
 - v3.1 (09/08/2026): Archivo restaurada em títulos e marca; roster ganha dez placeholders honestamente rotulados e manifesto de imagens gerado no build; Fel, pedra e movimento ganham presença; arte passa a WebP com alpha, aura e horizonte.
 - v2.x: identidade Fel anterior e primeira implementação da landing.
