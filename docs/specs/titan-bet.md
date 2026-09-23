@@ -1546,15 +1546,16 @@ Zero linhas = aposta em `{}`.
 
 **Triggers (regras multi-linha que o CHECK não alcança):**
 
-| Trigger                       | Tabelas                                             | Regra                                                                                                                                   |
-| ----------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `titanbet_config_congelada`   | `BetRoundEncounter`, `BetMarket`                    | INSERT/UPDATE/DELETE só se a rodada tem `readyAt IS NULL`                                                                               |
-| `titanbet_snapshot_imutavel`  | `BetRoundBettor`, `BetRoundCandidate`               | INSERT só com `readyAt IS NULL` (a transação do Ready grava antes de marcar `readyAt`); UPDATE/DELETE nunca                             |
-| `titanbet_slip_aberto`        | `BetSlip` (INSERT)                                  | só com `readyAt IS NOT NULL` e `now() < cutoffAt`                                                                                       |
-| `titanbet_slip_transicao`     | `BetSlip` (UPDATE)                                  | só as transições da §16.5; colunas de submit/validação/recusa/expiração escritas uma vez; submit, validação e recusa só antes do cutoff |
-| `titanbet_aposta_editavel`    | `Bet`, `BetWeeklySelection`                         | qualquer escrita só se o slip está `rascunho` e `now() < cutoffAt`                                                                      |
-| `titanbet_resultado_imutavel` | `BetAuditSource`, `BetMarketResult*`, `BetAudit`    | depois de `BetAudit.status = confirmada`, nada muda; `BetMarketResult*` nunca sofre UPDATE/DELETE                                       |
-| `titanbet_append_only`        | `GoldLedgerEntry`, `RoundClosingReport`, `BetEvent` | UPDATE e DELETE rejeitados (`BEFORE UPDATE OR DELETE … RAISE EXCEPTION`); `BEFORE TRUNCATE` também                                      |
+| Trigger                       | Tabelas                                             | Regra                                                                                                                                                                                 |
+| ----------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `titanbet_rodada_imutavel`    | `BetRound` (UPDATE)                                 | `period`, `opensAt` e `cutoffAt` nunca mudam; `readyAt` e o officer do Ready são escritos uma vez — sem isso, zerar o `readyAt` reabriria a configuração (acrescentado no M2C, T-R18) |
+| `titanbet_config_congelada`   | `BetRoundEncounter`, `BetMarket`                    | INSERT/UPDATE/DELETE só se a rodada tem `readyAt IS NULL`                                                                                                                             |
+| `titanbet_snapshot_imutavel`  | `BetRoundBettor`, `BetRoundCandidate`               | INSERT só com `readyAt IS NULL` (a transação do Ready grava antes de marcar `readyAt`); UPDATE/DELETE nunca                                                                           |
+| `titanbet_slip_aberto`        | `BetSlip` (INSERT)                                  | só com `readyAt IS NOT NULL` e `now() < cutoffAt`                                                                                                                                     |
+| `titanbet_slip_transicao`     | `BetSlip` (UPDATE)                                  | só as transições da §16.5; colunas de submit/validação/recusa/expiração escritas uma vez; submit, validação e recusa só antes do cutoff                                               |
+| `titanbet_aposta_editavel`    | `Bet`, `BetWeeklySelection`                         | qualquer escrita só se o slip está `rascunho` e `now() < cutoffAt`                                                                                                                    |
+| `titanbet_resultado_imutavel` | `BetAuditSource`, `BetMarketResult*`, `BetAudit`    | depois de `BetAudit.status = confirmada`, nada muda; `BetMarketResult*` nunca sofre UPDATE/DELETE                                                                                     |
+| `titanbet_append_only`        | `GoldLedgerEntry`, `RoundClosingReport`, `BetEvent` | UPDATE e DELETE rejeitados (`BEFORE UPDATE OR DELETE … RAISE EXCEPTION`); `BEFORE TRUNCATE` também                                                                                    |
 
 Trigger é prática **nova** no projeto (hoje só há índice parcial em SQL). É o mecanismo
 que faz "imutável depois do Ready" e "append-only" valerem **por construção**, como a

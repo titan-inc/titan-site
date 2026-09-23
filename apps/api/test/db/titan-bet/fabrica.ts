@@ -172,26 +172,40 @@ export class Fabrica {
     });
   }
 
-  /**
-   * Uma rodada pronta para receber apostas: bettor + slip em rascunho, e os
-   * candidatos pedidos. Devolve tudo para o teste compor o cenário.
-   */
-  async cenarioDeAposta(roles: BetCandidateRole[] = ['Melee', 'Heal', 'Tank']) {
-    const rodada = await this.rodada({
-      readyAt: new Date(),
-      readyByUserId: ATOR.userId,
-      readyByBattletag: ATOR.battletag,
+  /** O Ready, do ponto de vista do banco: grava `readyAt` e o officer. */
+  pronta(roundId: string) {
+    return this.db.betRound.update({
+      where: { id: roundId },
+      data: { readyAt: new Date(), readyByUserId: ATOR.userId, readyByBattletag: ATOR.battletag },
     });
+  }
+
+  /**
+   * Uma rodada pronta para receber apostas, montada na ordem do ciclo de vida
+   * (§5.3): PREPARATION → configuração → snapshots → Ready → slip em rascunho.
+   *
+   * `configurar` roda em PREPARATION — é onde o teste cria encounters e
+   * mercados, porque depois do Ready a configuração é imutável (D-31).
+   */
+  async cenarioDeAposta<C = undefined>(
+    roles: BetCandidateRole[] = ['Melee', 'Heal', 'Tank'],
+    configurar?: (roundId: string) => Promise<C>,
+  ) {
+    const preparacao = await this.rodada();
+    const config = (configurar ? await configurar(preparacao.id) : undefined) as C;
+
     const dono = await this.personagem();
-    await this.bettor(rodada.id, dono.id);
-    const slip = await this.slip(rodada.id, dono.id);
+    await this.bettor(preparacao.id, dono.id);
 
     const candidatos: Record<string, { characterId: string; role: BetCandidateRole }> = {};
     for (const role of roles) {
       const pj = await this.personagem();
-      await this.candidato(rodada.id, pj.id, role);
+      await this.candidato(preparacao.id, pj.id, role);
       candidatos[role] = { characterId: pj.id, role };
     }
-    return { rodada, dono, slip, candidatos };
+
+    const rodada = await this.pronta(preparacao.id);
+    const slip = await this.slip(rodada.id, dono.id);
+    return { rodada, dono, slip, candidatos, config };
   }
 }

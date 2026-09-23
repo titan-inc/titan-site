@@ -10,12 +10,16 @@
  * O SQLSTATE vem de `meta.driverAdapterError.cause.originalCode`, onde o
  * Prisma 7 com `@prisma/adapter-pg` o expõe (medido no RED-M2B).
  */
-export type ResultadoDaEscrita = 'aceito' | 'unique' | 'fk' | 'check' | `outro:${string}`;
+export type ResultadoDaEscrita =
+  'aceito' | 'unique' | 'fk' | 'check' | 'trigger' | `outro:${string}`;
 
 const POR_SQLSTATE: Record<string, ResultadoDaEscrita> = {
   '23505': 'unique',
   '23503': 'fk',
   '23514': 'check',
+  // RAISE EXCEPTION sem ERRCODE — os triggers do Titan Bet (M2C). Medido: vem
+  // no mesmo campo, tanto em operação de model quanto em SQL cru (TRUNCATE).
+  P0001: 'trigger',
 };
 
 export async function escrita(operacao: Promise<unknown>): Promise<ResultadoDaEscrita> {

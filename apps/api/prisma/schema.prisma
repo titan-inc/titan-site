@@ -1874,6 +1874,9 @@ model MplusVaga {
 // - só na migration 20260923190000_titan_bet_invariantes: os índices únicos
 //   parciais e os CHECKs, que o Prisma não modela. Precedente: o índice
 //   parcial `WowDataBuild_um_ativo_so`.
+// - só na migration 20260923220000_titan_bet_imutabilidade: os triggers que
+//   congelam a configuração e os snapshots no Ready, as transições do slip,
+//   a edição de apostas e o append-only do ledger (D-39).
 //
 // As FKs compostas existem para que "da mesma rodada" e "na role certa" sejam
 // garantidos pelo banco, não pelo service. Os `@@unique` com `id` servem só de
@@ -1948,6 +1951,7 @@ model BetRound {
   slips      BetSlip[]
   bets       Bet[]
   selections BetWeeklySelection[]
+  ledger     GoldLedgerEntry[]
 }
 
 /// Um boss na rodada, escolhido do catálogo do WCL (D-22).
@@ -2005,7 +2009,8 @@ model BetMarket {
   createdByBattletag String
   createdAt          DateTime @default(now()) @map("created_at")
 
-  bets Bet[]
+  bets   Bet[]
+  ledger GoldLedgerEntry[]
 
   @@unique([roundId, kind, roundEncounterId])
   /// Alvo da FK da aposta: mesma rodada e mesmo tipo.
@@ -2088,7 +2093,8 @@ model BetSlip {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  bets Bet[]
+  bets   Bet[]
+  ledger GoldLedgerEntry[]
 
   /// Alvo da FK da aposta: slip desta rodada.
   @@unique([id, roundId])
@@ -2127,6 +2133,7 @@ model Bet {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   weeklySelections BetWeeklySelection[]
+  ledger           GoldLedgerEntry[]
 
   @@unique([slipId, marketId])
   /// Alvo da FK da seleção: aposta desta rodada, deste tipo.
@@ -2150,4 +2157,66 @@ model BetWeeklySelection {
   roundEncounter BetRoundEncounter @relation(fields: [roundEncounterId, roundId, inWeeklyProgression], references: [id, roundId, inWeeklyProgression])
 
   @@id([betId, roundEncounterId])
+}
+
+/// Conta de um lançamento: o membro (pela conta do slip) ou o Guild Bank.
+enum GoldLedgerAccount {
+  membro
+  guild_bank
+}
+
+/// O que um lançamento é (§16.6).
+enum GoldLedgerKind {
+  deposito_validado
+  premio
+  restituicao_anulado
+  receita_guilda
+  residuo_guilda
+  restituicao_expirado
+  ajuste
+  pagamento
+}
+
+/// A ÚNICA fonte financeira do Titan Bet (§16.6). Append-only.
+///
+/// Append-only, CHECKs e índices parciais de idempotência vivem na migration
+/// 20260923220000_titan_bet_imutabilidade (o Prisma não os representa).
+/// `resultId` ainda sem FK: o `BetMarketResult` nasce no milestone do Auditar.
+model GoldLedgerEntry {
+  /// Sequencial: dá a ordem total dos lançamentos.
+  id BigInt @id @default(autoincrement())
+
+  roundId String
+  round   BetRound          @relation(fields: [roundId], references: [id])
+  account GoldLedgerAccount
+
+  /// A conta do membro na rodada. Obrigatório em `membro`.
+  slipId String?
+  slip   BetSlip? @relation(fields: [slipId], references: [id])
+
+  kind   GoldLedgerKind
+  /// Gold inteiro.
+  amount Int
+
+  marketId String?
+  market   BetMarket? @relation(fields: [marketId], references: [id])
+  betId    String?
+  bet      Bet?       @relation(fields: [betId], references: [id])
+  resultId String?
+
+  /// `ajuste`: o lançamento corrigido e o motivo.
+  correctsEntryId BigInt?
+  corrects        GoldLedgerEntry?  @relation("CorrecaoDoLancamento", fields: [correctsEntryId], references: [id])
+  correctedBy     GoldLedgerEntry[] @relation("CorrecaoDoLancamento")
+  reason          String?
+
+  /// `pagamento`: até qual lançamento este pagamento quita (a composição).
+  coversThroughEntryId BigInt?
+  coversThrough        GoldLedgerEntry?  @relation("QuitacaoDoPagamento", fields: [coversThroughEntryId], references: [id])
+  coveredBy            GoldLedgerEntry[] @relation("QuitacaoDoPagamento")
+
+  actorUserId    String?
+  actorBattletag String?
+
+  createdAt DateTime @default(now()) @map("created_at")
 }

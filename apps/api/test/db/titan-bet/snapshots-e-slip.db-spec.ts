@@ -51,12 +51,14 @@ describe('Titan Bet — snapshots e slip (banco)', () => {
       const rodada = await f.rodada();
       const pj = await f.personagem();
       await f.bettor(rodada.id, pj.id);
+      await f.pronta(rodada.id);
       expect(await escrita(f.slip(rodada.id, pj.id))).toBe('aceito');
     });
 
     it('recusa personagem que não está no snapshot', async () => {
       const rodada = await f.rodada();
       const fora = await f.personagem();
+      await f.pronta(rodada.id);
       expect(await escrita(f.slip(rodada.id, fora.id))).toBe('fk');
     });
 
@@ -65,16 +67,21 @@ describe('Titan Bet — snapshots e slip (banco)', () => {
       const b = await f.rodada();
       const pj = await f.personagem();
       await f.bettor(a.id, pj.id);
+      await f.pronta(b.id);
       expect(await escrita(f.slip(b.id, pj.id))).toBe('fk');
     });
   });
 
   describe('T-S02 / T-B05 — no máximo um slip ativo por conta e rodada (D-34)', () => {
+    /** Rodada pronta com dois personagens no snapshot de bettors (ciclo: §5.3). */
     async function rodadaComBettor() {
-      const rodada = await f.rodada();
+      const preparacao = await f.rodada();
       const pj = await f.personagem();
-      await f.bettor(rodada.id, pj.id);
-      return { rodada, pj };
+      const alt = await f.personagem();
+      await f.bettor(preparacao.id, pj.id);
+      await f.bettor(preparacao.id, alt.id);
+      const rodada = await f.pronta(preparacao.id);
+      return { rodada, pj, alt };
     }
 
     it.each([
@@ -89,9 +96,7 @@ describe('Titan Bet — snapshots e slip (banco)', () => {
     });
 
     it('recusa dois ativos da mesma conta por personagens de elegibilidade diferentes', async () => {
-      const { rodada, pj } = await rodadaComBettor();
-      const alt = await f.personagem();
-      await f.bettor(rodada.id, alt.id);
+      const { rodada, pj, alt } = await rodadaComBettor();
       await f.slip(rodada.id, pj.id);
       expect(await escrita(f.slip(rodada.id, alt.id))).toBe('unique');
     });
@@ -125,11 +130,15 @@ describe('Titan Bet — snapshots e slip (banco)', () => {
   });
 
   describe('T-S17 — campos obrigatórios por estado (§16.4)', () => {
+    /** Rodada pronta com dois personagens no snapshot de bettors (ciclo: §5.3). */
     async function rodadaComBettor() {
-      const rodada = await f.rodada();
+      const preparacao = await f.rodada();
       const pj = await f.personagem();
-      await f.bettor(rodada.id, pj.id);
-      return { rodada, pj };
+      const alt = await f.personagem();
+      await f.bettor(preparacao.id, pj.id);
+      await f.bettor(preparacao.id, alt.id);
+      const rodada = await f.pronta(preparacao.id);
+      return { rodada, pj, alt };
     }
 
     it.each([
