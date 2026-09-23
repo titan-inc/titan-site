@@ -7,6 +7,7 @@ import { AuthService } from '../auth/auth.service';
 import { OfficerGuard, RosterGuard } from '../auth/session.guard';
 import { ApostaRecusada, ApostasService, ContaNaoElegivel } from './apostas.service';
 import { AuditoriaRecusada, AuditoriaService } from './auditoria.service';
+import { CalculoService } from './calculo.service';
 import { DepositoRecusado, DepositoService } from './deposito.service';
 import { OddsService } from './odds.service';
 import { PreparacaoRecusada, PreparacaoService } from './preparacao.service';
@@ -34,6 +35,8 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/officer/rodadas/r1/preparacao'],
   ['put', '/internal/titan-bet/officer/rodadas/r1/preparacao', { weekly: false, encounters: [] }],
   ['post', '/internal/titan-bet/officer/rodadas/r1/auditar'],
+  ['post', '/internal/titan-bet/officer/auditorias/a1/calcular'],
+  ['get', '/internal/titan-bet/officer/auditorias/a1/resultados'],
   ['get', '/internal/titan-bet/officer/rodadas/r1/auditoria'],
   [
     'post',
@@ -65,6 +68,7 @@ describe('Titan Bet — autorização das rotas', () => {
   const odds = { daRodada: jest.fn() };
   const auditoria = { auditar: jest.fn(), corrente: jest.fn(), escolherFonte: jest.fn() };
   const preparacao = { criar: jest.fn(), catalogo: jest.fn(), ver: jest.fn(), salvar: jest.fn() };
+  const calculo = { calcular: jest.fn(), resultados: jest.fn() };
   const deposito = {
     pendentes: jest.fn(),
     confirmar: jest.fn(),
@@ -84,6 +88,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: OddsService, useValue: odds },
         { provide: AuditoriaService, useValue: auditoria },
         { provide: PreparacaoService, useValue: preparacao },
+        { provide: CalculoService, useValue: calculo },
       ],
     }).compile();
 
@@ -117,6 +122,8 @@ describe('Titan Bet — autorização das rotas', () => {
     preparacao.catalogo.mockResolvedValue({ zonas: [] });
     preparacao.ver.mockResolvedValue(null);
     preparacao.salvar.mockResolvedValue({ roundId: 'r1' });
+    calculo.calcular.mockResolvedValue(undefined);
+    calculo.resultados.mockResolvedValue({ auditId: 'a1', status: 'calculada', mercados: [] });
     deposito.confirmar.mockResolvedValue(undefined);
     deposito.recusar.mockResolvedValue(undefined);
   });
@@ -132,7 +139,7 @@ describe('Titan Bet — autorização das rotas', () => {
   }
 
   function nenhumServiceChamado() {
-    for (const fake of [ready, apostas, deposito, odds, auditoria, preparacao]) {
+    for (const fake of [ready, apostas, deposito, odds, auditoria, preparacao, calculo]) {
       for (const fn of Object.values(fake)) expect(fn).not.toHaveBeenCalled();
     }
   }
@@ -235,6 +242,23 @@ describe('Titan Bet — autorização das rotas', () => {
         .send({})
         .expect(400);
       expect(auditoria.escolherFonte).not.toHaveBeenCalled();
+    });
+
+    it('calcular e ver os resultados da auditoria (§7.3)', async () => {
+      comSessao('officer');
+      await request(server).post('/internal/titan-bet/officer/auditorias/a1/calcular').expect(204);
+      expect(calculo.calcular).toHaveBeenCalledWith('a1');
+
+      const r = await request(server)
+        .get('/internal/titan-bet/officer/auditorias/a1/resultados')
+        .expect(200);
+      expect(r.body).toEqual({ auditId: 'a1', status: 'calculada', mercados: [] });
+
+      calculo.calcular.mockRejectedValue(new AuditoriaRecusada('depende da OQ-47'));
+      await request(server).post('/internal/titan-bet/officer/auditorias/a1/calcular').expect(409);
+
+      calculo.resultados.mockResolvedValue(null);
+      await request(server).get('/internal/titan-bet/officer/auditorias/a1/resultados').expect(404);
     });
 
     it('Auditar recusado é 409, com o motivo', async () => {

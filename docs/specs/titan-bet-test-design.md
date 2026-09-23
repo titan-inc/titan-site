@@ -320,6 +320,20 @@ gate #1 (§6), não teste.
 | T-X06 | D-43, T-F06 | resultado, vencedor e kill nunca mudam nem somem | UPDATE/DELETE → erro                                                  | trigger `titanbet_resultado_imutavel` | aceito        | infra-DB |
 | T-X07 | D-30        | resultado só entra com a auditoria `pronta`      | auditoria em revisão, calculada, substituída ou confirmada → erro     | trigger                               | insert aceito | infra-DB |
 
+### 3.16 Cálculo do Auditar (§7.3, D-43, D-47)
+
+| T     | Spec             | Comportamento                                                                                                                          | Camada            | Setup → Ação → Esperado                                                        | RED esperado     | Agora?   |
+| ----- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------ | ---------------- | -------- |
+| T-W06 | D-47, Regra 6    | leitura do report: ator ↔ candidato por nome + realm; pulls na sessão do report; valor da tabela por métrica; dispels somados por ator | domínio / unit    | formato da API → pulls, valores e evidência                                    | aguarda seam     | sim      |
+| T-W07 | D-47             | adaptador do WCL: as queries e a paginação das mortes                                                                                  | unit              | resposta simulada da API → leitura; ranking `Rankings/Today`                   | aguarda seam     | sim      |
+| T-Q01 | §7.3             | calcula todos os mercados; auditoria `calculada`; V/P/W das apostas válidas                                                            | service + banco   | auditoria pronta → calcular → um resultado por mercado, vencedores do snapshot | aguarda seam     | infra-DB |
+| T-Q02 | D-13, D-14, D-29 | First Death de farm e de progressão com dados de report                                                                                | service + banco   | mortes por try → vencedores e somas na evidência                               | aguarda seam     | infra-DB |
+| T-Q03 | D-05             | Weekly: `K` gravado; `W` das apostas no conjunto exato                                                                                 | service + banco   | kills da semana → `K` e `W`                                                    | aguarda seam     | infra-DB |
+| T-Q04 | D-43, T-F06      | Parse % congelado na evidência; recalcular recusado                                                                                    | service + banco   | parse muda no WCL → resultado igual                                            | aguarda seam     | infra-DB |
+| T-Q05 | D-16, D-44       | proposta de VOID e `W = 0` ficam como resultado                                                                                        | service + banco   | sem kill → `anulado`; ninguém no vencedor → `W = 0`                            | aguarda seam     | infra-DB |
+| T-Q06 | §7.2, OQ-40/47   | recusas sem gravar: auditoria não pronta, duas kills, boss fora da Weekly; só lê os reports congelados                                 | service + banco   | → `AuditoriaRecusada`, nada gravado                                            | aguarda seam     | infra-DB |
+| T-Q07 | D-36             | rotas de calcular e ver resultados só para officer                                                                                     | API / autorização | sem cookie → 401; membro → 403; officer → 2xx                                  | planejado (§5.3) | sim      |
+
 ### 3.11 E2E (um fluxo, não a suíte inteira)
 
 | T     | Fluxo                                                                                                             | Quando                                      |
@@ -1189,3 +1203,57 @@ três colunas de V/P/W do `BetMarketResult` como exceção; a regex e todo o res
 iguais — qualquer outra coluna de dinheiro continua quebrando.
 
 `pnpm test:db` **237/237**; `api` lint, typecheck e build OK; banco de dev com o mesmo hash.
+
+---
+
+## 23. Cálculo do Auditar — execução (23/09/2026)
+
+**Status: GREEN.** §3.16. Completa o T-F06 (a metade de service).
+
+### 23.1 Testes e evidência
+
+| Testes             | Onde                                                          | Antes da implementação                                                                                                        |
+| ------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| T-W06              | `src/titan-bet/leitura-wcl.spec.ts` — 13                      | **`RED awaiting implementation seam`** — `Cannot find module './leitura-wcl'`                                                 |
+| T-W07              | `src/warcraftlogs/titan-bet-report.spec.ts` — 3               | **RED** — `wcl.getTitanBetReport is not a function` (o serviço existia; o método, não)                                        |
+| T-Q01–T-Q06        | `test/db/titan-bet/calculo.db-spec.ts` — 10                   | **awaiting seam** — `Cannot find module '…/calculo.service'`                                                                  |
+| T-Q07 e o contrato | controller spec +7; `packages/shared/…/resultado.spec.ts` — 2 | 7 falhas por rota inexistente (404, não conta como RED de autorização, §5.3); contrato: `Cannot find module './resultado.js'` |
+
+### 23.2 Implementação
+
+- `src/titan-bet/leitura-wcl.ts` — `identificarAtor` (`toCharacterKey` + `toRealmMatchKey`),
+  `pullsDoReport`, `valoresDaKill` (D-47: DPS/HPS = total ÷ duração; Parse % =
+  `rankPercent` de `Rankings/Today`; dispels = soma da tabela por ator) e
+  `dispelsPorAtor`.
+- `WarcraftLogsService.getTitanBetReport` — duas queries e a paginação das mortes; só
+  forma de dado. **Rodado contra a API real** (report de 22/09): 15 fights Mythic, 142
+  mortes, duas kills com tabelas e rankings; os dispels reais vieram na estrutura que o
+  leitor espera, com `id` do ator nos `details`, e a soma da tabela por jogador bateu com
+  a contagem de eventos de dispel (16).
+- `src/titan-bet/calculo.service.ts` — `calcular` (só auditoria `pronta`; lê só os
+  reports congelados; grava resultados, vencedores, `K` e a evidência §15.10 com
+  `titanbet-1`; auditoria `calculada`) e `resultados` (a vista do officer).
+- Rotas (`OfficerGuard`): `POST officer/auditorias/:auditId/calcular`, `GET
+officer/auditorias/:auditId/resultados`; contrato `resultadosDaAuditoriaSchema`; duas
+  requests no `yaak/`.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **OQ-47 não é decidida:** se um boss Mythic do catálogo de raid morreu nos reports
+   oficiais e **não** está marcado na Weekly, as duas leituras de `K` divergem, e o cálculo
+   **recusa** com o motivo. Quando todo boss morto está na Weekly, as leituras coincidem e
+   o cálculo segue.
+2. **Duas kills do mesmo boss → recusa** com "pede revisão" (§7.2, OQ-40); a auditoria
+   fica `pronta` e nada é gravado.
+3. **Recalcular é outra tentativa** (D-30): uma auditoria `calculada` não calcula de novo,
+   e o banco não deixa mudar resultado.
+4. **Off-spec (OQ-34) não é tratado:** o valor do candidato entra se ele é candidato do
+   mercado pela role do snapshot, qualquer que seja a spec jogada.
+5. **A evidência ainda não tem schema no shared** — fica como documento versionado
+   (`versao: 1`, `algoritmo: titanbet-1`) e é exposta ao officer como objeto. Formalizá-la
+   é do milestone do Closing Report, que é quem a publica.
+
+### 23.3 Resultado
+
+`pnpm test:db` **247/247**; `pnpm test`: shared **351**, api **873**, web 147; `api`
+lint, typecheck e build OK; banco de dev com o mesmo hash.

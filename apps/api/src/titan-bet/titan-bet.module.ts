@@ -6,6 +6,7 @@ import { WarcraftLogsModule } from '../warcraftlogs/warcraftlogs.module';
 import { WowAuditModule } from '../wowaudit/wowaudit.module';
 import { ApostasService } from './apostas.service';
 import { AuditoriaService } from './auditoria.service';
+import { CalculoService } from './calculo.service';
 import { CutoffService } from './cutoff.service';
 import { DepositoService } from './deposito.service';
 import { ElegibilidadeService } from './elegibilidade.service';
@@ -35,6 +36,7 @@ import { TitanBetRepository } from './titan-bet.repository';
     OddsService,
     AuditoriaService,
     PreparacaoService,
+    CalculoService,
   ],
   exports: [ReadyService, ElegibilidadeService, ApostasService, DepositoService],
 })

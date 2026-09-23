@@ -725,6 +725,140 @@ export class TitanBetRepository {
     });
   }
 
+  /**
+   * O que o cálculo precisa: a auditoria, as fontes congeladas, a configuração e
+   * o snapshot de candidatos da rodada.
+   */
+  auditoriaParaCalcular(auditId: string) {
+    return this.prisma.betAudit.findUnique({
+      where: { id: auditId },
+      select: {
+        id: true,
+        status: true,
+        roundId: true,
+        sources: {
+          select: {
+            session: true,
+            resolution: true,
+            reportCode: true,
+            reportTitle: true,
+            reportRevision: true,
+            reportStartTime: true,
+          },
+        },
+        round: {
+          select: {
+            encounters: {
+              select: { id: true, encounterId: true, track: true, inWeeklyProgression: true },
+            },
+            markets: { select: { id: true, kind: true, roundEncounterId: true, track: true } },
+            candidates: { select: { characterId: true, name: true, realm: true, role: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /** Apostas de slips `valido` da rodada (D-12): as únicas que entram em V e W. */
+  apostasValidasDaRodada(roundId: string) {
+    return this.prisma.bet.findMany({
+      where: { roundId, slip: { status: 'valido' } },
+      select: {
+        id: true,
+        marketId: true,
+        stake: true,
+        targetCharacterId: true,
+        weeklySelections: { select: { roundEncounterId: true } },
+      },
+    });
+  }
+
+  /**
+   * Os resultados de uma tentativa, numa transação, e a auditoria `calculada`.
+   * O banco só aceita resultado com a auditoria `pronta` e nunca o altera
+   * depois (trigger `titanbet_resultado_imutavel`): recalcular é outra
+   * tentativa (D-30).
+   */
+  async gravarCalculo(g: {
+    auditId: string;
+    roundId: string;
+    agora: Date;
+    resultados: ResultadoParaGravar[];
+  }): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      for (const r of g.resultados) {
+        const criado = await tx.betMarketResult.create({
+          data: {
+            auditId: g.auditId,
+            marketId: r.marketId,
+            roundId: g.roundId,
+            outcome: r.outcome,
+            voidReason: r.voidReason,
+            validPool: r.validPool,
+            prizePool: r.prizePool,
+            winningStake: r.winningStake,
+            evidence: r.evidencia,
+            algorithmVersion: r.algorithmVersion,
+            computedAt: g.agora,
+          },
+          select: { id: true },
+        });
+        if (r.vencedores.length > 0) {
+          await tx.betMarketResultWinner.createMany({
+            data: r.vencedores.map((characterId) => ({
+              resultId: criado.id,
+              roundId: g.roundId,
+              characterId,
+            })),
+          });
+        }
+        if (r.kills.length > 0) {
+          await tx.betMarketResultKill.createMany({
+            data: r.kills.map((roundEncounterId) => ({
+              resultId: criado.id,
+              roundId: g.roundId,
+              roundEncounterId,
+            })),
+          });
+        }
+      }
+      const marcada = await tx.betAudit.updateMany({
+        where: { id: g.auditId, status: 'pronta' },
+        data: { status: 'calculada', calculatedAt: g.agora },
+      });
+      if (marcada.count !== 1) throw new Error('a auditoria deixou de estar pronta');
+    });
+  }
+
+  /** Os resultados de uma tentativa, com os vencedores como o snapshot os grava. */
+  resultadosDaAuditoria(auditId: string) {
+    return this.prisma.betAudit.findUnique({
+      where: { id: auditId },
+      select: {
+        id: true,
+        status: true,
+        calculatedAt: true,
+        results: {
+          orderBy: { computedAt: 'asc' },
+          select: {
+            marketId: true,
+            market: { select: { kind: true } },
+            outcome: true,
+            voidReason: true,
+            validPool: true,
+            prizePool: true,
+            winningStake: true,
+            evidence: true,
+            winners: {
+              select: { candidate: { select: { characterId: true, name: true, realm: true } } },
+            },
+            kills: { select: { roundEncounterId: true } },
+          },
+        },
+      },
+    });
+  }
+
   private async travarSlip(tx: Prisma.TransactionClient, slipId: string) {
     const [slip] = await tx.$queryRaw<
       Array<{ roundId: string; status: BetSlipStatus; expectedTotal: number | null }>
@@ -813,4 +947,20 @@ export interface PlanoDePreparacao {
   }>;
   /** O `BetEvent` do salvamento; nulo quando nada mudou. */
   evento: Prisma.InputJsonObject | null;
+}
+
+/** O resultado de um mercado, pronto para gravar (§16.2). */
+export interface ResultadoParaGravar {
+  marketId: string;
+  outcome: 'vencedores' | 'anulado';
+  voidReason: string | null;
+  validPool: number;
+  prizePool: number | null;
+  winningStake: number | null;
+  evidencia: Prisma.InputJsonObject;
+  algorithmVersion: string;
+  /** Ids de `Character` — sempre candidatos do snapshot (FK). */
+  vencedores: string[];
+  /** `K` da Weekly: ids de `BetRoundEncounter`. */
+  kills: string[];
 }

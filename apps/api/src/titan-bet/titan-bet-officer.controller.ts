@@ -20,6 +20,7 @@ import {
   type DepositosPendentes,
   type EscolherFonte,
   type PreparacaoDaRodada,
+  type ResultadosDaAuditoria,
   type PrepararRodada,
   type RecusarDeposito,
   type SessaoDaAuditoria,
@@ -28,6 +29,7 @@ import type { Request } from 'express';
 import { OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuditoriaService } from './auditoria.service';
+import { CalculoService } from './calculo.service';
 import { DepositoService } from './deposito.service';
 import { comoHttp, contaDe } from './http';
 import { PreparacaoService } from './preparacao.service';
@@ -53,7 +55,26 @@ export class TitanBetOfficerController {
     private readonly deposito: DepositoService,
     private readonly auditoria: AuditoriaService,
     private readonly preparacao: PreparacaoService,
+    private readonly calculo: CalculoService,
   ) {}
+
+  /**
+   * Calcula os resultados da tentativa `pronta` com os reports congelados (§7.3).
+   * Não confirma nada: VOID é proposta até o officer confirmar (D-16).
+   */
+  @Post('auditorias/:auditId/calcular')
+  @HttpCode(204)
+  async calcular(@Param('auditId') auditId: string): Promise<void> {
+    await comoHttp(() => this.calculo.calcular(auditId));
+  }
+
+  /** Os resultados da tentativa, com a evidência, para revisar antes de confirmar. */
+  @Get('auditorias/:auditId/resultados')
+  async resultados(@Param('auditId') auditId: string): Promise<ResultadosDaAuditoria> {
+    const r = await this.calculo.resultados(auditId);
+    if (!r) throw new NotFoundException('A auditoria não existe');
+    return r;
+  }
 
   /** Cria a rodada da próxima semana, vazia, em PREPARATION (D-45). */
   @Post('rodadas')
