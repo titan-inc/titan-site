@@ -8,6 +8,11 @@
 > correção pós-pagamento, self-bet e odds. As OQs resolvidas saíram da lista de
 > pendências e estão registradas na §2. O M0 foi reescopado (§14).
 >
+> **Revisão 9 (23/09/2026):** Parse % é a coluna da tela do WCL, capturada no Auditar e
+> congelada (D-43, resolve a parte de parse da OQ-25); mercado com resultado e nenhuma
+> aposta vencedora redistribui o prize pool (D-44, OQ-57); preparação da semana pelo
+> Officer Panel (D-45); M0 #6 deixa de ser gate (D-46).
+>
 > **Revisão 8 (23/09/2026):** desenho da OQ-53 aprovado como está (D-38), banco de teste
 > isolado `titan_test` aprovado (D-41), regras de RED sem encenação (D-42), OQ-56 nova.
 > Matriz, milestones TDD e baseline em `docs/specs/titan-bet-test-design.md`.
@@ -316,6 +321,15 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | —    | OQ-53   | **O desenho da D-38 está aprovado como está**: roster da Blizzard → `Character` → `BetRoundBettor(roundId, characterId)` com rank, nome e realm; `GuildCharacter` associa a conta depois; `BetSlip.eligibilityCharacterId`; um slip ativo por conta. O id numérico da Blizzard **não** entra agora. Rename/transfer entre o Ready e o primeiro login pode fazer a associação daquela semana falhar — limitação documentada, **não** bloqueia o M2, e não se resolve fora do escopo do Titan Bet.                       |
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
+
+### Revisão 9 (23/09/2026) — Parse %, `W = 0`, preparação da semana e gates
+
+| D    | Resolve             | Decisão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-43 | OQ-25 (parte parse) | **Parse % é exatamente o valor da coluna "Parse %" da tabela do Warcraft Logs** — se a tela mostra `98`, o valor é `98`. Nunca o `ilvl %` (o `bracketPercent`). Qual campo/variante da API reproduz a coluna é verificação técnica (gate #1, §14). O valor que vale é o disponível **no momento em que o officer dispara Auditar**, e fica congelado na evidência: recálculo ou mudança posterior do WCL não altera resultado já auditado.                                                                                                                                             |
+| D-44 | OQ-57               | **Mercado com resultado válido e nenhuma aposta vencedora (`W = 0`) não é `VOID` e não restitui.** Os 10% (`G₀`) continuam do Guild Bank. Os 90% (`P`) desse mercado são **distribuídos igualmente entre os demais mercados premiáveis da mesma rodada**, somando ao prize pool deles; o resto indivisível em gold vai para o Guild Bank (regra geral do arredondamento, D-10). **Premiável** = mercado com resultado `vencedores` e `W > 0`; `VOID` não recebe. Se **não existir nenhum outro mercado premiável**, o caso **não tem regra**: o settlement para e pede decisão (§8.6). |
+| D-45 | —                   | **Preparar a semana é do Officer Panel.** Antes do Ready, o officer cria a `BetRound`, escolhe os encounters da semana (catálogo do WCL, D-22), classifica cada um como farm ou progressão, escolhe os mercados disponíveis e marca quais encounters participam da Weekly Progression. **Candidatos e bettors nunca são escolhidos à mão:** o Ready continua capturando e congelando sozinho o snapshot de bettors, o do Titan Roster com as roles e a configuração preparada (D-31, D-32, D-33, D-38).                                                                                |
+| D-46 | —                   | **M0 #6 deixa de ser gate.** Não se espera o parse estabilizar: vale o do Auditar (D-43). #1 e #2 continuam gates, validados contra logs reais da Titan; divergência entre a leitura da API e a tela do WCL para a implementação do settlement automático baseado nela.                                                                                                                                                                                                                                                                                                                |
 
 ---
 
@@ -686,6 +700,29 @@ de mostrar a distribuição já foi tomada.
 
 ---
 
+### 8.6 Mercado sem aposta vencedora (`W = 0`) — D-44
+
+O mercado tem resultado válido (`vencedores`), mas ninguém apostou numa opção vencedora.
+Não é `VOID` e ninguém é restituído.
+
+```
+órfão o:      V(o), P(o) = floor(9V(o)/10), G₀(o) = V(o) − P(o)  → Guild Bank
+premiáveis:   M = mercados da rodada com resultado `vencedores` e W > 0
+por órfão:    cota = floor(P(o) / |M|), resto = P(o) − cota × |M|  → Guild Bank
+receptor m:   P'(m) = P(m) + Σ cotas recebidas;  payout(i) = floor(P'(m) × stake(i) / W(m))
+```
+
+- Cada órfão reparte o **próprio** `P`: com dois órfãos, cada um divide o seu, e cada resto
+  é arredondado à parte (o resto é "desse mercado", como diz a D-44).
+- `VOID` não é premiável e não recebe; órfão também não.
+- Órfão com `P = 0` (nenhuma aposta válida) não tem o que repartir.
+- **Sem nenhum mercado premiável** para receber um `P > 0`: não há regra. O settlement
+  **não liquida** a rodada e pede decisão — nenhum destino é inventado.
+- Reconciliação muda de escopo: a de mercado (Σ `premio` + receita + resíduo = `V`) deixa de
+  valer para órfão e receptor; vale a da **rodada** (§16.6).
+
+---
+
 ## 9. Boundaries (PROPOSTA)
 
 ```
@@ -770,7 +807,8 @@ WHERE status = aguardando_deposito AND cutoffAt <= now()`. Quem chega primeiro v
 ### Settlement
 
 - Parse que muda — resolvido congelando a evidência (§7.5).
-- **Gates de produção** M0 #1, #2 e #6 (§14): sem eles, settlement automático não liga.
+- **Gates de produção** M0 #1 e #2 (§14): sem eles, settlement automático não liga (#6
+  deixou de ser gate, D-46).
 - Noite válida sem `titanbet*` na sexta — sem fonte, resolução administrativa (D-24,
   OQ-45); não é `VOID` nem `{}` automático.
 - `PAID` imutável; correção só por `ajuste` (D-11).
@@ -907,7 +945,7 @@ a resposta faria com o schema, se fizer algo.
 | **OQ-46**  | O sistema valida o `track` (farm/progressão) declarado pelo officer contra o histórico do WCL?                                                                                                                                                                               | Não.                                                                  | M3     |
 | **OQ-45**  | Fluxo de sessão **sem fonte** (D-24), raid cancelada e anomalias da §7.2: o que o officer pode fazer, há prazo?                                                                                                                                                              | Não: valores a mais em `resolution`/`voidReason` — aditivo.           | M7     |
 | **OQ-50**  | Liquidação **parcial** da rodada?                                                                                                                                                                                                                                            | Não na 1ª: confirmação por resultado seria coluna nova — aditivo.     | M7     |
-| **OQ-25**  | Métricas e Parse % (variante e momento de captura). Seja qual for, o valor usado fica congelado na evidência e nunca é recalculado com o parse atual.                                                                                                                        | Não: evidência.                                                       | M7     |
+| **OQ-25**  | Métricas de farm além do parse: DPS/HPS sobre a duração da luta ou tempo ativo, cura com absorb, dispels com purge em inimigo. **Parse % resolvido na D-43.** Seja qual for, o valor usado fica congelado na evidência e nunca é recalculado.                                | Não: evidência.                                                       | M7     |
 | **OQ-34**  | Candidato fora da role do snapshot: HPS/HPS parse da spec DPS contam?                                                                                                                                                                                                        | Não.                                                                  | M7     |
 | **OQ-39**  | Report `titanbet*` parcial.                                                                                                                                                                                                                                                  | Não.                                                                  | M7     |
 | **OQ-40**  | Pull repetida dentro do report, ou o mesmo boss morto nas duas sessões.                                                                                                                                                                                                      | Não.                                                                  | M8     |
@@ -917,8 +955,8 @@ a resposta faria com o schema, se fizer algo.
 | **OQ-52**  | Saldo negativo depois de ajuste.                                                                                                                                                                                                                                             | Não: `ajuste` já tem sinal.                                           | M9     |
 | **OQ-30**  | Avisos no Discord?                                                                                                                                                                                                                                                           | Não.                                                                  | pós-M9 |
 
-**Gates, não OQs:** M0 #1, #2 e #6 bloqueiam **ligar settlement automático em produção**,
-não o schema (§14).
+**Gates, não OQs:** M0 #1 e #2 bloqueiam **ligar settlement automático em produção**,
+não o schema (§14). O #6 deixou de ser gate (D-46).
 
 ---
 
@@ -958,8 +996,7 @@ inventado para fechá-los:
 
 - **#1** — comparação humana das seis métricas de farm com a tela do WCL;
 - **#2** — comparação humana do First Death das tries com a tela do WCL;
-- **#6** — observar numa raid real quanto tempo o Parse % leva para aparecer e ficar
-  disponível para captura.
+- ~~**#6**~~ — **deixou de ser gate (D-46):** vale o parse disponível no Auditar.
 
 **Para destravar sem contornar nada:** uma pessoa abre no navegador as lutas da
 amostra e confere contra os valores que os scripts do probe regeram (guardados fora do
@@ -1663,8 +1700,9 @@ Refund de slip **recusado** com depósito real: OQ-54. Saldo negativo: OQ-52.
 Limites conhecidos: superusuário e `session_replication_role = replica` desligam
 triggers. É a mesma fronteira do `psql` em produção, já tratada como acesso restrito.
 
-**Reconciliações verificáveis:** por mercado resolvido, Σ `premio` + `receita_guilda` +
-`residuo_guilda` = `V` e Σ `premio` ≤ `P`; por `VOID`, Σ `restituicao_anulado` = `V`;
+**Reconciliações verificáveis:** por mercado resolvido **sem redistribuição** (§8.6),
+Σ `premio` + `receita_guilda` + `residuo_guilda` = `V` e Σ `premio` ≤ `P`; com
+redistribuição, a mesma igualdade vale somando os mercados não anulados da rodada; por `VOID`, Σ `restituicao_anulado` = `V`;
 por rodada liquidada, antes de ajustes, Σ `deposito_validado` = Σ (`premio` +
 `restituicao_anulado` + `receita_guilda` + `residuo_guilda`).
 

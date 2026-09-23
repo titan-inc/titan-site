@@ -276,6 +276,38 @@ Mesmas colunas; `BLOCKED BY OQ-xx` quando o resultado esperado depende de decis�
 | T-C04 | OQ-51              | identidade exibida do vencedor                                                          | —                    | —                                                                                                                            | —                                                 | —                                                               | **BLOCKED BY OQ-51**  | OQ-51         |
 | T-X01 | OQ-30              | avisos no Discord                                                                       | —                    | —                                                                                                                            | —                                                 | —                                                               | **BLOCKED BY OQ-30**  | OQ-30         |
 
+### 3.14 Casos da revisão 9 da spec (D-43 a D-46)
+
+**Preparação da semana (D-45)** — Officer Panel, antes do Ready.
+
+| T     | Spec        | Comportamento                                                        | Camada               | Setup → Ação → Esperado                                                                                                | Mecanismo                            | RED esperado        | Agora?   |
+| ----- | ----------- | -------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ------------------- | -------- |
+| T-G01 | D-45, §5.1  | criar a rodada da próxima semana                                     | domínio + service    | agora sexta → rodada com `period` = corrente + 1, `cutoffAt` na terça seguinte 12:00 no fuso, `opensAt` na sexta 00:00 | domínio (calendário) + banco         | aguarda seam (§5.1) | infra-DB |
+| T-G02 | §16.2       | uma rodada por period                                                | service              | criar duas vezes → a segunda é recusada, nada muda                                                                     | unique `period`                      | aguarda seam        | infra-DB |
+| T-G03 | D-22        | encounter só do catálogo de raid do WCL; nome e zona vêm do catálogo | service              | id fora do catálogo → recusado; do catálogo → gravado com `encounterName` e `zoneName` do WCL                          | domínio                              | aguarda seam        | infra-DB |
+| T-G04 | D-29, §16.4 | progressão aceita só First Death; farm aceita os seis de boss        | contrato + service   | progressão com Top DPS → recusado; farm com os seis → aceito                                                           | Zod + domínio (+ CHECK do banco)     | aguarda seam        | sim      |
+| T-G05 | D-45        | Weekly: um mercado por rodada e os encounters marcados               | service              | Weekly ligada com dois bosses marcados → um mercado `weekly_progression`, `inWeeklyProgression` só nos dois            | domínio + índice parcial             | aguarda seam        | infra-DB |
+| T-G06 | D-45        | salvar de novo substitui a configuração inteira                      | service              | tira um encounter, troca track e mercados de outro → só o novo estado existe; `updatedBy` registrado                   | domínio                              | aguarda seam        | infra-DB |
+| T-G07 | D-31        | depois do Ready a preparação é recusada                              | service              | rodada pronta → salvar → recusado com motivo, configuração intacta                                                     | domínio + trigger `config_congelada` | aguarda seam        | infra-DB |
+| T-G08 | §16.8       | cada salvamento vira `BetEvent` com o que mudou e o officer          | service              | salvar → evento `configuracao_salva` com encounters/mercados criados, alterados e removidos                            | domínio                              | aguarda seam        | infra-DB |
+| T-G09 | D-45        | candidatos e bettors nunca são escolhidos à mão                      | contrato             | corpo com lista de personagens → recusado pelo schema estrito                                                          | Zod                                  | aguarda seam        | sim      |
+| T-G10 | D-45, D-31  | preparar → Ready congela a configuração preparada e os snapshots     | service / integração | preparar pelo service → Ready com fontes falsas → snapshots gravados, configuração imutável                            | domínio + triggers                   | aguarda seam        | infra-DB |
+| T-G11 | D-36        | rotas de preparação só para officer                                  | API / autorização    | cada rota: sem cookie → 401; membro → 403; officer → 2xx                                                               | `OfficerGuard`                       | planejado (§5.3)    | sim      |
+
+**Redistribuição do `W = 0` (D-44)** — domínio puro, §8.6 da spec.
+
+| T     | Spec | Comportamento                                                             | Setup → Ação → Esperado                                                                            | Agora? |
+| ----- | ---- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------ |
+| T-M10 | D-44 | órfão não é `VOID`: sem restituição; `G₀` fica com a guilda               | órfão com V 1.000 → nenhuma restituição, receita 100                                               | sim    |
+| T-M11 | D-44 | `P` do órfão dividido igualmente entre os premiáveis; resto para a guilda | P 900, três premiáveis → +300 cada; P 1.000, três → +333 cada, resto 1                             | sim    |
+| T-M12 | D-44 | o receptor rateia `P + cota` pelo stake das vencedoras                    | receptor com P 900 + cota 300 e W 600 → prêmios `floor(1.200 × stake / 600)`                       | sim    |
+| T-M13 | D-44 | `VOID` e outro órfão não recebem; cada órfão reparte o seu                | dois órfãos, um VOID, dois premiáveis → só os dois premiáveis recebem, cada órfão dividido à parte | sim    |
+| T-M14 | D-44 | sem mercado premiável para um órfão com `P > 0` → não liquida             | um órfão e um VOID → recusa com motivo, nenhum lançamento proposto                                 | sim    |
+| T-M15 | D-44 | reconciliação da rodada fecha com redistribuição                          | casos gerados → Σ prêmios + receitas + restos = Σ V dos mercados não anulados                      | sim    |
+
+**Parse % (D-43).** O congelamento no Auditar é o T-F06; a escolha do campo da API é o
+gate #1 (§6), não teste.
+
 ### 3.11 E2E (um fluxo, não a suíte inteira)
 
 | T     | Fluxo                                                                                                             | Quando                                      |
@@ -352,15 +384,16 @@ guard. **Os dois foram rejeitados** (não fabricar RED). As regras vigentes:
 
 ## 6. Gates do M0 (não automatizáveis)
 
-M0 #1, #2 e #6 são gates **antes de ligar settlement automático em produção**. Não viram
+M0 #1 e #2 são gates **antes de ligar settlement automático em produção** (o #6 deixou de
+ser gate na D-46). Não viram
 teste artificial. Os testes abaixo usam logs **fictícios** e provam o algoritmo; o gate
 prova que os números do WCL real batem com a tela.
 
-| Gate | O que falta                                                   | Testes cujo resultado em produção depende dele |
-| ---- | ------------------------------------------------------------- | ---------------------------------------------- |
-| #1   | comparação humana das seis métricas de farm com a tela do WCL | T-F01, T-F02, T-F08                            |
-| #2   | comparação humana do First Death das tries com a tela do WCL  | T-F05, T-P01–T-P05                             |
-| #6   | tempo até o Parse % ficar disponível numa raid real           | T-F06, T-F08                                   |
+| Gate   | O que falta                                                   | Testes cujo resultado em produção depende dele |
+| ------ | ------------------------------------------------------------- | ---------------------------------------------- |
+| #1     | comparação humana das seis métricas de farm com a tela do WCL | T-F01, T-F02, T-F08                            |
+| #2     | comparação humana do First Death das tries com a tela do WCL  | T-F05, T-P01–T-P05                             |
+| ~~#6~~ | não é mais gate (D-46): vale o parse disponível no Auditar    | —                                              |
 
 ---
 
@@ -381,8 +414,9 @@ GREENs não são adiantados.
 | RED/GREEN Autorização | Officer Panel e dado privado                                                                                                                      | T-R02, T-D05, T-Z01, T-Z02, T-Z03, T-Z07, T-D01                                                                                              |
 | RED/GREEN Odds        | projected payout                                                                                                                                  | T-O01, T-O02, T-O03, T-Z06, T-Z08                                                                                                            |
 | RED/GREEN Auditar     | fontes e WCL                                                                                                                                      | T-A01–T-A12, T-Z05                                                                                                                           |
+| RED/GREEN Preparação  | criar e preparar a semana no Officer Panel (D-45)                                                                                                 | T-G01–T-G11                                                                                                                                  |
 | RED/GREEN Resultados  | farm, progressão, Weekly                                                                                                                          | T-F01–T-F06, T-P01–T-P05, T-W01–T-W04                                                                                                        |
-| RED/GREEN Settlement  | rateio e ledger                                                                                                                                   | T-M01–T-M08, T-L04–T-L07                                                                                                                     |
+| RED/GREEN Settlement  | rateio e ledger                                                                                                                                   | T-M01–T-M08, T-M10–T-M15, T-L04–T-L07                                                                                                        |
 | RED/GREEN Closing     | relatório de fechamento                                                                                                                           | T-C01–T-C03                                                                                                                                  |
 | E2E                   | um fluxo                                                                                                                                          | T-E01                                                                                                                                        |
 
@@ -1034,7 +1068,8 @@ com um modelo de evidência que a outra metade vai mudar é o retrabalho que a m
 **Caso não definido pela spec, registrado sem decidir:** mercado com resultado, mas
 **nenhuma aposta válida em opção vencedora** (`W = 0`) — o que acontece com a pool `V`?
 Restituir como `VOID`? Guild Bank? O domínio devolve `sem_aposta_vencedora` e não rateia.
-Proposta: **OQ-56**, para a liderança.
+Levada à liderança e **resolvida na D-44** (registrada como OQ-57, porque a OQ-56 já
+existia na spec). A redistribuição é o T-M10–T-M15.
 
 ### 19.3 O que falta no milestone, e por quê
 
