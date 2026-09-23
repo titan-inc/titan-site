@@ -1944,17 +1944,18 @@ model BetRound {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  encounters BetRoundEncounter[]
-  markets    BetMarket[]
-  bettors    BetRoundBettor[]
-  candidates BetRoundCandidate[]
-  slips      BetSlip[]
-  bets       Bet[]
-  selections BetWeeklySelection[]
-  ledger     GoldLedgerEntry[]
-  events     BetEvent[]
-  audits     BetAudit[]
-  results    BetMarketResult[]
+  encounters     BetRoundEncounter[]
+  markets        BetMarket[]
+  bettors        BetRoundBettor[]
+  candidates     BetRoundCandidate[]
+  slips          BetSlip[]
+  bets           Bet[]
+  selections     BetWeeklySelection[]
+  ledger         GoldLedgerEntry[]
+  events         BetEvent[]
+  audits         BetAudit[]
+  results        BetMarketResult[]
+  closingReports RoundClosingReport[]
 }
 
 /// Um boss na rodada, escolhido do catálogo do WCL (D-22).
@@ -2317,8 +2318,9 @@ model BetAudit {
   /// A tentativa que substituiu esta. Sem FK: é trilha, não estrutura.
   supersededByAuditId String?
 
-  sources BetAuditSource[]
-  results BetMarketResult[]
+  sources        BetAuditSource[]
+  results        BetMarketResult[]
+  closingReports RoundClosingReport[]
 
   @@unique([roundId, attempt])
   /// Alvo da FK do resultado: auditoria desta rodada.
@@ -2418,4 +2420,33 @@ model BetMarketResultKill {
   roundEncounter   BetRoundEncounter @relation(fields: [roundEncounterId, roundId], references: [id, roundId])
 
   @@id([resultId, roundEncounterId])
+}
+
+// ─── Titan Bet: Round Closing Report (§8.5, §16.7) ───────────────────────────
+
+/// O documento publicado da rodada — não é fonte contábil: é gerado do
+/// resultado confirmado e do ledger, com a marca d'água do último lançamento
+/// que ele cobre. Republicar é uma versão nova; nenhuma muda depois.
+model RoundClosingReport {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+  version Int
+
+  auditId String
+  /// A auditoria confirmada desta rodada.
+  audit   BetAudit @relation(fields: [auditId, roundId], references: [id, roundId])
+
+  /// Até onde o ledger foi lido para gerar este documento.
+  ledgerThroughEntryId BigInt
+
+  /// Validado pelo schema **publicado** do shared antes de gravar.
+  content Json
+
+  publishedByUserId    String
+  publishedByBattletag String
+  publishedAt          DateTime @default(now())
+
+  /// Republicar é versão nova (T-C02).
+  @@unique([roundId, version])
 }

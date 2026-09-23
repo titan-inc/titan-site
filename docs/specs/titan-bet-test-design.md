@@ -1301,3 +1301,24 @@ officer/slips/:slipId/ajustes`; contrato `ajustarSchema`, `saldosDaRodadaSchema`
 
 `pnpm test:db` **259/259**; `pnpm test`: shared **354**, api **886**, web 147; `api`
 lint, typecheck e build OK; banco de dev com o mesmo hash.
+
+---
+
+## 25. Closing Report — execução parcial (23/09/2026)
+
+**Status: T-C02 GREEN; T-C01 e T-C03 aguardam a OQ-51.**
+
+| Testes | Onde                                       | Antes da implementação                                                                                                         |
+| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| T-C02  | `test/db/titan-bet/closing.db-spec.ts` — 5 | **RED real** — com a estrutura (`20260923300000_titan_bet_closing_estrutura`), 4 falhas, todas "recebido `aceito`"; 1 controle |
+
+Migration `20260923310000_titan_bet_closing_invariantes`: unique `(roundId, version)`, FK
+composta da auditoria com a rodada e `titanbet_append_only` (UPDATE, DELETE e TRUNCATE).
+
+**Por que T-C01 parou.** O conteúdo tem de trazer "os vencedores e quanto cada um ganhou
+em cada mercado" e "o total devido a cada membro" (§8.5). **Como cada membro aparece** no
+documento publicado — battletag, personagem, outra coisa — é a OQ-51 (T-C04, bloqueado),
+e ela define os campos do schema publicado que o T-C01 valida. O service e a guarda
+T-C03 nascem com esse schema. O E2E (T-E01) termina no closing report e espera o mesmo.
+
+`pnpm test:db` **264/264**.
