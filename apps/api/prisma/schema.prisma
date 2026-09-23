@@ -1984,7 +1984,8 @@ model BetRoundEncounter {
 /// Mercado semanal. Sem status: existe = publicado (§16.5).
 ///
 /// Índice parcial na migration: uma Weekly Progression por rodada. CHECKs:
-/// Weekly ⇔ sem boss; boss em progressão só tem First Death (R-22/R-24).
+/// Weekly ⇔ sem boss; boss em progressão só tem First Death (R-22/R-24);
+/// `track` presente ⇔ encounter presente, senão a FK composta não confere nada.
 model BetMarket {
   id      String        @id @default(cuid())
   roundId String
