@@ -5,7 +5,6 @@ import { AuditoriaRecusada } from '../../../src/titan-bet/auditoria.service';
 import { CalculoService, type ReportsParaCalculo } from '../../../src/titan-bet/calculo.service';
 import type { LeituraDaKill, LeituraDoReport } from '../../../src/titan-bet/leitura-wcl';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
-import type { RaidCatalog } from '../../../src/warcraftlogs/warcraftlogs.service';
 import { esperarPassar } from './ciclo';
 import { Fabrica } from './fabrica';
 
@@ -22,18 +21,8 @@ jest.setTimeout(60_000);
 const OFFICER = { userId: 'officer-teste', battletag: 'Officer#0001' };
 const FARM = 880001;
 const PROG = 880002;
-const FORA = 880003; // boss do catálogo que não está na rodada
-
-const CATALOGO: RaidCatalog = {
-  encounters: new Map(
-    [FARM, PROG, FORA].map((id, i) => [
-      id,
-      { id, name: `Boss ${i}`, zoneId: 88, zoneName: 'Raid', order: i },
-    ]),
-  ),
-  zones: new Map(),
-  difficultyNames: new Map(),
-};
+const FORA = 880003; // boss que não está na rodada
+const SEM_WEEKLY = 880004; // boss da rodada, fora da Weekly
 
 describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
   let db: PrismaService;
@@ -68,6 +57,11 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       encounterId: PROG,
       track: 'progressao',
       inWeeklyProgression: true,
+    });
+    const semWeekly = await f.encounter(rodada.id, {
+      encounterId: SEM_WEEKLY,
+      track: 'farm',
+      inWeeklyProgression: false,
     });
     const m: Record<string, { id: string; kind: BetMarketKind }> = {
       topDps: await f.mercadoDeBoss(farm, 'top_dps'),
@@ -148,7 +142,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       return bet;
     }
 
-    return { rodada, farm, prog, m, pessoas, apostar };
+    return { rodada, farm, prog, semWeekly, m, pessoas, apostar };
   }
 
   type Cenario = Awaited<ReturnType<typeof cenario>>;
@@ -245,7 +239,6 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
   function wcl(reports: Record<string, LeituraDoReport>) {
     const lidos: string[] = [];
     const porta: ReportsParaCalculo = {
-      getRaidCatalog: () => Promise.resolve(CATALOGO),
       getTitanBetReport: (code: string) => {
         lidos.push(code);
         return Promise.resolve(reports[code]!);
@@ -344,6 +337,23 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
         algorithmVersion: 'titanbet-1',
       });
       expect(top.winners.map((w) => w.characterId)).toEqual([c.pessoas.A.characterId]);
+    });
+  });
+
+  describe('T-K04 — a role do Ready decide o mercado, não a spec jogada (D-51; guarda de regressão)', () => {
+    it('candidato Heal com o maior dano da luta fica fora do Top DPS', async () => {
+      const c = await cenario();
+      await c.apostar(c.m.topDps!.id, 'top_dps', 500, c.pessoas.A);
+      const a = await auditoriaPronta(c);
+      const semana = semanaPadrao(c);
+      // H, Heal no snapshot, jogou de DPS e fez o maior dano da luta.
+      semana.Terca1.kills[3]!.damage.push({ id: 12, name: c.pessoas.H.name, total: 80_000_000 });
+      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+
+      const top = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.topDps!.id)!;
+      expect(top.winners.map((w) => w.characterId)).toEqual([c.pessoas.A.characterId]);
+      const ev = top.evidence as { valores: Array<{ characterId: string }> };
+      expect(ev.valores.map((v) => v.characterId)).not.toContain(c.pessoas.H.characterId);
     });
   });
 
@@ -474,22 +484,29 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       expect((await db.betAudit.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('pronta');
     });
 
-    it('kill Mythic de boss fora da Weekly → recusa: `K` depende da OQ-47', async () => {
+    it('T-W05 — kill Mythic fora da Weekly é ignorada para K e não bloqueia (D-49)', async () => {
       const c = await cenario();
       const a = await auditoriaPronta(c);
       const semana = semanaPadrao(c);
-      semana.Quinta1.fights.push({
-        id: 8,
-        encounterID: FORA,
-        difficulty: 5,
-        kill: true,
-        startTime: 400_000,
-        endTime: 600_000,
-      });
-      await expect(new CalculoService(repo, wcl(semana).porta).calcular(a.id)).rejects.toThrow(
-        /OQ-47/,
-      );
-      expect(await db.betMarketResult.count({ where: { auditId: a.id } })).toBe(0);
+      for (const [id, encounterID] of [
+        [8, FORA],
+        [9, SEM_WEEKLY],
+      ] as const) {
+        semana.Quinta1.fights.push({
+          id,
+          encounterID,
+          difficulty: 5,
+          kill: true,
+          startTime: 400_000 + id * 1000,
+          endTime: 600_000 + id * 1000,
+        });
+        semana.Quinta1.kills[id] = semKill();
+      }
+      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+
+      const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
+      expect(w.kills.map((k) => k.roundEncounterId).sort()).toEqual([c.farm.id, c.prog.id].sort());
+      expect(w.kills.map((k) => k.roundEncounterId)).not.toContain(c.semWeekly.id);
     });
 
     it('lê do WCL exatamente os reports congelados no Auditar (T-A12)', async () => {

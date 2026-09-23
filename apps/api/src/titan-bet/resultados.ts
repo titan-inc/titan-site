@@ -170,17 +170,23 @@ export function resultadoFirstDeathProgressao(
 }
 
 /**
- * `K` da Weekly Progression: encounters Mythic mortos nos reports oficiais da
- * rodada. Só afirmado com **as duas** sessões resolvidas (fonte encontrada ou
- * decisão do officer); sessão sem fonte deixa `K` indeterminado, nunca `{}`
- * (D-24, §7.3). `K` ∩ encounters configurados é a OQ-47.
+ * `K` da Weekly Progression: encounters **da Weekly** (marcados e congelados no
+ * Ready) mortos em Mythic nos reports oficiais da rodada (D-49). Kill de boss
+ * fora desse conjunto não entra e não bloqueia. Só afirmado com **as duas**
+ * sessões resolvidas; sessão sem fonte deixa `K` indeterminado, nunca `{}`
+ * (D-24, §7.3).
  */
 export function killsDaSemana(
   pulls: PullDaSemana[],
   resolvidas: Record<Sessao, boolean>,
+  daWeekly: ReadonlySet<string>,
 ): { tipo: 'K'; encounterIds: string[] } | { tipo: 'indeterminado' } {
   if (!resolvidas.terca || !resolvidas.quinta) return { tipo: 'indeterminado' };
-  const mortos = new Set(pulls.filter((p) => p.kill && valida(p)).map((p) => p.encounterId));
+  const mortos = new Set(
+    pulls
+      .filter((p) => p.kill && valida(p) && daWeekly.has(p.encounterId))
+      .map((p) => p.encounterId),
+  );
   return { tipo: 'K', encounterIds: ordenados([...mortos]) };
 }
 

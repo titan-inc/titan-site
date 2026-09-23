@@ -1332,3 +1332,20 @@ e ela define os campos do schema publicado que o T-C01 valida. O service e a gua
 T-C03 nascem com esse schema. O E2E (T-E01) termina no closing report e espera o mesmo.
 
 `pnpm test:db` **264/264**.
+
+---
+
+## 26. D-49 e D-51 — execução (23/09/2026)
+
+| Testes | Onde                                                                                                     | Antes da implementação                                                                                                                                  |
+| ------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-W05  | `src/titan-bet/resultados.spec.ts` (+1); `test/db/titan-bet/calculo.db-spec.ts` (troca do caso da OQ-47) | **RED real** — o domínio punha o boss fora da Weekly em `K`; o cálculo recusava com "o K depende da OQ-47". A decisão D-49 trocou o esperado desse caso |
+| T-K04  | `test/db/titan-bet/calculo.db-spec.ts` (+1)                                                              | **guarda de regressão**, sem RED (§5.4): a role do snapshot já decidia o mercado; o teste fixa isso como a D-51                                         |
+
+`killsDaSemana` passa a receber os encounters da Weekly congelados no Ready e ignora
+kill fora deles; o cálculo deixou de recusar e de ler o catálogo de raid (a porta do WCL
+do cálculo ficou só com `getTitanBetReport`). O caso de teste que exigia a recusa da
+OQ-47 foi **substituído** pelo T-W05: não é afrouxamento, é a decisão de produto que
+mudou o esperado.
+
+D-50 (OQ-52) não mudou código: o T-L06 já exige a recusa do saldo negativo.

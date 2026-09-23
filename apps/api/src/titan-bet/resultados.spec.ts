@@ -255,8 +255,10 @@ describe('resultadoFirstDeathProgressao — todas as tries Mythic da semana (D-2
   });
 });
 
-describe('Weekly Progression (D-05, D-15, D-24)', () => {
+describe('Weekly Progression (D-05, D-15, D-24, D-49)', () => {
   const RESOLVIDAS = { terca: true, quinta: true };
+  /** Os encounters marcados para a Weekly e congelados no Ready. */
+  const WEEKLY = new Set(['X', 'Y', 'Z', 'H', BOSS]);
 
   it('K = encounters Mythic mortos nos reports oficiais da semana', () => {
     const pulls = [
@@ -265,7 +267,10 @@ describe('Weekly Progression (D-05, D-15, D-24)', () => {
       pull({ encounterId: 'Z' }),
       pull({ encounterId: 'H', kill: true, difficulty: 4 }),
     ];
-    expect(killsDaSemana(pulls, RESOLVIDAS)).toEqual({ tipo: 'K', encounterIds: ['X', 'Y'] });
+    expect(killsDaSemana(pulls, RESOLVIDAS, WEEKLY)).toEqual({
+      tipo: 'K',
+      encounterIds: ['X', 'Y'],
+    });
   });
 
   it('T-W01: vence só com o conjunto igual', () => {
@@ -280,20 +285,31 @@ describe('Weekly Progression (D-05, D-15, D-24)', () => {
   });
 
   it('T-W03: sessão sem fonte deixa K indeterminado — nunca `{}`', () => {
-    expect(killsDaSemana([], { terca: true, quinta: false })).toEqual({
+    expect(killsDaSemana([], { terca: true, quinta: false }, WEEKLY)).toEqual({
       tipo: 'indeterminado',
     });
-    expect(killsDaSemana([pull({ kill: true })], { terca: false, quinta: true })).toEqual({
+    expect(killsDaSemana([pull({ kill: true })], { terca: false, quinta: true }, WEEKLY)).toEqual({
       tipo: 'indeterminado',
     });
   });
 
   it('com as duas resolvidas e nenhuma kill, K é `{}` — afirmado, não suposto', () => {
-    expect(killsDaSemana([pull()], RESOLVIDAS)).toEqual({ tipo: 'K', encounterIds: [] });
+    expect(killsDaSemana([pull()], RESOLVIDAS, WEEKLY)).toEqual({ tipo: 'K', encounterIds: [] });
+  });
+
+  it('T-W05: kill de boss fora da Weekly não entra em K (D-49)', () => {
+    const pulls = [
+      pull({ encounterId: 'X', kill: true }),
+      pull({ encounterId: 'FARM-FORA-DA-WEEKLY', kill: true, session: 'quinta' }),
+    ];
+    expect(killsDaSemana(pulls, RESOLVIDAS, new Set(['X', 'Y']))).toEqual({
+      tipo: 'K',
+      encounterIds: ['X'],
+    });
   });
 
   it('T-W04: kill fora de terça/quinta não entra em K (D-19, D-23)', () => {
     const sabado = pull({ encounterId: 'X', kill: true, session: null });
-    expect(killsDaSemana([sabado], RESOLVIDAS)).toEqual({ tipo: 'K', encounterIds: [] });
+    expect(killsDaSemana([sabado], RESOLVIDAS, WEEKLY)).toEqual({ tipo: 'K', encounterIds: [] });
   });
 });

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { BetMarketKind, Prisma } from '@prisma/client';
 import type { ResultadosDaAuditoria } from '@titan/shared';
-import { WarcraftLogsService, type RaidCatalog } from '../warcraftlogs/warcraftlogs.service';
+import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { AuditoriaRecusada } from './auditoria.service';
 import { candidatosDoMercado } from './candidatos';
 import {
@@ -24,16 +24,13 @@ import {
 } from './resultados';
 import { TitanBetRepository, type ResultadoParaGravar } from './titan-bet.repository';
 
-/** O pedaço do WCL que o cálculo usa: o catálogo e o report oficial. */
+/** O pedaço do WCL que o cálculo usa: o report oficial. */
 export interface ReportsParaCalculo {
-  getRaidCatalog(): Promise<RaidCatalog>;
   getTitanBetReport(code: string, encounterIds: number[]): Promise<LeituraDoReport>;
 }
 
 /** Versão do algoritmo gravada com cada resultado (§15.10). */
 export const VERSAO_DO_ALGORITMO = 'titanbet-1';
-
-const MYTHIC = 5;
 
 type Auditoria = NonNullable<Awaited<ReturnType<TitanBetRepository['auditoriaParaCalcular']>>>;
 type Mercado = Auditoria['round']['markets'][number];
@@ -73,7 +70,6 @@ export class CalculoService {
 
     const encounters = new Map(a.round.encounters.map((e) => [e.encounterId, e.id]));
     const candidatos: CandidatoIdentificavel[] = a.round.candidates;
-    const catalogo = await this.wcl.getRaidCatalog();
 
     const pulls: PullDaSemana[] = [];
     const origem = new Map<PullDaSemana, Origem>();
@@ -98,7 +94,6 @@ export class CalculoService {
         revision: f.reportRevision,
         startTime: f.reportStartTime?.toISOString() ?? null,
       });
-      this.conferirWeekly(a, report, catalogo);
     }
 
     const apostas = await this.repo.apostasValidasDaRodada(a.roundId);
@@ -139,30 +134,6 @@ export class CalculoService {
     };
   }
 
-  /**
-   * `K` com um boss morto fora do conjunto da Weekly depende da OQ-47 (`K` ∩
-   * encounters da Weekly?). Sem a resposta, o cálculo não escolhe uma leitura.
-   */
-  private conferirWeekly(a: Auditoria, report: LeituraDoReport, catalogo: RaidCatalog): void {
-    if (!a.round.markets.some((m) => m.kind === 'weekly_progression')) return;
-    const daWeekly = new Set(
-      a.round.encounters.filter((e) => e.inWeeklyProgression).map((e) => e.encounterId),
-    );
-    const fora = report.fights.filter(
-      (f) =>
-        f.kill === true &&
-        f.difficulty === MYTHIC &&
-        catalogo.encounters.has(f.encounterID) &&
-        !daWeekly.has(f.encounterID),
-    );
-    if (fora.length > 0) {
-      throw new AuditoriaRecusada(
-        `kill Mythic de boss fora da Weekly Progression (encounter ${fora[0]!.encounterID}): ` +
-          'o K depende da OQ-47 — a auditoria não escolhe uma leitura',
-      );
-    }
-  }
-
   private resultadoDoMercado(
     m: Mercado,
     a: Auditoria,
@@ -175,7 +146,11 @@ export class CalculoService {
     );
 
     if (m.kind === 'weekly_progression') {
-      const k = killsDaSemana(pulls, { terca: true, quinta: true });
+      // D-49: só os encounters marcados para a Weekly e congelados no Ready.
+      const daWeekly = new Set(
+        a.round.encounters.filter((e) => e.inWeeklyProgression).map((e) => e.id),
+      );
+      const k = killsDaSemana(pulls, { terca: true, quinta: true }, daWeekly);
       if (k.tipo === 'indeterminado') throw new AuditoriaRecusada('K indeterminado');
       return {
         resultado: { outcome: 'vencedores', vencedores: [], evidencia: { K: k.encounterIds } },
