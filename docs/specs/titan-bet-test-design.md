@@ -1476,3 +1476,49 @@ Todos os milestones da §7 estão GREEN, com a revisão 10 incorporada. O que re
 matriz está **bloqueado por OQ** (§4): OQ-03, OQ-04a, OQ-27a, OQ-28, OQ-30, OQ-39, OQ-40,
 OQ-45, OQ-46, OQ-48, OQ-50, OQ-54, OQ-55 e OQ-56. As telas do front (`/interno/bet`) e o
 cardápio de mercados para a tela do membro não estão na matriz.
+
+---
+
+## 30. Revisão 11, milestone 1 — Weekly por boss e `sem_vencedor` (24/09/2026)
+
+**Status: GREEN.** D-54 e D-61 — **mudança de produto**, não correção.
+
+### 30.1 RED
+
+| Camada   | Onde                                                           | RED                                                                                                                                                                                                                                                                                              |
+| -------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| banco    | `test/db/titan-bet/weekly.db-spec.ts` — 10 (T-W14, T-M17)      | **RED real** contra `20260924000000_titan_bet_weekly_por_boss_estrutura`: 5 × "recebido `aceito`" e o controle de `sem_vencedor` recusado pelo CHECK antigo. Três casos do T-M17 passavam pelo motivo errado (o CHECK antigo recusava qualquer `sem_vencedor`) — o controle falhando mostra isso |
+| contrato | `packages/shared/src/titan-bet/*.spec.ts` — 9 casos reescritos | **RED** — 9 falhas pela forma antiga (conjunto de bosses, marcação da Weekly, odds sem Weekly, `voidReason`/`kills`)                                                                                                                                                                             |
+| domínio  | `resultados.spec.ts`, `liquidacao.spec.ts` — 13                | **RED** — `resultadoWeekly` ausente; `sem_vencedor` desconhecido na liquidação; desfechos ainda `anulado`                                                                                                                                                                                        |
+| serviço  | 9 suítes de banco                                              | **RED** — 85 falhas: código de produção no modelo antigo                                                                                                                                                                                                                                         |
+
+### 30.2 O que mudou
+
+- **Banco:** `BetWeeklySelection` removida; `BetRoundEncounter.inWeeklyProgression` removida;
+  `Bet.targetEncounterId`/`targetEncounterTrack` com FK composta para o encounter de
+  progressão da rodada e três CHECKs; `BetResultOutcome.sem_vencedor` com o CHECK do
+  desfecho refeito (V e P presentes, W = 0). O trigger de editabilidade perdeu o ramo da
+  tabela removida. `BetMarketResultKill` passou a guardar **os bosses vencedores da
+  Weekly**.
+- **Contratos:** aposta da Weekly `{ marketId, stake, encounterId }`; preparação sem
+  `inWeeklyProgression`; odds com opção `{ characterId }` ou `{ roundEncounterId }`;
+  resultados e closing com desfecho `sem_vencedor`, `motivo` no lugar de `voidReason` e
+  `bossesVencedores` no lugar de `kills`.
+- **Domínio:** `resultadoWeekly` (bosses de progressão mortos); todo "sem vencedor"
+  calculado vira `sem_vencedor` com motivo; `killsDaSemana` e `weeklyVence` removidos; a
+  liquidação trata `sem_vencedor` como órfão (D-61 + D-44).
+- **Serviços:** Salvar valida o boss de progressão; odds da Weekly por boss; Ready exige
+  boss de progressão para a Weekly; cálculo por boss e `sem_vencedor` (algoritmo
+  `titanbet-2`); settlement vence a aposta no boss morto; closing publica `motivo` e
+  `bossesVencedores`.
+
+**Testes substituídos, registrados no próprio teste:** T-W01–T-W05, T-S11, T-S22, T-G05, o
+caso de seleção da Weekly no T-S04, a parte Weekly do T-R14, T-Q03, T-F04, T-P05, o
+`sem_vencedor` do T-F05, o 1º caso do T-Q05 e o caso "Weekly não aparece" das odds. As
+fixtures de VOID do settlement e do closing trocaram o motivo `sem_kill` por
+`mercado_cancelado` — o VOID continua no modelo; "sem kill" deixou de ser VOID.
+
+### 30.3 Resultado
+
+`pnpm test:db` **280/280**; `pnpm test`: shared **365**, api **897**, web 147; lint,
+typecheck e build OK; banco de dev com o mesmo hash.

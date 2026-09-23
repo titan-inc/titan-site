@@ -2,14 +2,14 @@ type: http_request
 model: http_request
 id: rq_TitanBetResultados1
 createdAt: 2026-09-23T22:00:00.000000
-updatedAt: 2026-09-23T22:00:00.000000
+updatedAt: 2026-09-24T01:00:00.000000
 workspaceId: wk_8LmjjnEbam
 folderId: fl_TitanBet1
 authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Os resultados da tentativa por mercado: desfecho (anulado é proposta de VOID), V/P/W, vencedores, K da Weekly e a evidência lida. Para revisar antes de confirmar. 404 se a auditoria não existe.'
+description: 'OfficerGuard. Os resultados da tentativa por mercado: desfecho (vencedores, sem_vencedor — o prize pool vai para os outros mercados, D-61 — ou anulado), motivo, V/P/W, vencedores, os bosses vencedores da Weekly e a evidência lida. Para revisar antes de confirmar. 404 se a auditoria não existe.'
 headers:
 - enabled: true
   name: Cookie

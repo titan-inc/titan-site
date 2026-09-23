@@ -22,7 +22,8 @@ const OFFICER = { userId: 'officer-teste', battletag: 'Officer#0001' };
 const FARM = 880001;
 const PROG = 880002;
 const FORA = 880003; // boss que não está na rodada
-const SEM_WEEKLY = 880004; // boss da rodada, fora da Weekly
+const SEM_WEEKLY = 880004; // boss farm da rodada: fora da Weekly (D-54)
+const PROG2 = 880005; // segundo boss de progressão, que não morre
 
 describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
   let db: PrismaService;
@@ -51,17 +52,15 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
     const farm = await f.encounter(rodada.id, {
       encounterId: FARM,
       track: 'farm',
-      inWeeklyProgression: true,
     });
     const prog = await f.encounter(rodada.id, {
       encounterId: PROG,
       track: 'progressao',
-      inWeeklyProgression: true,
     });
+    const prog2 = await f.encounter(rodada.id, { encounterId: PROG2, track: 'progressao' });
     const semWeekly = await f.encounter(rodada.id, {
       encounterId: SEM_WEEKLY,
       track: 'farm',
-      inWeeklyProgression: false,
     });
     const m: Record<string, { id: string; kind: BetMarketKind }> = {
       topDps: await f.mercadoDeBoss(farm, 'top_dps'),
@@ -94,7 +93,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       kind: BetMarketKind,
       stake: number,
       alvo: Pessoa | null,
-      weekly: string[] = [],
+      boss: string | null = null,
     ) {
       const slip = await f.slip(rodada.id, apostador.id, 'rascunho', {
         ownerUserId: `conta-${randomUUID()}`,
@@ -108,19 +107,11 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
           stake,
           targetCharacterId: alvo?.characterId ?? null,
           targetRole: alvo?.role ?? null,
+          // A Weekly aposta num boss de progressão (D-54).
+          targetEncounterId: boss,
+          targetEncounterTrack: boss ? 'progressao' : null,
         },
       });
-      for (const roundEncounterId of weekly) {
-        await db.betWeeklySelection.create({
-          data: {
-            betId: bet.id,
-            roundId: rodada.id,
-            marketKind: kind,
-            roundEncounterId,
-            inWeeklyProgression: true,
-          },
-        });
-      }
       await db.betSlip.update({
         where: { id: slip.id },
         data: {
@@ -142,7 +133,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       return bet;
     }
 
-    return { rodada, farm, prog, semWeekly, m, pessoas, apostar };
+    return { rodada, farm, prog, prog2, semWeekly, m, pessoas, apostar };
   }
 
   type Cenario = Awaited<ReturnType<typeof cenario>>;
@@ -334,7 +325,8 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
         validPool: 1000,
         prizePool: 900,
         winningStake: 600,
-        algorithmVersion: 'titanbet-1',
+        // titanbet-2: Weekly por boss (D-54) e sem vencedor (D-61) — mudança de produto.
+        algorithmVersion: 'titanbet-2',
       });
       expect(top.winners.map((w) => w.characterId)).toEqual([c.pessoas.A.characterId]);
     });
@@ -378,18 +370,41 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
     });
   });
 
-  describe('T-Q03 — Weekly: K gravado; W das apostas no conjunto exato (D-05)', () => {
-    it('K = {farm, prog}; a aposta nos dois vence, a só no farm perde', async () => {
+  // Mudança de produto (D-54): substitui T-Q03 (K gravado, W pelo conjunto
+  // exato). A Weekly vence por boss: os de progressão mortos são as opções
+  // vencedoras.
+  describe('T-W17 — Weekly por boss: bosses de progressão mortos vencem (D-54)', () => {
+    it('o boss morto na quinta vence; o que não morreu perde; farm não é opção', async () => {
       const c = await cenario();
-      await c.apostar(c.m.weekly!.id, 'weekly_progression', 500, null, [c.farm.id, c.prog.id]);
-      await c.apostar(c.m.weekly!.id, 'weekly_progression', 300, null, [c.farm.id]);
+      await c.apostar(c.m.weekly!.id, 'weekly_progression', 500, null, c.prog.id);
+      await c.apostar(c.m.weekly!.id, 'weekly_progression', 300, null, c.prog2.id);
       const a = await auditoriaPronta(c);
       await new CalculoService(repo, wcl(semanaPadrao(c)).porta).calcular(a.id);
 
       const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
       expect(w).toMatchObject({ outcome: 'vencedores', validPool: 800, winningStake: 500 });
-      expect(w.kills.map((k) => k.roundEncounterId).sort()).toEqual([c.farm.id, c.prog.id].sort());
+      // O farm morreu na terça e não é opção; só o boss de progressão morto vence.
+      expect(w.kills.map((k) => k.roundEncounterId)).toEqual([c.prog.id]);
       expect(w.winners).toHaveLength(0);
+    });
+
+    it('T-W13: nenhum boss de progressão morto → Weekly sem vencedor (D-61)', async () => {
+      const c = await cenario();
+      await c.apostar(c.m.weekly!.id, 'weekly_progression', 500, null, c.prog.id);
+      const a = await auditoriaPronta(c);
+      const semana = semanaPadrao(c);
+      semana.Quinta1.fights = semana.Quinta1.fights.map((x) => ({ ...x, kill: false }));
+      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+
+      const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
+      expect(w).toMatchObject({
+        outcome: 'sem_vencedor',
+        validPool: 500,
+        prizePool: 450,
+        winningStake: 0,
+        voidReason: null,
+      });
+      expect((w.evidence as { motivo: string }).motivo).toBe('sem_kill');
     });
   });
 
@@ -420,8 +435,11 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
     });
   });
 
-  describe('T-Q05 — proposta de VOID e W = 0 ficam como resultado, não como decisão', () => {
-    it('sem kill do farm na semana → mercados do farm `anulado` com motivo', async () => {
+  describe('T-Q05 — sem vencedor e W = 0 ficam como resultado, não como decisão', () => {
+    // Mudança de produto (D-61): substitui "sem kill → `anulado` com motivo". O
+    // boss que não morreu não é VOID: o mercado fica sem vencedor e o P é
+    // redistribuído no settlement.
+    it('T-M18: sem kill do farm na semana → mercados do farm `sem_vencedor`', async () => {
       const c = await cenario();
       const a = await auditoriaPronta(c);
       const semana = semanaPadrao(c);
@@ -430,11 +448,13 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
 
       const top = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.topDps!.id)!;
       expect(top).toMatchObject({
-        outcome: 'anulado',
-        voidReason: 'sem_kill',
-        prizePool: null,
-        winningStake: null,
+        outcome: 'sem_vencedor',
+        voidReason: null,
+        winningStake: 0,
       });
+      expect((top.evidence as { motivo: string }).motivo).toBe('sem_kill');
+      const anulados = (await resultadosDe(a.id)).filter((r) => r.outcome === 'anulado');
+      expect(anulados).toHaveLength(0);
     });
 
     it('ninguém apostou no vencedor → `vencedores` com W = 0 (a D-44 é no settlement)', async () => {
@@ -484,7 +504,10 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       expect((await db.betAudit.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('pronta');
     });
 
-    it('T-W05 — kill Mythic fora da Weekly é ignorada para K e não bloqueia (D-49)', async () => {
+    // Mudança de produto (D-54): o T-W05 da D-49 (K ∩ Weekly) perdeu o objeto.
+    // O que continua valendo: kill de boss fora da rodada ou farm não bloqueia e
+    // não vira opção da Weekly (T-W10).
+    it('T-W10 — kill de boss farm ou fora da rodada não bloqueia nem vence a Weekly', async () => {
       const c = await cenario();
       const a = await auditoriaPronta(c);
       const semana = semanaPadrao(c);
@@ -505,8 +528,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
 
       const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
-      expect(w.kills.map((k) => k.roundEncounterId).sort()).toEqual([c.farm.id, c.prog.id].sort());
-      expect(w.kills.map((k) => k.roundEncounterId)).not.toContain(c.semWeekly.id);
+      expect(w.kills.map((k) => k.roundEncounterId)).toEqual([c.prog.id]);
     });
 
     it('lê do WCL exatamente os reports congelados no Auditar (T-A12)', async () => {

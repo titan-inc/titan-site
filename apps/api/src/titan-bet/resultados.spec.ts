@@ -1,10 +1,9 @@
 import {
   killDaSemana,
-  killsDaSemana,
   resultadoFirstDeathFarm,
   resultadoFirstDeathProgressao,
   resultadoTopMetrica,
-  weeklyVence,
+  resultadoWeekly,
   type PullDaSemana,
 } from './resultados';
 
@@ -116,14 +115,15 @@ describe('resultadoTopMetrica — Top DPS / HPS / Dispels / Parse %', () => {
     expect(r).toMatchObject({ outcome: 'vencedores', vencedores: ['A', 'B'] });
   });
 
-  it('T-F04: sem kill na semana → proposta de VOID, com motivo (D-06, D-16)', () => {
+  // Mudança de produto (D-61): substitui T-F04 ("sem kill → proposta de VOID").
+  it('T-M18: sem kill na semana → sem vencedor, com o motivo — não VOID', () => {
     const r = resultadoTopMetrica({ tipo: 'sem_kill' }, [], CANDIDATOS);
-    expect(r).toMatchObject({ outcome: 'anulado', voidReason: 'sem_kill' });
+    expect(r).toMatchObject({ outcome: 'sem_vencedor', motivo: 'sem_kill' });
   });
 
-  it('kill sem nenhum candidato com valor → proposta de VOID: sem vencedor', () => {
+  it('T-M18: kill sem nenhum candidato com valor → sem vencedor, não VOID', () => {
     const r = resultadoTopMetrica(kill, [{ characterId: 'outsider', valor: 1 }], CANDIDATOS);
-    expect(r).toMatchObject({ outcome: 'anulado', voidReason: 'sem_vencedor' });
+    expect(r).toMatchObject({ outcome: 'sem_vencedor', motivo: 'sem_vencedor' });
   });
 
   it('a evidência guarda a pull usada e os valores dos candidatos (§15.10)', () => {
@@ -169,15 +169,16 @@ describe('resultadoFirstDeathFarm — na luta da kill (D-13, D-14)', () => {
     expect(resultadoFirstDeathFarm(kill, CANDIDATOS)).toMatchObject({ vencedores: ['B'] });
   });
 
-  it('sem kill → proposta de VOID; kill sem morte de candidato → sem vencedor', () => {
+  // Mudança de produto (D-61): nenhum dos dois casos é mais proposta de VOID.
+  it('T-M18: sem kill ou kill sem morte de candidato → sem vencedor', () => {
     expect(resultadoFirstDeathFarm({ tipo: 'sem_kill' }, CANDIDATOS)).toMatchObject({
-      outcome: 'anulado',
-      voidReason: 'sem_kill',
+      outcome: 'sem_vencedor',
+      motivo: 'sem_kill',
     });
     const limpa = { tipo: 'kill' as const, pull: pull({ kill: true }) };
     expect(resultadoFirstDeathFarm(limpa, CANDIDATOS)).toMatchObject({
-      outcome: 'anulado',
-      voidReason: 'sem_vencedor',
+      outcome: 'sem_vencedor',
+      motivo: 'sem_vencedor',
     });
   });
 });
@@ -238,10 +239,11 @@ describe('resultadoFirstDeathProgressao — todas as tries Mythic da semana (D-2
     expect(r.evidencia.somas).toEqual({ A: 1, C: 1 });
   });
 
-  it('T-P05: nenhuma pull válida na semana → proposta de VOID', () => {
+  // Mudança de produto (D-61): substitui T-P05 ("sem pull → proposta de VOID").
+  it('T-M18: nenhuma pull válida na semana → sem vencedor', () => {
     expect(resultadoFirstDeathProgressao([pull()], PROG, CANDIDATOS)).toMatchObject({
-      outcome: 'anulado',
-      voidReason: 'sem_pull',
+      outcome: 'sem_vencedor',
+      motivo: 'sem_pull',
     });
   });
 
@@ -251,65 +253,57 @@ describe('resultadoFirstDeathProgressao — todas as tries Mythic da semana (D-2
       PROG,
       CANDIDATOS,
     );
-    expect(r).toMatchObject({ outcome: 'anulado', voidReason: 'sem_vencedor' });
+    expect(r).toMatchObject({ outcome: 'sem_vencedor', motivo: 'sem_vencedor' });
   });
 });
 
-describe('Weekly Progression (D-05, D-15, D-24, D-49)', () => {
-  const RESOLVIDAS = { terca: true, quinta: true };
-  /** Os encounters marcados para a Weekly e congelados no Ready. */
-  const WEEKLY = new Set(['X', 'Y', 'Z', 'H', BOSS]);
+/**
+ * Weekly Progression por boss (D-54) — **mudança de produto**: substitui a Weekly
+ * por conjunto exato e `K` (T-W01–T-W05). Cada boss de progressão é uma opção;
+ * as vencedoras são os bosses mortos na semana.
+ */
+describe('resultadoWeekly — os bosses de progressão mortos na semana (D-54)', () => {
+  const PROGRESSAO = ['P1', 'P2', 'P3'];
 
-  it('K = encounters Mythic mortos nos reports oficiais da semana', () => {
-    const pulls = [
-      pull({ encounterId: 'X', kill: true }),
-      pull({ encounterId: 'Y', session: 'quinta', kill: true }),
-      pull({ encounterId: 'Z' }),
-      pull({ encounterId: 'H', kill: true, difficulty: 4 }),
-    ];
-    expect(killsDaSemana(pulls, RESOLVIDAS, WEEKLY)).toEqual({
-      tipo: 'K',
-      encounterIds: ['X', 'Y'],
-    });
+  it('T-W12: boss de progressão morto em Mythic, terça ou quinta, é opção vencedora', () => {
+    const r = resultadoWeekly(
+      [
+        pull({ encounterId: 'P1', kill: true }),
+        pull({ encounterId: 'P2', session: 'quinta', kill: true }),
+        pull({ encounterId: 'P3' }),
+      ],
+      PROGRESSAO,
+    );
+    expect(r).toMatchObject({ outcome: 'vencedores', vencedores: ['P1', 'P2'] });
   });
 
-  it('T-W01: vence só com o conjunto igual', () => {
-    expect(weeklyVence(['A', 'B'], ['B', 'A'])).toBe(true);
-    expect(weeklyVence(['A'], ['A', 'B'])).toBe(false);
-    expect(weeklyVence(['A', 'B', 'C'], ['A', 'B'])).toBe(false);
+  it('T-W10: boss farm morto não é opção nem vencedor', () => {
+    const r = resultadoWeekly(
+      [pull({ encounterId: BOSS, kill: true }), pull({ encounterId: 'P1', kill: true })],
+      PROGRESSAO,
+    );
+    expect(r).toMatchObject({ vencedores: ['P1'] });
   });
 
-  it('T-W02: `{}` vence só sem kill', () => {
-    expect(weeklyVence([], [])).toBe(true);
-    expect(weeklyVence([], ['A'])).toBe(false);
+  it('T-W12: kill em Heroic ou fora de terça/quinta não conta', () => {
+    const r = resultadoWeekly(
+      [
+        pull({ encounterId: 'P1', kill: true, difficulty: 4 }),
+        pull({ encounterId: 'P2', kill: true, session: null }),
+      ],
+      PROGRESSAO,
+    );
+    expect(r).toMatchObject({ outcome: 'sem_vencedor', motivo: 'sem_kill' });
   });
 
-  it('T-W03: sessão sem fonte deixa K indeterminado — nunca `{}`', () => {
-    expect(killsDaSemana([], { terca: true, quinta: false }, WEEKLY)).toEqual({
-      tipo: 'indeterminado',
-    });
-    expect(killsDaSemana([pull({ kill: true })], { terca: false, quinta: true }, WEEKLY)).toEqual({
-      tipo: 'indeterminado',
-    });
+  it('T-W13: nenhum boss de progressão morto → sem vencedor (D-61)', () => {
+    const r = resultadoWeekly([pull({ encounterId: 'P1' })], PROGRESSAO);
+    expect(r).toMatchObject({ outcome: 'sem_vencedor', motivo: 'sem_kill' });
+    expect(r.evidencia).toEqual({ opcoes: PROGRESSAO, mortos: [] });
   });
 
-  it('com as duas resolvidas e nenhuma kill, K é `{}` — afirmado, não suposto', () => {
-    expect(killsDaSemana([pull()], RESOLVIDAS, WEEKLY)).toEqual({ tipo: 'K', encounterIds: [] });
-  });
-
-  it('T-W05: kill de boss fora da Weekly não entra em K (D-49)', () => {
-    const pulls = [
-      pull({ encounterId: 'X', kill: true }),
-      pull({ encounterId: 'FARM-FORA-DA-WEEKLY', kill: true, session: 'quinta' }),
-    ];
-    expect(killsDaSemana(pulls, RESOLVIDAS, new Set(['X', 'Y']))).toEqual({
-      tipo: 'K',
-      encounterIds: ['X'],
-    });
-  });
-
-  it('T-W04: kill fora de terça/quinta não entra em K (D-19, D-23)', () => {
-    const sabado = pull({ encounterId: 'X', kill: true, session: null });
-    expect(killsDaSemana([sabado], RESOLVIDAS, WEEKLY)).toEqual({ tipo: 'K', encounterIds: [] });
+  it('a evidência lista as opções e os mortos', () => {
+    const r = resultadoWeekly([pull({ encounterId: 'P3', kill: true })], PROGRESSAO);
+    expect(r.evidencia).toEqual({ opcoes: PROGRESSAO, mortos: ['P3'] });
   });
 });

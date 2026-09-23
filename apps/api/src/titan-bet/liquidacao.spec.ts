@@ -99,6 +99,34 @@ describe('T-M13 — VOID e outro órfão não recebem; cada órfão reparte o se
   });
 });
 
+describe('T-M16 — mercado sem resultado premiável reparte o P (D-61)', () => {
+  const semVencedor = (marketId: string, apostas: number[]) => ({
+    marketId,
+    desfecho: 'sem_vencedor' as const,
+    apostas: apostas.map((st) => bet(st, false)),
+  });
+
+  it('G₀ para a guilda, P para os premiáveis, nenhuma restituição', () => {
+    const r = liquidada([semVencedor('s', [1000]), premiavel('a', [500]), premiavel('b', [500])]);
+    expect(r.s).toMatchObject({ tipo: 'orfao', V: 1000, P: 900, receitaGuilda: 100, cota: 450 });
+    expect(r.s).not.toHaveProperty('restituicoes');
+    expect(r.a).toMatchObject({ cotaRecebida: 450 });
+  });
+
+  it('sem vencedor não recebe cota de outro órfão', () => {
+    const r = liquidada([semVencedor('s', [1000]), orfao('o', [1000]), premiavel('a', [500])]);
+    expect(r.s).toMatchObject({ tipo: 'orfao' });
+    expect(r.a).toMatchObject({ cotaRecebida: 1800 });
+  });
+
+  it('sem premiável para receber → não liquida, com o mercado identificado', () => {
+    expect(liquidarRodada([semVencedor('s', [1000])])).toEqual({
+      tipo: 'sem_mercado_premiavel',
+      orfaos: ['s'],
+    });
+  });
+});
+
 describe('T-M14 — sem mercado premiável para o P do órfão → não liquida', () => {
   it('um órfão e um VOID: recusa, com o órfão identificado', () => {
     expect(liquidarRodada([orfao('o', [1000]), anulado('v', [500])])).toEqual({

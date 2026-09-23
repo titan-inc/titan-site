@@ -56,7 +56,6 @@ export class Fabrica {
       encounterName: 'Boss de Teste',
       zoneName: 'Raid de Teste',
       track: 'farm' as BetEncounterTrack,
-      inWeeklyProgression: true,
       createdByUserId: ATOR.userId,
       createdByBattletag: ATOR.battletag,
       ...extra,

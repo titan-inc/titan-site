@@ -28,7 +28,6 @@ const encounterDaPreparacaoSchema = z
     /** Id do encounter no catálogo do WCL. Nome e zona vêm de lá, não daqui. */
     encounterId: z.number().int().positive(),
     track: trackDoEncounterSchema,
-    inWeeklyProgression: z.boolean(),
     mercados: z
       .array(mercadoDeBossSchema)
       .refine((m) => new Set(m).size === m.length, 'mercado repetido'),
@@ -45,7 +44,10 @@ const encounterDaPreparacaoSchema = z
  */
 export const prepararRodadaSchema = z
   .object({
-    /** A Weekly Progression existe nesta rodada? */
+    /**
+     * A Weekly Progression existe nesta rodada? As opções dela são os bosses de
+     * progressão (D-54) — o officer não marca boss nenhum.
+     */
     weekly: z.boolean(),
     encounters: z
       .array(encounterDaPreparacaoSchema)
@@ -54,11 +56,7 @@ export const prepararRodadaSchema = z
         'encounter repetido',
       ),
   })
-  .strict()
-  .refine(
-    (p) => p.weekly || p.encounters.every((e) => !e.inWeeklyProgression),
-    'boss marcado na Weekly Progression exige a Weekly ligada',
-  );
+  .strict();
 export type PrepararRodada = z.infer<typeof prepararRodadaSchema>;
 
 /** A rodada como o Officer Panel mostra durante a preparação. */
@@ -78,7 +76,6 @@ export const preparacaoDaRodadaSchema = z
           encounterName: z.string(),
           zoneName: z.string(),
           track: trackDoEncounterSchema,
-          inWeeklyProgression: z.boolean(),
           mercados: z.array(z.object({ marketId: z.string(), kind: mercadoDeBossSchema }).strict()),
         })
         .strict(),

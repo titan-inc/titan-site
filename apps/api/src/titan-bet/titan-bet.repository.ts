@@ -45,7 +45,8 @@ export interface RodadaParaReady {
   cutoffAt: Date;
   readyAt: Date | null;
   markets: Array<{ kind: BetMarketKind }>;
-  encounters: Array<{ inWeeklyProgression: boolean }>;
+  /** A Weekly tem por opções os bosses de progressão (D-54). */
+  encounters: Array<{ track: BetEncounterTrack }>;
 }
 
 /**
@@ -67,7 +68,7 @@ export class TitanBetRepository {
         cutoffAt: true,
         readyAt: true,
         markets: { select: { kind: true } },
-        encounters: { select: { inWeeklyProgression: true } },
+        encounters: { select: { track: true } },
       },
     });
   }
@@ -156,7 +157,7 @@ export class TitanBetRepository {
       }),
       this.prisma.betRoundEncounter.findMany({
         where: { roundId },
-        select: { id: true, inWeeklyProgression: true },
+        select: { id: true, track: true },
       }),
       this.prisma.betRoundCandidate.findMany({
         where: { roundId },
@@ -202,14 +203,10 @@ export class TitanBetRepository {
           })
         ).id;
 
-      const anteriores = await tx.bet.findMany({ where: { slipId }, select: { id: true } });
-      await tx.betWeeklySelection.deleteMany({
-        where: { betId: { in: anteriores.map((b) => b.id) } },
-      });
       await tx.bet.deleteMany({ where: { slipId } });
 
       for (const a of r.apostas) {
-        const aposta = await tx.bet.create({
+        await tx.bet.create({
           data: {
             slipId,
             roundId: r.roundId,
@@ -218,20 +215,11 @@ export class TitanBetRepository {
             stake: a.stake,
             targetCharacterId: a.alvo?.characterId ?? null,
             targetRole: a.alvo?.role ?? null,
+            // Weekly (D-54): o boss de progressão; a FK confere track e rodada.
+            targetEncounterId: a.boss,
+            targetEncounterTrack: a.boss ? 'progressao' : null,
           },
-          select: { id: true },
         });
-        if (a.encounterIds.length > 0) {
-          await tx.betWeeklySelection.createMany({
-            data: a.encounterIds.map((roundEncounterId) => ({
-              betId: aposta.id,
-              roundId: r.roundId,
-              marketKind: a.marketKind,
-              roundEncounterId,
-              inWeeklyProgression: true,
-            })),
-          });
-        }
       }
 
       return { tipo: 'ok' as const, slipId };
@@ -386,7 +374,7 @@ export class TitanBetRepository {
             marketKind: true,
             stake: true,
             targetCharacterId: true,
-            weeklySelections: { select: { roundEncounterId: true } },
+            targetEncounterId: true,
           },
         },
       },
@@ -418,15 +406,16 @@ export class TitanBetRepository {
    */
   async somasValidasPorOpcao(
     roundId: string,
-  ): Promise<Array<{ marketId: string; characterId: string; soma: number }>> {
+  ): Promise<Array<{ marketId: string; opcao: string; soma: number }>> {
+    // A opção é o personagem, ou o boss de progressão na Weekly (D-54).
     const grupos = await this.prisma.bet.groupBy({
-      by: ['marketId', 'targetCharacterId'],
-      where: { roundId, targetCharacterId: { not: null }, slip: { status: 'valido' } },
+      by: ['marketId', 'targetCharacterId', 'targetEncounterId'],
+      where: { roundId, slip: { status: 'valido' } },
       _sum: { stake: true },
     });
     return grupos.map((g) => ({
       marketId: g.marketId,
-      characterId: g.targetCharacterId!,
+      opcao: (g.targetCharacterId ?? g.targetEncounterId)!,
       soma: g._sum.stake ?? 0,
     }));
   }
@@ -646,7 +635,6 @@ export class TitanBetRepository {
             encounterName: true,
             zoneName: true,
             track: true,
-            inWeeklyProgression: true,
             markets: { orderBy: { createdAt: 'asc' }, select: { id: true, kind: true } },
           },
         },
@@ -677,7 +665,6 @@ export class TitanBetRepository {
           where: { id: e.id },
           data: {
             track: e.track,
-            inWeeklyProgression: e.inWeeklyProgression,
             updatedByUserId: p.officer.userId,
             updatedByBattletag: p.officer.battletag,
           },
@@ -692,7 +679,6 @@ export class TitanBetRepository {
             encounterName: e.encounterName,
             zoneName: e.zoneName,
             track: e.track,
-            inWeeklyProgression: e.inWeeklyProgression,
             createdByUserId: p.officer.userId,
             createdByBattletag: p.officer.battletag,
           },
@@ -750,7 +736,7 @@ export class TitanBetRepository {
         round: {
           select: {
             encounters: {
-              select: { id: true, encounterId: true, track: true, inWeeklyProgression: true },
+              select: { id: true, encounterId: true, track: true },
             },
             markets: { select: { id: true, kind: true, roundEncounterId: true, track: true } },
             candidates: { select: { characterId: true, name: true, realm: true, role: true } },
@@ -769,7 +755,7 @@ export class TitanBetRepository {
         marketId: true,
         stake: true,
         targetCharacterId: true,
-        weeklySelections: { select: { roundEncounterId: true } },
+        targetEncounterId: true,
       },
     });
   }
@@ -906,7 +892,7 @@ export class TitanBetRepository {
             marketId: true,
             stake: true,
             targetCharacterId: true,
-            weeklySelections: { select: { roundEncounterId: true } },
+            targetEncounterId: true,
           },
         }),
       ]);
@@ -1006,7 +992,7 @@ export class TitanBetRepository {
 /** O cardápio de uma rodada. */
 export interface Cardapio {
   markets: Array<{ id: string; kind: BetMarketKind }>;
-  encounters: Array<{ id: string; inWeeklyProgression: boolean }>;
+  encounters: Array<{ id: string; track: BetEncounterTrack }>;
   candidatos: Array<{ characterId: string; role: BetCandidateRole }>;
 }
 
@@ -1016,7 +1002,8 @@ export interface ApostaParaGravar {
   marketKind: BetMarketKind;
   stake: number;
   alvo: { characterId: string; role: BetCandidateRole } | null;
-  encounterIds: string[];
+  /** Weekly (D-54): o id do encounter de progressão apostado. */
+  boss: string | null;
 }
 
 /** Uma aposta como está gravada — o que o "Submeter pagamento" avalia. */
@@ -1064,7 +1051,6 @@ export interface PlanoDePreparacao {
   alterarEncounters: Array<{
     id: string;
     track: BetEncounterTrack;
-    inWeeklyProgression: boolean;
   }>;
   /** encounterId do WCL → id do `BetRoundEncounter`, dos que ficam. */
   encountersExistentes: Array<[number, string]>;
@@ -1073,7 +1059,6 @@ export interface PlanoDePreparacao {
     encounterName: string;
     zoneName: string;
     track: BetEncounterTrack;
-    inWeeklyProgression: boolean;
   }>;
   /** `encounterId` nulo = a Weekly. */
   criarMercados: Array<{
@@ -1088,7 +1073,7 @@ export interface PlanoDePreparacao {
 /** O resultado de um mercado, pronto para gravar (§16.2). */
 export interface ResultadoParaGravar {
   marketId: string;
-  outcome: 'vencedores' | 'anulado';
+  outcome: 'vencedores' | 'sem_vencedor' | 'anulado';
   voidReason: string | null;
   validPool: number;
   prizePool: number | null;
@@ -1097,7 +1082,7 @@ export interface ResultadoParaGravar {
   algorithmVersion: string;
   /** Ids de `Character` — sempre candidatos do snapshot (FK). */
   vencedores: string[];
-  /** `K` da Weekly: ids de `BetRoundEncounter`. */
+  /** Weekly (D-54): os bosses de progressão mortos — ids de `BetRoundEncounter`. */
   kills: string[];
 }
 
@@ -1107,7 +1092,7 @@ export interface DadosDaConfirmacao {
   resultados: Array<{
     id: string;
     marketId: string;
-    outcome: 'vencedores' | 'anulado';
+    outcome: 'vencedores' | 'sem_vencedor' | 'anulado';
     validPool: number;
     market: { kind: BetMarketKind };
     winners: Array<{ characterId: string }>;
@@ -1119,7 +1104,7 @@ export interface DadosDaConfirmacao {
     marketId: string;
     stake: number;
     targetCharacterId: string | null;
-    weeklySelections: Array<{ roundEncounterId: string }>;
+    targetEncounterId: string | null;
   }>;
 }
 

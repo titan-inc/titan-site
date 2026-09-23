@@ -16,7 +16,9 @@ const OFFICER = { readyByUserId: 'officer-teste', readyByBattletag: 'Officer#000
 
 export interface RodadaAberta {
   rodada: BetRound;
-  farm: { id: string; roundId: string; track: 'farm'; inWeeklyProgression: boolean };
+  farm: { id: string; roundId: string; track: 'farm' };
+  /** Boss de progressão: a opção da Weekly (D-54). */
+  prog: { id: string; roundId: string; track: 'progressao' };
   topDispels: BetMarket;
   weekly: BetMarket;
   dono: Character;
@@ -42,13 +44,15 @@ export class Ciclo {
   }
 
   /**
-   * Rodada aberta, pronta para receber slips: um boss farm com Top Dispels, a
-   * Weekly Progression, um bettor e um candidato de cada role.
+   * Rodada aberta, pronta para receber slips: um boss farm com Top Dispels, um
+   * boss de progressão, a Weekly Progression, um bettor e um candidato de cada
+   * role.
    */
   async aberta(cutoffEmMs?: number): Promise<RodadaAberta> {
     const rodada = await this.preparacao(cutoffEmMs);
     const farm = await this.f.encounter(rodada.id, { track: 'farm' });
     const topDispels = await this.f.mercadoDeBoss(farm, 'top_dispels');
+    const prog = await this.f.encounter(rodada.id, { track: 'progressao' });
     const weekly = await this.f.mercadoWeekly(rodada.id);
 
     const dono = await this.f.personagem();
@@ -63,7 +67,8 @@ export class Ciclo {
 
     return {
       rodada: await this.ready(rodada.id),
-      farm: { id: farm.id, roundId: farm.roundId, track: 'farm', inWeeklyProgression: true },
+      farm: { id: farm.id, roundId: farm.roundId, track: 'farm' },
+      prog: { id: prog.id, roundId: prog.roundId, track: 'progressao' },
       topDispels,
       weekly,
       dono,

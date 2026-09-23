@@ -123,7 +123,10 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
   /** Cutoff, resultados gravados na auditoria pronta, calculada, confirmada. */
   async function liquidar(
     c: Cenario,
-    desfechos: Record<string, { vencedores: Pessoa[] } | { voidReason: string }>,
+    desfechos: Record<
+      string,
+      { vencedores: Pessoa[] } | { voidReason: string } | { semVencedor: string }
+    >,
   ) {
     await esperarPassar(db, c.rodada.cutoffAt);
     const a = await db.betAudit.create({
@@ -143,17 +146,18 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
         .filter((b) => b.targetCharacterId && ids.includes(b.targetCharacterId))
         .reduce((s, b) => s + b.stake, 0);
       const anulado = 'voidReason' in d;
+      const semVencedor = 'semVencedor' in d;
       const r = await db.betMarketResult.create({
         data: {
           auditId: a.id,
           marketId,
           roundId: c.rodada.id,
-          outcome: anulado ? 'anulado' : 'vencedores',
+          outcome: anulado ? 'anulado' : semVencedor ? 'sem_vencedor' : 'vencedores',
           voidReason: anulado ? d.voidReason : null,
           validPool: V,
           prizePool: anulado ? null : Math.floor((9 * V) / 10),
           winningStake: anulado ? null : W,
-          evidence: { versao: 1 },
+          evidence: semVencedor ? { versao: 1, motivo: d.semVencedor } : { versao: 1 },
           algorithmVersion: 'titanbet-1',
         },
       });
@@ -181,7 +185,7 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
       const sBia = await c.slip(c.bia, [[c.topDps.id, 'top_dps', 300, c.B]]);
       await liquidar(c, {
         [c.topDps.id]: { vencedores: [c.A] },
-        [c.firstDeath.id]: { voidReason: 'sem_kill' },
+        [c.firstDeath.id]: { voidReason: 'mercado_cancelado' },
       });
 
       const { version } = await closing.publicar(c.rodada.id, OFFICER);
@@ -201,7 +205,8 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
         ganhos: [{ membro: { name: c.ana.name, realm: 'Goldrinn' }, valor: 900 }],
       });
       const fd = conteudo.mercados.find((m) => m.marketId === c.firstDeath.id)!;
-      expect(fd).toMatchObject({ desfecho: 'anulado', voidReason: 'sem_kill', ganhos: [] });
+      // Contrato (D-61): `voidReason` virou `motivo`, que vale também para sem vencedor.
+      expect(fd).toMatchObject({ desfecho: 'anulado', motivo: 'mercado_cancelado', ganhos: [] });
       expect(conteudo.guildBank).toEqual({ receita: 100, residuo: 0 });
 
       // Nada de stake, slip, BattleTag ou depósito — nem os valores.
@@ -233,6 +238,31 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
     });
   });
 
+  describe('T-M17 no closing — sem vencedor aparece com o motivo (D-61)', () => {
+    it('desfecho `sem_vencedor`, motivo, e ninguém identificado', async () => {
+      const c = await cenario();
+      await c.slip(c.ana, [
+        [c.topDps.id, 'top_dps', 500, c.A],
+        [c.firstDeath.id, 'first_death', 300, c.A],
+      ]);
+      await liquidar(c, {
+        [c.topDps.id]: { vencedores: [c.A] },
+        [c.firstDeath.id]: { semVencedor: 'sem_kill' },
+      });
+      await closing.publicar(c.rodada.id, OFFICER);
+
+      const doc = closingReportSchema.parse(
+        (await db.roundClosingReport.findFirstOrThrow({ where: { roundId: c.rodada.id } })).content,
+      );
+      expect(doc.mercados.find((m) => m.marketId === c.firstDeath.id)).toMatchObject({
+        desfecho: 'sem_vencedor',
+        motivo: 'sem_kill',
+        vencedores: [],
+        ganhos: [],
+      });
+    });
+  });
+
   describe('T-C04 — o membro é o personagem de elegibilidade, nunca o BattleTag (D-48)', () => {
     it('ganho e total com nome e realm do snapshot de bettors', async () => {
       const c = await cenario();
@@ -259,7 +289,7 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
       ]);
       await liquidar(c, {
         [c.topDps.id]: { vencedores: [c.A] },
-        [c.firstDeath.id]: { voidReason: 'sem_kill' },
+        [c.firstDeath.id]: { voidReason: 'mercado_cancelado' },
       });
       const premio = await db.goldLedgerEntry.findFirstOrThrow({
         where: { slipId: s.id, kind: 'premio' },

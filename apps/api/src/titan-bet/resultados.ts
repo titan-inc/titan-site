@@ -6,8 +6,9 @@ import type { Sessao } from './auditoria';
  * com os personagens resolvidos para o id do `Character`.
  *
  * Regras comuns: só vence candidato do snapshot (D-13); empate → todos vencem
- * (R-20); sem vencedor → **proposta** de VOID, que só vale com officer (D-06,
- * D-16). Nada aqui confirma resultado.
+ * (R-20); sem vencedor → `sem_vencedor`, com o motivo — o prize pool é
+ * redistribuído no settlement (D-61), não restituído. Nada aqui confirma
+ * resultado.
  */
 
 /** Dificuldade Mythic no WCL. */
@@ -32,9 +33,12 @@ export interface PullDaSemana {
 export type KillDaSemana =
   { tipo: 'kill'; pull: PullDaSemana } | { tipo: 'sem_kill' } | { tipo: 'revisao'; motivo: string };
 
+/** Por que um mercado ficou sem vencedor premiável (D-61). */
+export type MotivoSemVencedor = 'sem_kill' | 'sem_vencedor' | 'sem_pull';
+
 export type Resultado<E> =
   | { outcome: 'vencedores'; vencedores: string[]; evidencia: E }
-  | { outcome: 'anulado'; voidReason: 'sem_kill' | 'sem_vencedor' | 'sem_pull'; evidencia: E };
+  | { outcome: 'sem_vencedor'; motivo: MotivoSemVencedor; evidencia: E };
 
 /** Pull que conta para o Titan Bet: Mythic, de terça ou quinta. */
 function valida(p: PullDaSemana): p is PullDaSemana & { session: Sessao } {
@@ -71,7 +75,7 @@ export function resultadoTopMetrica(
   candidatos: ReadonlySet<string>,
 ): Resultado<EvidenciaDeMetrica> {
   if (kill.tipo === 'sem_kill') {
-    return { outcome: 'anulado', voidReason: 'sem_kill', evidencia: { pull: null, valores: [] } };
+    return { outcome: 'sem_vencedor', motivo: 'sem_kill', evidencia: { pull: null, valores: [] } };
   }
 
   const medidos = valores.filter(
@@ -82,7 +86,7 @@ export function resultadoTopMetrica(
     pull: { session: kill.pull.session, startTime: kill.pull.startTime },
     valores: medidos,
   };
-  if (medidos.length === 0) return { outcome: 'anulado', voidReason: 'sem_vencedor', evidencia };
+  if (medidos.length === 0) return { outcome: 'sem_vencedor', motivo: 'sem_vencedor', evidencia };
 
   const maior = Math.max(...medidos.map((v) => v.valor));
   const vencedores = medidos.filter((v) => v.valor === maior).map((v) => v.characterId);
@@ -112,8 +116,8 @@ export function resultadoFirstDeathFarm(
 ): Resultado<EvidenciaDeFirstDeath> {
   if (kill.tipo === 'sem_kill') {
     return {
-      outcome: 'anulado',
-      voidReason: 'sem_kill',
+      outcome: 'sem_vencedor',
+      motivo: 'sem_kill',
       evidencia: { pull: null, primeiraMorte: [] },
     };
   }
@@ -123,7 +127,7 @@ export function resultadoFirstDeathFarm(
     primeiraMorte,
   };
   if (primeiraMorte.length === 0) {
-    return { outcome: 'anulado', voidReason: 'sem_vencedor', evidencia };
+    return { outcome: 'sem_vencedor', motivo: 'sem_vencedor', evidencia };
   }
   return { outcome: 'vencedores', vencedores: primeiraMorte, evidencia };
 }
@@ -160,9 +164,9 @@ export function resultadoFirstDeathProgressao(
   }
   const evidencia = { tries, somas };
 
-  if (tries.length === 0) return { outcome: 'anulado', voidReason: 'sem_pull', evidencia };
+  if (tries.length === 0) return { outcome: 'sem_vencedor', motivo: 'sem_pull', evidencia };
   const valores = Object.values(somas);
-  if (valores.length === 0) return { outcome: 'anulado', voidReason: 'sem_vencedor', evidencia };
+  if (valores.length === 0) return { outcome: 'sem_vencedor', motivo: 'sem_vencedor', evidencia };
 
   const maior = Math.max(...valores);
   const vencedores = Object.keys(somas).filter((id) => somas[id] === maior);
@@ -170,30 +174,32 @@ export function resultadoFirstDeathProgressao(
 }
 
 /**
- * `K` da Weekly Progression: encounters **da Weekly** (marcados e congelados no
- * Ready) mortos em Mythic nos reports oficiais da rodada (D-49). Kill de boss
- * fora desse conjunto não entra e não bloqueia. Só afirmado com **as duas**
- * sessões resolvidas; sessão sem fonte deixa `K` indeterminado, nunca `{}`
- * (D-24, §7.3).
+ * Weekly Progression por boss (D-54): as opções são os bosses de progressão
+ * congelados no Ready; vencem os que morreram em Mythic, numa sessão oficial,
+ * na semana. Vários mortos, vários vencedores (R-20). Nenhum morto → sem
+ * vencedor (D-61). Boss farm não é opção — nem entra aqui.
  */
-export function killsDaSemana(
+export function resultadoWeekly(
   pulls: PullDaSemana[],
-  resolvidas: Record<Sessao, boolean>,
-  daWeekly: ReadonlySet<string>,
-): { tipo: 'K'; encounterIds: string[] } | { tipo: 'indeterminado' } {
-  if (!resolvidas.terca || !resolvidas.quinta) return { tipo: 'indeterminado' };
-  const mortos = new Set(
-    pulls
-      .filter((p) => p.kill && valida(p) && daWeekly.has(p.encounterId))
-      .map((p) => p.encounterId),
-  );
-  return { tipo: 'K', encounterIds: ordenados([...mortos]) };
+  bossesDeProgressao: readonly string[],
+): Resultado<{ opcoes: string[]; mortos: string[] }> {
+  const opcoes = new Set(bossesDeProgressao);
+  const mortos = ordenados([
+    ...new Set(
+      pulls
+        .filter((p) => p.kill && valida(p) && opcoes.has(p.encounterId))
+        .map((p) => p.encounterId),
+    ),
+  ]);
+  const evidencia = { opcoes: [...bossesDeProgressao], mortos };
+  if (mortos.length === 0) return { outcome: 'sem_vencedor', motivo: 'sem_kill', evidencia };
+  return { outcome: 'vencedores', vencedores: mortos, evidencia };
 }
 
-/** A aposta da Weekly vence se, e só se, o conjunto é igual a `K` — inclusive `{}` (D-05, D-15). */
-export function weeklyVence(aposta: readonly string[], k: readonly string[]): boolean {
-  const escolhido = new Set(aposta);
-  return escolhido.size === new Set(k).size && k.every((id) => escolhido.has(id));
+/** O motivo de um `sem_vencedor`, como o cálculo grava na evidência (D-61). */
+export function motivoDaEvidencia(evidence: unknown): string | null {
+  const motivo = (evidence as { motivo?: unknown } | null)?.motivo;
+  return typeof motivo === 'string' ? motivo : null;
 }
 
 function ordenados(ids: string[]): string[] {

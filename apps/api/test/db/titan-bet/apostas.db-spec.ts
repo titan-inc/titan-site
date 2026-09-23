@@ -42,9 +42,11 @@ describe('Titan Bet — apostas (banco)', () => {
     });
   }
 
+  /** Aposta na Weekly: um boss de progressão (D-54). */
   function apostaWeekly(
     slip: { id: string; roundId: string },
     market: { id: string },
+    boss: { id: string },
     extra: Partial<Prisma.BetUncheckedCreateInput> = {},
   ) {
     return db.bet.create({
@@ -54,6 +56,8 @@ describe('Titan Bet — apostas (banco)', () => {
         marketId: market.id,
         marketKind: 'weekly_progression',
         stake: 500,
+        targetEncounterId: boss.id,
+        targetEncounterTrack: 'progressao',
         ...extra,
       },
     });
@@ -78,10 +82,13 @@ describe('Titan Bet — apostas (banco)', () => {
     return { ...c, farm: c.config.farm, mercados: c.config.mercados };
   }
 
-  /** Cenário com a Weekly Progression criada em PREPARATION. */
+  /** Cenário com a Weekly Progression e um boss de progressão, em PREPARATION. */
   async function cenarioComWeekly() {
-    const c = await f.cenarioDeAposta(undefined, (roundId) => f.mercadoWeekly(roundId));
-    return { ...c, weekly: c.config };
+    const c = await f.cenarioDeAposta(undefined, async (roundId) => ({
+      weekly: await f.mercadoWeekly(roundId),
+      prog: await f.encounter(roundId, { track: 'progressao' }),
+    }));
+    return { ...c, weekly: c.config.weekly, prog: c.config.prog };
   }
 
   describe('T-S13 — stake inteiro de 200 a 1.000 (R-16)', () => {
@@ -116,8 +123,8 @@ describe('Titan Bet — apostas (banco)', () => {
     it('recusa segunda aposta na mesma Weekly Progression', async () => {
       const c = await cenarioComWeekly();
       const { weekly } = c;
-      await apostaWeekly(c.slip, weekly);
-      expect(await escrita(apostaWeekly(c.slip, weekly, { stake: 300 }))).toBe('unique');
+      await apostaWeekly(c.slip, weekly, c.prog);
+      expect(await escrita(apostaWeekly(c.slip, weekly, c.prog, { stake: 300 }))).toBe('unique');
     });
   });
 
@@ -140,7 +147,7 @@ describe('Titan Bet — apostas (banco)', () => {
       const { weekly } = c;
       expect(
         await escrita(
-          apostaWeekly(c.slip, weekly, {
+          apostaWeekly(c.slip, weekly, c.prog, {
             targetCharacterId: c.candidatos.Melee!.characterId,
             targetRole: 'Melee',
           }),
@@ -243,89 +250,8 @@ describe('Titan Bet — apostas (banco)', () => {
     });
   });
 
-  describe('T-S11 — Weekly Progression: 0..N bosses da mesma rodada, marcados (D-15, D-28)', () => {
-    /**
-     * Weekly + três bosses marcados (dois farm, um em progressão) e um não
-     * marcado, todos criados em PREPARATION.
-     */
-    async function cenarioWeekly() {
-      const c = await f.cenarioDeAposta(undefined, async (roundId) => ({
-        weekly: await f.mercadoWeekly(roundId),
-        bosses: [
-          await f.encounter(roundId),
-          await f.encounter(roundId, { track: 'progressao' }),
-          await f.encounter(roundId),
-        ],
-        fora: await f.encounter(roundId, { inWeeklyProgression: false }),
-      }));
-      const aposta = await apostaWeekly(c.slip, c.config.weekly);
-      return { ...c, ...c.config, aposta };
-    }
-
-    function selecao(
-      aposta: {
-        id: string;
-        roundId: string;
-        marketKind: Prisma.BetUncheckedCreateInput['marketKind'];
-      },
-      encounter: { id: string; roundId: string; inWeeklyProgression: boolean },
-      extra: Partial<Prisma.BetWeeklySelectionUncheckedCreateInput> = {},
-    ) {
-      return db.betWeeklySelection.create({
-        data: {
-          betId: aposta.id,
-          roundId: aposta.roundId,
-          marketKind: aposta.marketKind,
-          roundEncounterId: encounter.id,
-          inWeeklyProgression: encounter.inWeeklyProgression,
-          ...extra,
-        },
-      });
-    }
-
-    it('controle: zero seleções — a aposta em {} existe sozinha', async () => {
-      const { aposta } = await cenarioWeekly();
-      expect(await db.betWeeklySelection.count({ where: { betId: aposta.id } })).toBe(0);
-    });
-
-    it('controle: uma e três seleções são aceitas', async () => {
-      const { aposta, bosses } = await cenarioWeekly();
-      for (const boss of bosses) expect(await escrita(selecao(aposta, boss))).toBe('aceito');
-    });
-
-    it('recusa boss de outra rodada', async () => {
-      const { aposta } = await cenarioWeekly();
-      const outra = await f.rodada();
-      const deOutra = await f.encounter(outra.id);
-      expect(await escrita(selecao(aposta, deOutra))).toBe('fk');
-    });
-
-    it('recusa boss não marcado para a Weekly, qualquer que seja a flag gravada', async () => {
-      const { aposta, fora } = await cenarioWeekly();
-      expect(await escrita(selecao(aposta, fora))).toBe('check');
-      expect(await escrita(selecao(aposta, fora, { inWeeklyProgression: true }))).toBe('fk');
-    });
-
-    it('recusa seleção de boss em aposta que não é Weekly', async () => {
-      const c = await cenarioComBoss(['top_dispels']);
-      const { farm } = c;
-      const { top_dispels: dispels } = c.mercados;
-      const aposta = await apostaSimples(c.slip, dispels, c.candidatos.Tank!);
-      expect(await escrita(selecao(aposta, farm))).toBe('check');
-      expect(await escrita(selecao(aposta, farm, { marketKind: 'weekly_progression' }))).toBe('fk');
-    });
-  });
-
-  describe('T-S22 — Weekly tem um stake, sem valor por boss (guarda de regressão, sem RED)', () => {
-    it('BetWeeklySelection não tem coluna de valor; Bet.stake é obrigatório', async () => {
-      const colunas = await db.$queryRaw<Array<{ tabela: string; nome: string; nulo: string }>>`
-        SELECT table_name AS tabela, column_name AS nome, is_nullable AS nulo
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name IN ('BetWeeklySelection', 'Bet')`;
-      const daSelecao = colunas.filter((c) => c.tabela === 'BetWeeklySelection').map((c) => c.nome);
-      expect(daSelecao.length).toBeGreaterThan(0);
-      expect(daSelecao.filter((n) => /stake|amount|gold|valor/i.test(n))).toEqual([]);
-      expect(colunas.find((c) => c.tabela === 'Bet' && c.nome === 'stake')?.nulo).toBe('NO');
-    });
-  });
+  // Mudança de produto (D-54): T-S11 (Weekly com 0..N bosses marcados) e T-S22
+  // (um stake para o conjunto) saíram com o conjunto exato. A forma nova da
+  // aposta da Weekly — um boss de progressão da rodada — é o T-W14, em
+  // weekly.db-spec.ts.
 });

@@ -44,6 +44,28 @@ describe('T-O03 — odds sem dado individual (D-36, §16.10)', () => {
     },
   );
 
+  it('T-W18: a Weekly tem um multiplicador por boss de progressão (D-54)', () => {
+    const weekly = {
+      marketId: 'w',
+      opcoes: [
+        { roundEncounterId: 'e1', multiplicador: 2.5 },
+        { roundEncounterId: 'e2', multiplicador: null },
+      ],
+    };
+    expect(oddsDaRodadaSchema.parse({ ...odds, mercados: [weekly] })).toEqual({
+      ...odds,
+      mercados: [weekly],
+    });
+  });
+
+  it('opção é personagem ou boss, nunca os dois', () => {
+    const ambos = { characterId: 'c1', roundEncounterId: 'e1', multiplicador: 1 };
+    expect(
+      oddsDaRodadaSchema.safeParse({ ...odds, mercados: [{ marketId: 'm', opcoes: [ambos] }] })
+        .success,
+    ).toBe(false);
+  });
+
   it('opção sem aposta é "—": multiplicador nulo, nunca zero (R-35)', () => {
     const zero = { marketId: 'm1', opcoes: [{ characterId: 'c1', multiplicador: 0 }] };
     expect(oddsDaRodadaSchema.safeParse({ ...odds, mercados: [zero] }).success).toBe(false);
@@ -80,19 +102,19 @@ describe('closingReportSchema', () => {
         kind: 'top_dps',
         encounterName: 'Boss Um',
         desfecho: 'vencedores',
-        voidReason: null,
+        motivo: null,
         vencedores: [{ name: 'Candidato', realm: 'Azralon' }],
-        kills: [],
+        bossesVencedores: [],
         ganhos: [{ membro: quem, valor: 1440 }],
       },
       {
         marketId: 'm2',
         kind: 'first_death',
         encounterName: 'Boss Um',
-        desfecho: 'anulado',
-        voidReason: 'sem_kill',
+        desfecho: 'sem_vencedor',
+        motivo: 'sem_kill',
         vencedores: [],
-        kills: [],
+        bossesVencedores: [],
         ganhos: [],
       },
       {
@@ -100,9 +122,9 @@ describe('closingReportSchema', () => {
         kind: 'weekly_progression',
         encounterName: null,
         desfecho: 'vencedores',
-        voidReason: null,
+        motivo: null,
         vencedores: [],
-        kills: ['Boss Um'],
+        bossesVencedores: ['Boss Um'],
         ganhos: [],
       },
     ],
@@ -110,7 +132,9 @@ describe('closingReportSchema', () => {
     totais: [{ membro: quem, devido: 1440 }],
   };
 
-  it('aceita o documento com mercados, VOID, Weekly, Guild Bank e totais', () => {
+  // Mudança de produto (D-54, D-61): o desfecho ganha `sem_vencedor`, o motivo
+  // vale para ele e para `anulado`, e a Weekly publica os bosses vencedores.
+  it('aceita o documento com mercados, sem vencedor, Weekly, Guild Bank e totais', () => {
     expect(closingReportSchema.parse(doc)).toEqual(doc);
   });
 

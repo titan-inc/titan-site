@@ -1950,7 +1950,6 @@ model BetRound {
   candidates     BetRoundCandidate[]
   slips          BetSlip[]
   bets           Bet[]
-  selections     BetWeeklySelection[]
   ledger         GoldLedgerEntry[]
   events         BetEvent[]
   audits         BetAudit[]
@@ -1969,8 +1968,7 @@ model BetRoundEncounter {
   encounterName String
   zoneName      String
 
-  track               BetEncounterTrack
-  inWeeklyProgression Boolean
+  track BetEncounterTrack
 
   createdByUserId    String
   createdByBattletag String
@@ -1980,14 +1978,12 @@ model BetRoundEncounter {
   updatedAt          DateTime @updatedAt @map("updated_at")
 
   markets     BetMarket[]
-  selections  BetWeeklySelection[]
   resultKills BetMarketResultKill[]
+  weeklyBets  Bet[]                 @relation("AlvoDaWeekly")
 
   @@unique([roundId, encounterId])
   /// Alvo da FK do mercado: mesma rodada e mesmo track.
   @@unique([id, roundId, track])
-  /// Alvo da FK da seleção da Weekly: mesma rodada e marcado para ela.
-  @@unique([id, roundId, inWeeklyProgression])
   /// Alvo da FK do kill da Weekly: encounter desta rodada.
   @@unique([id, roundId])
 }
@@ -2140,34 +2136,19 @@ model Bet {
   /// Candidato do snapshot desta rodada, com a role congelada (D-33).
   target BetRoundCandidate? @relation(fields: [roundId, targetCharacterId, targetRole], references: [roundId, characterId, role])
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  weeklySelections BetWeeklySelection[]
-  ledger           GoldLedgerEntry[]
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  ledger               GoldLedgerEntry[]
+  /// Weekly Progression (D-54): o boss de progressão apostado. Nulo nos
+  /// mercados de personagem.
+  targetEncounterId    String?
+  targetEncounterTrack BetEncounterTrack?
+  /// Só boss de progressão desta rodada é alvo da Weekly (T-W14).
+  targetEncounter      BetRoundEncounter? @relation("AlvoDaWeekly", fields: [targetEncounterId, roundId, targetEncounterTrack], references: [id, roundId, track])
 
   @@unique([slipId, marketId])
   /// Alvo da FK da seleção: aposta desta rodada, deste tipo.
   @@unique([id, roundId, marketKind])
-}
-
-/// Um boss escolhido numa aposta de Weekly Progression. Zero linhas = `{}`.
-///
-/// CHECKs na migration: `marketKind` é Weekly e `inWeeklyProgression` é true —
-/// com as FKs compostas, a seleção só existe em aposta de Weekly e em boss
-/// marcado para ela, na mesma rodada.
-model BetWeeklySelection {
-  betId               String
-  roundEncounterId    String
-  roundId             String
-  round               BetRound      @relation(fields: [roundId], references: [id])
-  marketKind          BetMarketKind
-  inWeeklyProgression Boolean
-
-  bet            Bet               @relation(fields: [betId, roundId, marketKind], references: [id, roundId, marketKind])
-  roundEncounter BetRoundEncounter @relation(fields: [roundEncounterId, roundId, inWeeklyProgression], references: [id, roundId, inWeeklyProgression])
-
-  @@id([betId, roundEncounterId])
 }
 
 /// Conta de um lançamento: o membro (pela conta do slip) ou o Guild Bank.
@@ -2360,6 +2341,8 @@ model BetAuditSource {
 /// D-16): só vale quando o officer confirma a auditoria.
 enum BetResultOutcome {
   vencedores
+  /// Resultado válido, sem vencedor premiável (D-61): o P é redistribuído.
+  sem_vencedor
   anulado
 }
 

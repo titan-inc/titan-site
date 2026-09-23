@@ -2,14 +2,14 @@ type: http_request
 model: http_request
 id: rq_TitanBetCalcular1
 createdAt: 2026-09-23T22:00:00.000000
-updatedAt: 2026-09-23T22:00:00.000000
+updatedAt: 2026-09-24T01:00:00.000000
 workspaceId: wk_8LmjjnEbam
 folderId: fl_TitanBet1
 authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Calcula os resultados da tentativa pronta lendo do WCL só os reports congelados no Auditar (§7.3): DPS/HPS/dispels da tabela, Parse % de rankings Rankings/Today, First Death, K da Weekly. Congela tudo na evidência (D-43, D-47). 204; 409 se a auditoria não está pronta, se o mesmo boss morreu duas vezes (revisão, OQ-40) ou se morreu boss fora da Weekly (OQ-47). Chama o WCL de verdade.'
+description: 'OfficerGuard. Calcula os resultados da tentativa pronta lendo do WCL só os reports congelados no Auditar (§7.3): DPS/HPS/dispels da tabela, Parse % de rankings Rankings/Today, First Death e, na Weekly, os bosses de progressão mortos (D-54). Mercado sem vencedor fica sem_vencedor, não VOID (D-61). Congela tudo na evidência (D-43, D-47). 204; 409 se a auditoria não está pronta ou se o mesmo boss morreu duas vezes (revisão, OQ-40). Chama o WCL de verdade.'
 headers:
 - enabled: true
   name: Cookie

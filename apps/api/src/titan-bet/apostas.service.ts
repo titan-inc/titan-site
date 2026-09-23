@@ -83,11 +83,7 @@ export class ApostasService {
       status: slip.status,
       apostas: slip.bets.map((b): ApostaDoSlip =>
         b.marketKind === 'weekly_progression'
-          ? {
-              marketId: b.marketId,
-              stake: b.stake,
-              encounterIds: b.weeklySelections.map((w) => w.roundEncounterId),
-            }
+          ? { marketId: b.marketId, stake: b.stake, encounterId: b.targetEncounterId! }
           : { marketId: b.marketId, stake: b.stake, targetCharacterId: b.targetCharacterId! },
       ),
       depositCharacterId: slip.depositCharacterId,
@@ -120,8 +116,9 @@ export class ApostasService {
   /** Cada aposta contra o cardápio da rodada; devolve o que gravar. */
   private validar(input: SalvarSlip, cardapio: Cardapio): ApostaParaGravar[] {
     const mercados = new Map(cardapio.markets.map((m) => [m.id, m]));
+    // As opções da Weekly são os bosses de progressão da rodada (D-54).
     const daWeekly = new Set(
-      cardapio.encounters.filter((e) => e.inWeeklyProgression).map((e) => e.id),
+      cardapio.encounters.filter((e) => e.track === 'progressao').map((e) => e.id),
     );
 
     return input.apostas.map((a) => {
@@ -129,19 +126,18 @@ export class ApostasService {
       if (!mercado) throw new ApostaRecusada(`mercado ${a.marketId} não é desta rodada`);
 
       if (mercado.kind === 'weekly_progression') {
-        if (!('encounterIds' in a)) {
-          throw new ApostaRecusada('a Weekly Progression aposta num conjunto de bosses');
+        if (!('encounterId' in a)) {
+          throw new ApostaRecusada('a Weekly Progression aposta num boss de progressão');
         }
-        const fora = a.encounterIds.filter((id) => !daWeekly.has(id));
-        if (fora.length > 0) {
-          throw new ApostaRecusada('boss fora da Weekly Progression desta rodada');
+        if (!daWeekly.has(a.encounterId)) {
+          throw new ApostaRecusada('o boss não é de progressão desta rodada');
         }
         return {
           marketId: a.marketId,
           marketKind: mercado.kind,
           stake: a.stake,
           alvo: null,
-          encounterIds: a.encounterIds,
+          boss: a.encounterId,
         };
       }
 
@@ -157,7 +153,7 @@ export class ApostasService {
         marketKind: mercado.kind,
         stake: a.stake,
         alvo,
-        encounterIds: [],
+        boss: null,
       };
     });
   }

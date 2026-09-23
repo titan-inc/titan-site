@@ -15,12 +15,13 @@ import { z } from 'zod';
  * fechasse agora e esta fosse a única vencedora. `null` é "—", opção sem
  * aposta válida. Não é probabilidade nem garantia (R-34).
  */
-const opcaoDeOddsSchema = z
-  .object({
-    characterId: z.string(),
-    multiplicador: z.number().positive().nullable(),
-  })
-  .strict();
+const multiplicadorSchema = z.number().positive().nullable();
+
+/** Opção de mercado de personagem, ou um boss de progressão na Weekly (D-54). */
+const opcaoDeOddsSchema = z.union([
+  z.object({ characterId: z.string(), multiplicador: multiplicadorSchema }).strict(),
+  z.object({ roundEncounterId: z.string(), multiplicador: multiplicadorSchema }).strict(),
+]);
 
 const mercadoDeOddsSchema = z
   .object({
@@ -33,7 +34,8 @@ const mercadoDeOddsSchema = z
  * As odds da rodada, só com o multiplicador por opção (§16.10) — nunca conta,
  * slip, stake individual ou lista de apostas.
  *
- * Só mercados de escolha simples: o da Weekly Progression é a OQ-55.
+ * Todos os mercados publicados; na Weekly, uma opção por boss de progressão
+ * (D-54).
  */
 export const oddsDaRodadaSchema = z
   .object({
@@ -63,12 +65,17 @@ const mercadoPublicadoSchema = z
     ]),
     /** Nulo na Weekly, que é da rodada. */
     encounterName: z.string().nullable(),
-    desfecho: z.enum(['vencedores', 'anulado']),
-    voidReason: z.string().nullable(),
+    /**
+     * `sem_vencedor`: resultado válido sem vencedor premiável — o prize pool foi
+     * redistribuído (D-61). `anulado`: VOID, com restituição.
+     */
+    desfecho: z.enum(['vencedores', 'sem_vencedor', 'anulado']),
+    /** Por que não houve vencedor, ou por que foi VOID. */
+    motivo: z.string().nullable(),
     /** Os candidatos vencedores do mercado. */
     vencedores: z.array(personagemPublicoSchema),
-    /** `K` da Weekly, pelos nomes dos encounters. */
-    kills: z.array(z.string()),
+    /** Weekly (D-54): os bosses de progressão mortos na semana — as opções vencedoras. */
+    bossesVencedores: z.array(z.string()),
     /** Quem ganhou neste mercado e quanto — só vencedores (D-21, D-48). */
     ganhos: z.array(
       z.object({ membro: personagemPublicoSchema, valor: z.number().int().positive() }).strict(),

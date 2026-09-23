@@ -77,8 +77,9 @@ export class ReadyService {
     }
 
     const temWeekly = rodada.markets.some((m) => m.kind === 'weekly_progression');
-    if (temWeekly && !rodada.encounters.some((e) => e.inWeeklyProgression)) {
-      throw new ReadyRecusado('a Weekly Progression não tem nenhum boss marcado');
+    // As opções da Weekly são os bosses de progressão (D-54).
+    if (temWeekly && !rodada.encounters.some((e) => e.track === 'progressao')) {
+      throw new ReadyRecusado('a Weekly Progression não tem nenhum boss de progressão');
     }
 
     // Frescas, sempre: o que o Ready grava vale a semana inteira.

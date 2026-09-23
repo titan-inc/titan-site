@@ -13,11 +13,11 @@ import {
 } from './leitura-wcl';
 import {
   killDaSemana,
-  killsDaSemana,
+  motivoDaEvidencia,
   resultadoFirstDeathFarm,
   resultadoFirstDeathProgressao,
   resultadoTopMetrica,
-  weeklyVence,
+  resultadoWeekly,
   type KillDaSemana,
   type PullDaSemana,
   type Resultado,
@@ -29,8 +29,11 @@ export interface ReportsParaCalculo {
   getTitanBetReport(code: string, encounterIds: number[]): Promise<LeituraDoReport>;
 }
 
-/** Versão do algoritmo gravada com cada resultado (§15.10). */
-export const VERSAO_DO_ALGORITMO = 'titanbet-1';
+/**
+ * Versão do algoritmo gravada com cada resultado (§15.10). `titanbet-2`: Weekly
+ * por boss (D-54) e `sem_vencedor` no lugar da proposta de VOID (D-61).
+ */
+export const VERSAO_DO_ALGORITMO = 'titanbet-2';
 
 type Auditoria = NonNullable<Awaited<ReturnType<TitanBetRepository['auditoriaParaCalcular']>>>;
 type Mercado = Auditoria['round']['markets'][number];
@@ -123,12 +126,13 @@ export class CalculoService {
         marketId: r.marketId,
         kind: r.market.kind,
         outcome: r.outcome,
-        voidReason: r.voidReason,
+        // VOID guarda o motivo na coluna; sem vencedor, na evidência (D-61).
+        motivo: r.voidReason ?? motivoDaEvidencia(r.evidence),
         validPool: r.validPool,
         prizePool: r.prizePool,
         winningStake: r.winningStake,
         vencedores: r.winners.map((w) => w.candidate),
-        kills: r.kills.map((k) => k.roundEncounterId),
+        bossesVencedores: r.kills.map((k) => k.roundEncounterId),
         evidencia: r.evidence as Record<string, unknown>,
       })),
     };
@@ -146,15 +150,17 @@ export class CalculoService {
     );
 
     if (m.kind === 'weekly_progression') {
-      // D-49: só os encounters marcados para a Weekly e congelados no Ready.
-      const daWeekly = new Set(
-        a.round.encounters.filter((e) => e.inWeeklyProgression).map((e) => e.id),
-      );
-      const k = killsDaSemana(pulls, { terca: true, quinta: true }, daWeekly);
-      if (k.tipo === 'indeterminado') throw new AuditoriaRecusada('K indeterminado');
+      // D-54: as opções são os bosses de progressão congelados no Ready; os
+      // mortos na semana vencem. Eles vão para os "kills" do resultado, não para
+      // os vencedores — esses são personagens.
+      const progressao = a.round.encounters
+        .filter((e) => e.track === 'progressao')
+        .map((e) => e.id);
+      const resultado = resultadoWeekly(pulls, progressao);
       return {
-        resultado: { outcome: 'vencedores', vencedores: [], evidencia: { K: k.encounterIds } },
-        kills: k.encounterIds,
+        resultado:
+          resultado.outcome === 'vencedores' ? { ...resultado, vencedores: [] } : resultado,
+        kills: resultado.outcome === 'vencedores' ? resultado.vencedores : [],
       };
     }
 
@@ -220,6 +226,8 @@ export class CalculoService {
     apostas: Awaited<ReturnType<TitanBetRepository['apostasValidasDaRodada']>>,
     fontes: Prisma.InputJsonObject[],
   ): ResultadoParaGravar {
+    // Nenhum caminho automático produz `anulado` (D-61): o resultado é vencedores
+    // ou sem vencedor.
     const doMercado = apostas.filter((b) => b.marketId === m.id);
     const V = doMercado.reduce((s, b) => s + b.stake, 0);
     const evidencia: Prisma.InputJsonObject = {
@@ -231,15 +239,17 @@ export class CalculoService {
       ...r.extra,
     };
 
-    if (r.resultado.outcome === 'anulado') {
+    if (r.resultado.outcome === 'sem_vencedor') {
+      // D-61: não é VOID. V e P ficam — o P é redistribuído no settlement —, W é
+      // zero, e o motivo vai para a evidência.
       return {
         marketId: m.id,
-        outcome: 'anulado',
-        voidReason: r.resultado.voidReason,
+        outcome: 'sem_vencedor',
+        voidReason: null,
         validPool: V,
-        prizePool: null,
-        winningStake: null,
-        evidencia,
+        prizePool: Math.floor((9 * V) / 10),
+        winningStake: 0,
+        evidencia: { ...evidencia, motivo: r.resultado.motivo },
         algorithmVersion: VERSAO_DO_ALGORITMO,
         vencedores: [],
         kills: [],
@@ -249,10 +259,7 @@ export class CalculoService {
     const vencedores = r.resultado.vencedores;
     const vence = (b: (typeof doMercado)[number]) =>
       eWeekly(m.kind)
-        ? weeklyVence(
-            b.weeklySelections.map((s) => s.roundEncounterId),
-            r.kills,
-          )
+        ? b.targetEncounterId !== null && r.kills.includes(b.targetEncounterId)
         : b.targetCharacterId !== null && vencedores.includes(b.targetCharacterId);
     return {
       marketId: m.id,

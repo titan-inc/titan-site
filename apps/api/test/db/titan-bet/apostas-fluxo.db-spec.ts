@@ -50,6 +50,7 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
     const boss = await f.encounter(rodada.id);
     const topDps = await f.mercadoDeBoss(boss, 'top_dps');
     const firstDeath = await f.mercadoDeBoss(boss, 'first_death');
+    const prog = await f.encounter(rodada.id, { track: 'progressao' });
     const weekly = await f.mercadoWeekly(rodada.id);
 
     const main = await f.personagem();
@@ -70,7 +71,7 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
       await db.guildCharacter.create({ data: { userId: user.id, characterId: pj.id, rank } });
     }
     const conta = { userId: user.id, battletag: user.battletag };
-    return { rodada, boss, topDps, firstDeath, weekly, main, alt, cura, conta };
+    return { rodada, boss, prog, topDps, firstDeath, weekly, main, alt, cura, conta };
   }
 
   const slipsDa = (roundId: string, userId: string) =>
@@ -86,7 +87,7 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
         apostas: [
           { marketId: c.topDps.id, stake: 700, targetCharacterId: c.main.id },
           { marketId: c.firstDeath.id, stake: 200, targetCharacterId: c.cura.id },
-          { marketId: c.weekly.id, stake: 400, encounterIds: [c.boss.id] },
+          { marketId: c.weekly.id, stake: 400, encounterId: c.prog.id },
         ],
       });
 
@@ -102,16 +103,15 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
           ['weekly_progression', 400],
         ].sort(),
       );
+      // A Weekly aposta num boss de progressão (D-54).
       const weekly = slip?.bets.find((b) => b.marketKind === 'weekly_progression');
-      expect(await db.betWeeklySelection.findMany({ where: { betId: weekly?.id } })).toHaveLength(
-        1,
-      );
+      expect(weekly?.targetEncounterId).toBe(c.prog.id);
     });
 
     it('Salvar remove apostas que saíram do rascunho', async () => {
       const c = await cenario();
       await apostas.salvar(c.rodada.id, c.conta, {
-        apostas: [{ marketId: c.weekly.id, stake: 400, encounterIds: [c.boss.id] }],
+        apostas: [{ marketId: c.weekly.id, stake: 400, encounterId: c.prog.id }],
       });
       await apostas.salvar(c.rodada.id, c.conta, { apostas: [] });
       const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
@@ -124,6 +124,28 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
       await expect(
         apostas.salvar(c.rodada.id, c.conta, {
           apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.cura.id }],
+        }),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+    });
+  });
+
+  describe('T-W10 — só boss de progressão é opção da Weekly (D-54)', () => {
+    it('Weekly num boss farm → recusada, nada gravado', async () => {
+      const c = await cenario();
+      await expect(
+        apostas.salvar(c.rodada.id, c.conta, {
+          apostas: [{ marketId: c.weekly.id, stake: 400, encounterId: c.boss.id }],
+        }),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+      expect(await slipsDa(c.rodada.id, c.conta.userId)).toHaveLength(0);
+    });
+
+    it('Weekly num boss que não é da rodada → recusada', async () => {
+      const c = await cenario();
+      const outra = await cenario();
+      await expect(
+        apostas.salvar(c.rodada.id, c.conta, {
+          apostas: [{ marketId: c.weekly.id, stake: 400, encounterId: outra.prog.id }],
         }),
       ).rejects.toBeInstanceOf(ApostaRecusada);
     });
@@ -174,7 +196,7 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
       await apostas.salvar(c.rodada.id, c.conta, {
         apostas: [
           { marketId: c.topDps.id, stake: 700, targetCharacterId: c.main.id },
-          { marketId: c.weekly.id, stake: 250, encounterIds: [] },
+          { marketId: c.weekly.id, stake: 250, encounterId: c.prog.id },
         ],
       });
       await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id });

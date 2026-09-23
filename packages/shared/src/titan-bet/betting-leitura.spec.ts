@@ -37,7 +37,7 @@ describe('T-D01 — DTO de depósito sem escolhas (D-36)', () => {
     ['marketId', 'm1'],
     ['stake', 300],
     ['targetCharacterId', 'c1'],
-    ['encounterIds', ['e1']],
+    ['encounterId', 'e1'],
   ])('recusa o campo de aposta %s — estrito, não descarta em silêncio', (campo, valor) => {
     expect(depositoPendenteSchema.safeParse({ ...deposito, [campo]: valor }).success).toBe(false);
   });
@@ -61,7 +61,7 @@ describe('meuSlipSchema — o próprio slip, para o dono', () => {
     status: 'rascunho',
     apostas: [
       { marketId: 'm1', stake: 300, targetCharacterId: 'c1' },
-      { marketId: 'm2', stake: 200, encounterIds: [] },
+      { marketId: 'm2', stake: 200, encounterId: 'e1' },
     ],
     depositCharacterId: null,
     expectedTotal: null,

@@ -30,11 +30,17 @@ describe('salvarSlipSchema', () => {
     expect(salvarSlipSchema.safeParse({ apostas: [] }).success).toBe(true);
   });
 
-  it('aceita Weekly com 0, 1 e N bosses — um stake para o conjunto (D-15, D-28)', () => {
-    for (const encounterIds of [[], ['e1'], ['e1', 'e2', 'e3']]) {
-      const aposta = { marketId: 'w', stake: 500, encounterIds };
-      expect(salvarSlipSchema.safeParse({ apostas: [aposta] }).success).toBe(true);
-    }
+  // Mudança de produto (D-54): a Weekly deixou de ser um conjunto de 0..N bosses
+  // e passou a ser a escolha de um boss de progressão. Substitui o caso antigo
+  // "aceita Weekly com 0, 1 e N bosses" (T-S11/T-S22).
+  it('T-W11: a Weekly escolhe um boss — um stake, um encounter', () => {
+    const aposta = { marketId: 'w', stake: 500, encounterId: 'e1' };
+    expect(salvarSlipSchema.safeParse({ apostas: [aposta] }).success).toBe(true);
+  });
+
+  it('T-W11: lista de bosses não existe mais na Weekly', () => {
+    const aposta = { marketId: 'w', stake: 500, encounterIds: ['e1', 'e2'] };
+    expect(salvarSlipSchema.safeParse({ apostas: [aposta] }).success).toBe(false);
   });
 
   it('recusa aposta sem alvo e sem bosses', () => {
@@ -43,13 +49,13 @@ describe('salvarSlipSchema', () => {
     );
   });
 
-  it('recusa aposta com alvo e bosses ao mesmo tempo', () => {
-    const aposta = { marketId: 'm', stake: 500, targetCharacterId: 'c', encounterIds: [] };
+  it('recusa aposta com personagem e boss ao mesmo tempo', () => {
+    const aposta = { marketId: 'm', stake: 500, targetCharacterId: 'c', encounterId: 'e1' };
     expect(salvarSlipSchema.safeParse({ apostas: [aposta] }).success).toBe(false);
   });
 
-  it('recusa o mesmo boss duas vezes na Weekly', () => {
-    const aposta = { marketId: 'w', stake: 500, encounterIds: ['e1', 'e1'] };
+  it('recusa boss vazio na Weekly', () => {
+    const aposta = { marketId: 'w', stake: 500, encounterId: '' };
     expect(salvarSlipSchema.safeParse({ apostas: [aposta] }).success).toBe(false);
   });
 

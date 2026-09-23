@@ -47,6 +47,8 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     const boss = await f.encounter(rodada.id);
     const topDps = await f.mercadoDeBoss(boss, 'top_dps');
     const firstDeath = await f.mercadoDeBoss(boss, 'first_death');
+    const prog1 = await f.encounter(rodada.id, { track: 'progressao' });
+    const prog2 = await f.encounter(rodada.id, { track: 'progressao' });
     const weekly = await f.mercadoWeekly(rodada.id);
 
     const melee = await f.personagem();
@@ -68,7 +70,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     }
     await f.pronta(rodada.id);
 
-    return { rodada, boss, topDps, firstDeath, weekly, melee, ranged, heal, contas };
+    return { rodada, boss, prog1, prog2, topDps, firstDeath, weekly, melee, ranged, heal, contas };
   }
 
   type Cenario = Awaited<ReturnType<typeof cenario>>;
@@ -76,10 +78,17 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
 
   /** Uma aposta em Top DPS, levada pelo fluxo real até o status pedido. */
   async function apostar(c: Cenario, i: number, alvo: string, stake: number, destino: Destino) {
+    return apostarEm(c, i, { marketId: c.topDps.id, stake, targetCharacterId: alvo }, destino);
+  }
+
+  async function apostarEm(
+    c: Cenario,
+    i: number,
+    aposta: Parameters<ApostasService['salvar']>[2]['apostas'][number],
+    destino: Destino,
+  ) {
     const conta = c.contas[i]!;
-    const { slipId } = await apostas.salvar(c.rodada.id, conta, {
-      apostas: [{ marketId: c.topDps.id, stake, targetCharacterId: alvo }],
-    });
+    const { slipId } = await apostas.salvar(c.rodada.id, conta, { apostas: [aposta] });
     if (destino === 'rascunho') return;
     if (destino === 'expirado') {
       // O cutoff só expira rodada vencida; aqui, o estado é o que importa.
@@ -98,7 +107,10 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     Object.fromEntries(
       resposta.mercados
         .find((m) => m.marketId === marketId)!
-        .opcoes.map((o) => [o.characterId, o.multiplicador]),
+        .opcoes.map((o) => [
+          'characterId' in o ? o.characterId : o.roundEncounterId,
+          o.multiplicador,
+        ]),
     );
 
   describe('T-O02 — só apostas `valido` contam (D-12)', () => {
@@ -153,10 +165,35 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       });
     });
 
-    it('a Weekly Progression não aparece — é a OQ-55, em aberto (T-O04)', async () => {
+    // Mudança de produto (D-54): substitui "a Weekly Progression não aparece —
+    // OQ-55". Cada boss de progressão tem a sua odd, como os candidatos.
+    it('T-W18: a Weekly tem um multiplicador por boss de progressão', async () => {
       const c = await cenario();
-      const resposta = await odds.daRodada(c.rodada.id, c.contas[0]!.userId);
-      expect(resposta.mercados.map((m) => m.marketId)).not.toContain(c.weekly.id);
+      await apostarEm(
+        c,
+        0,
+        { marketId: c.weekly.id, stake: 600, encounterId: c.prog1.id },
+        'valido',
+      );
+      await apostarEm(
+        c,
+        1,
+        { marketId: c.weekly.id, stake: 400, encounterId: c.prog2.id },
+        'valido',
+      );
+      await apostarEm(
+        c,
+        2,
+        { marketId: c.weekly.id, stake: 900, encounterId: c.prog2.id },
+        'rascunho',
+      );
+
+      const resposta = await odds.daRodada(c.rodada.id, c.contas[3]!.userId);
+      // V 1.000 → P 900: 900/600 e 900/400. O rascunho não conta (D-12).
+      expect(opcoesDe(resposta, c.weekly.id)).toEqual({
+        [c.prog1.id]: 1.5,
+        [c.prog2.id]: 2.25,
+      });
     });
 
     it('conta fora do snapshot de bettors não vê: ContaNaoElegivel', async () => {

@@ -18,17 +18,22 @@ const mercadoCalculadoSchema = z
       'first_death',
       'weekly_progression',
     ]),
-    /** `anulado` é **proposta** de VOID: só vale com a confirmação do officer. */
-    outcome: z.enum(['vencedores', 'anulado']),
-    voidReason: z.string().nullable(),
+    /**
+     * `sem_vencedor`: resultado válido sem vencedor premiável — o prize pool vai
+     * para os outros mercados no settlement (D-61). `anulado`: VOID, com
+     * restituição; só vale com a confirmação do officer (D-16).
+     */
+    outcome: z.enum(['vencedores', 'sem_vencedor', 'anulado']),
+    /** Por que não houve vencedor, ou por que foi VOID. */
+    motivo: z.string().nullable(),
     validPool: z.number().int(),
     prizePool: z.number().int().nullable(),
     winningStake: z.number().int().nullable(),
     vencedores: z.array(
       z.object({ characterId: z.string(), name: z.string(), realm: z.string() }).strict(),
     ),
-    /** `K` da Weekly: ids de encounter da rodada. */
-    kills: z.array(z.string()),
+    /** Weekly (D-54): os bosses de progressão mortos — ids de encounter da rodada. */
+    bossesVencedores: z.array(z.string()),
     evidencia: z.record(z.string(), z.unknown()),
   })
   .strict();

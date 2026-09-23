@@ -24,16 +24,15 @@ const apostaSimplesSchema = z
   .strict();
 
 /**
- * Aposta de Weekly Progression: um stake para o conjunto exato de bosses,
- * inclusive vazio — `{}` é a previsão "nenhum boss morre" (D-15, D-28).
+ * Aposta de Weekly Progression (D-54): **um** boss de progressão da rodada —
+ * "este boss será morto pela primeira vez nesta semana?". `encounterId` é o id
+ * do encounter da rodada.
  */
 const apostaWeeklySchema = z
   .object({
     marketId: z.string().min(1),
     stake: stakeSchema,
-    encounterIds: z
-      .array(z.string().min(1))
-      .refine((ids) => new Set(ids).size === ids.length, 'boss repetido na seleção'),
+    encounterId: z.string().min(1),
   })
   .strict();
 

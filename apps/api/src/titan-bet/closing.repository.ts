@@ -30,6 +30,8 @@ export class ClosingRepository {
                 marketId: true,
                 outcome: true,
                 voidReason: true,
+                // Só para o motivo do `sem_vencedor` (D-61), que o cálculo grava ali.
+                evidence: true,
                 market: {
                   select: { kind: true, roundEncounter: { select: { encounterName: true } } },
                 },

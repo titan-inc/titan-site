@@ -103,7 +103,9 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
 
   type Cenario = Awaited<ReturnType<typeof cenario>>;
   type Desfecho =
-    { outcome: 'vencedores'; vencedores: Pessoa[] } | { outcome: 'anulado'; voidReason: string };
+    | { outcome: 'vencedores'; vencedores: Pessoa[] }
+    | { outcome: 'sem_vencedor'; motivo: string }
+    | { outcome: 'anulado'; voidReason: string };
 
   /**
    * Depois do cutoff: auditoria com os resultados gravados enquanto `pronta`,
@@ -139,7 +141,7 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
           validPool: V,
           prizePool: d.outcome === 'anulado' ? null : Math.floor((9 * V) / 10),
           winningStake: d.outcome === 'anulado' ? null : W,
-          evidence: { versao: 1 },
+          evidence: d.outcome === 'sem_vencedor' ? { versao: 1, motivo: d.motivo } : { versao: 1 },
           algorithmVersion: 'titanbet-1',
         },
       });
@@ -195,7 +197,7 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
       const x = await c.apostar(c.topDps.id, 'top_dps', 700, c.A);
       const y = await c.apostar(c.topDps.id, 'top_dps', 300, c.B);
       const a = await calculada(c, {
-        [c.topDps.id]: { outcome: 'anulado', voidReason: 'sem_kill' },
+        [c.topDps.id]: { outcome: 'anulado', voidReason: 'mercado_cancelado' },
       });
       await settlement.confirmar(a.id, OFFICER);
 
@@ -249,6 +251,33 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
     });
   });
 
+  describe('T-M16 integrado — sem vencedor reparte o P, sem restituição (D-61)', () => {
+    it('First Death sem vencedor: G₀ para a guilda, P para o Top DPS, nenhuma restituição', async () => {
+      const c = await cenario();
+      const top = await c.apostar(c.topDps.id, 'top_dps', 600, c.A);
+      const fd = await c.apostar(c.firstDeath.id, 'first_death', 1000, c.A);
+      const a = await calculada(c, {
+        [c.topDps.id]: { outcome: 'vencedores', vencedores: [c.A] },
+        [c.firstDeath.id]: { outcome: 'sem_vencedor', motivo: 'sem_kill' },
+      });
+      await settlement.confirmar(a.id, OFFICER);
+
+      const ls = (await lancamentos(c.rodada.id)).filter((l) => l.kind !== 'deposito_validado');
+      expect(ls.some((l) => l.kind === 'restituicao_anulado')).toBe(false);
+      expect(ls.some((l) => l.betId === fd.betId)).toBe(false);
+      // Top DPS: P 540 + cota 900 → 1.440 para a única aposta vencedora.
+      expect(ls.find((l) => l.betId === top.betId)).toMatchObject({ kind: 'premio', amount: 1440 });
+      expect(
+        ls.filter((l) => l.kind === 'receita_guilda').map((l) => [l.marketId, l.amount]),
+      ).toEqual(
+        expect.arrayContaining([
+          [c.topDps.id, 60],
+          [c.firstDeath.id, 100],
+        ]),
+      );
+    });
+  });
+
   describe('T-M14 integrado — sem premiável, a confirmação para (D-44)', () => {
     it('só o órfão e um VOID: recusado, nada lançado, auditoria continua calculada', async () => {
       const c = await cenario();
@@ -256,7 +285,7 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
       await c.apostar(c.topDps.id, 'top_dps', 500, c.A);
       const a = await calculada(c, {
         [c.firstDeath.id]: { outcome: 'vencedores', vencedores: [c.B] },
-        [c.topDps.id]: { outcome: 'anulado', voidReason: 'sem_kill' },
+        [c.topDps.id]: { outcome: 'anulado', voidReason: 'mercado_cancelado' },
       });
 
       await expect(settlement.confirmar(a.id, OFFICER)).rejects.toThrow(/nenhum mercado premiável/);
@@ -296,7 +325,7 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
       await c.apostar(c.firstDeath.id, 'first_death', 999, c.A);
       const a = await calculada(c, {
         [c.topDps.id]: { outcome: 'vencedores', vencedores: [c.A, c.B] },
-        [c.firstDeath.id]: { outcome: 'anulado', voidReason: 'sem_kill' },
+        [c.firstDeath.id]: { outcome: 'anulado', voidReason: 'mercado_cancelado' },
       });
       await settlement.confirmar(a.id, OFFICER);
 

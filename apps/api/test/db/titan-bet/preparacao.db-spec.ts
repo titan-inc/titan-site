@@ -73,7 +73,6 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
   const farm = (encounterId: number, mercados: PrepararRodada['encounters'][0]['mercados']) => ({
     encounterId,
     track: 'farm' as const,
-    inWeeklyProgression: false,
     mercados,
   });
 
@@ -186,7 +185,6 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
             {
               encounterId: DOIS,
               track: 'progressao',
-              inWeeklyProgression: false,
               mercados: ['first_death'],
             },
           ],
@@ -215,7 +213,6 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
               {
                 encounterId: DOIS,
                 track: 'progressao',
-                inWeeklyProgression: false,
                 mercados: ['top_dps'],
               },
             ],
@@ -227,17 +224,20 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
     });
   });
 
-  describe('T-G05 — a Weekly: um mercado e os encounters marcados', () => {
-    it('Weekly ligada com dois bosses marcados → um mercado, flag só nos dois', async () => {
+  // Mudança de produto (D-54): substitui T-G05 ("a Weekly: um mercado e os
+  // encounters marcados"). O officer não marca bosses: as opções da Weekly são os
+  // encounters de progressão.
+  describe('T-W15 — a Weekly é um mercado; as opções são os bosses de progressão', () => {
+    it('Weekly ligada → um mercado da rodada, sem marcação de boss', async () => {
       const rodada = await emPreparacao();
       const vista = await servico().prep.salvar(
         rodada.id,
         {
           weekly: true,
           encounters: [
-            { ...farm(UM, ['top_dps']), inWeeklyProgression: true },
-            { ...farm(DOIS, []), inWeeklyProgression: true },
-            farm(TRES, ['first_death']),
+            farm(UM, ['top_dps']),
+            { encounterId: DOIS, track: 'progressao', mercados: [] },
+            { encounterId: TRES, track: 'progressao', mercados: ['first_death'] },
           ],
         },
         OFFICER,
@@ -247,25 +247,17 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
       });
       expect(weekly).toHaveLength(1);
       expect(vista.weekly).toEqual({ marketId: weekly[0]!.id });
-      const marcados = await db.betRoundEncounter.findMany({
-        where: { roundId: rodada.id, inWeeklyProgression: true },
-      });
-      expect(marcados.map((e) => e.encounterId).sort()).toEqual([UM, DOIS]);
+      expect(
+        vista.encounters.filter((e) => e.track === 'progressao').map((e) => e.encounterId),
+      ).toEqual([DOIS, TRES]);
     });
 
     it('desligar a Weekly apaga o mercado dela', async () => {
       const rodada = await emPreparacao();
       const { prep } = servico();
-      await prep.salvar(
-        rodada.id,
-        { weekly: true, encounters: [{ ...farm(UM, []), inWeeklyProgression: true }] },
-        OFFICER,
-      );
-      const vista = await prep.salvar(
-        rodada.id,
-        { weekly: false, encounters: [farm(UM, [])] },
-        OFFICER,
-      );
+      const prog = { encounterId: UM, track: 'progressao' as const, mercados: [] };
+      await prep.salvar(rodada.id, { weekly: true, encounters: [prog] }, OFFICER);
+      const vista = await prep.salvar(rodada.id, { weekly: false, encounters: [prog] }, OFFICER);
       expect(vista.weekly).toBeNull();
       expect(
         await db.betMarket.count({ where: { roundId: rodada.id, kind: 'weekly_progression' } }),
@@ -297,7 +289,6 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
             {
               encounterId: UM,
               track: 'progressao',
-              inWeeklyProgression: false,
               mercados: ['first_death'],
             },
           ],
@@ -375,7 +366,8 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
         {
           weekly: true,
           encounters: [
-            { ...farm(UM, ['top_dps', 'first_death']), inWeeklyProgression: true },
+            // Sem a flag da Weekly (D-54), "alterado" é a troca de track.
+            { encounterId: UM, track: 'progressao', mercados: ['first_death'] },
             farm(TRES, []),
           ],
         },
@@ -397,7 +389,10 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
               { encounterId: UM, kind: 'first_death' },
               { encounterId: null, kind: 'weekly_progression' },
             ],
-            removidos: [{ encounterId: DOIS, kind: 'top_hps' }],
+            removidos: [
+              { encounterId: UM, kind: 'top_dps' },
+              { encounterId: DOIS, kind: 'top_hps' },
+            ],
           },
         },
       });
@@ -421,7 +416,13 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
       const { roundId } = await prep.criar(OFFICER);
       await prep.salvar(
         roundId,
-        { weekly: true, encounters: [{ ...farm(UM, ['top_dps']), inWeeklyProgression: true }] },
+        {
+          weekly: true,
+          encounters: [
+            farm(UM, ['top_dps']),
+            { encounterId: DOIS, track: 'progressao', mercados: [] },
+          ],
+        },
         OFFICER,
       );
 

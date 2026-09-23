@@ -60,11 +60,15 @@ describe('Titan Bet — Ready (serviço + banco)', () => {
   const servico = (roster: BlizzardService, time: WowAuditService) =>
     new ReadyService(repo, characters, roster, time);
 
-  /** Rodada em PREPARATION com um boss farm, Top Dispels e a Weekly. */
+  /**
+   * Rodada em PREPARATION com um boss farm, Top Dispels, um boss de progressão e
+   * a Weekly — que tem o boss de progressão como opção (D-54).
+   */
   async function rodadaConfigurada(cutoffEmMs = 48 * 60 * 60 * 1000) {
     const rodada = await f.rodada({ cutoffAt: new Date(Date.now() + cutoffEmMs) });
     const boss = await f.encounter(rodada.id);
     await f.mercadoDeBoss(boss, 'top_dispels');
+    await f.encounter(rodada.id, { track: 'progressao' });
     await f.mercadoWeekly(rodada.id);
     return rodada;
   }
@@ -191,9 +195,11 @@ describe('Titan Bet — Ready (serviço + banco)', () => {
       await recusadoSemRastro(rodada.id, blizzard([membro(5)]), wowaudit([titan('DPS')]));
     });
 
-    it('Weekly Progression sem nenhum boss marcado para ela', async () => {
+    // Mudança de produto (D-54): "Weekly sem boss marcado" virou "Weekly sem boss
+    // de progressão" — a opção da Weekly é o boss de progressão (T-W16).
+    it('T-W16: Weekly Progression sem nenhum boss de progressão', async () => {
       const rodada = await f.rodada();
-      await f.encounter(rodada.id, { inWeeklyProgression: false });
+      await f.encounter(rodada.id, { track: 'farm' });
       await f.mercadoWeekly(rodada.id);
       await recusadoSemRastro(rodada.id, blizzard([membro(5)]), wowaudit([titan('Tank')]));
     });

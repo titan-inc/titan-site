@@ -32,9 +32,11 @@ jest.setTimeout(120_000);
 
 const OFFICER = { userId: 'officer-e2e', battletag: 'Officer#0001' };
 const BOSS = 770001;
+const PROG = 770002;
 const CATALOGO: RaidCatalog = {
   encounters: new Map([
     [BOSS, { id: BOSS, name: 'Boss E2E', zoneId: 77, zoneName: 'Raid E2E', order: 0 }],
+    [PROG, { id: PROG, name: 'Prog E2E', zoneId: 77, zoneName: 'Raid E2E', order: 1 }],
   ]),
   zones: new Map(),
   difficultyNames: new Map(),
@@ -75,17 +77,15 @@ describe('Titan Bet — E2E (T-E01)', () => {
       {
         weekly: true,
         encounters: [
-          {
-            encounterId: BOSS,
-            track: 'farm',
-            inWeeklyProgression: true,
-            mercados: ['top_dps', 'first_death'],
-          },
+          { encounterId: BOSS, track: 'farm', mercados: ['top_dps', 'first_death'] },
+          // A opção da Weekly é o boss de progressão (D-54).
+          { encounterId: PROG, track: 'progressao', mercados: [] },
         ],
       },
       OFFICER,
     );
     const boss = vista.encounters[0]!;
+    const prog = vista.encounters[1]!;
     const topDps = boss.mercados.find((m) => m.kind === 'top_dps')!.marketId;
     const weekly = vista.weekly!.marketId;
 
@@ -147,7 +147,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
     const slipAna = await apostas.salvar(rodada.id, contaAna, {
       apostas: [
         { marketId: topDps, stake: 600, targetCharacterId: idA },
-        { marketId: weekly, stake: 300, encounterIds: [boss.roundEncounterId] },
+        { marketId: weekly, stake: 300, encounterId: prog.roundEncounterId },
       ],
     });
     expect(
@@ -182,6 +182,14 @@ describe('Titan Bet — E2E (T-E01)', () => {
         startTime: terca,
         fights: [
           { id: 1, encounterID: BOSS, difficulty: 5, kill: true, startTime: 0, endTime: 300_000 },
+          {
+            id: 2,
+            encounterID: PROG,
+            difficulty: 5,
+            kill: true,
+            startTime: 400_000,
+            endTime: 600_000,
+          },
         ],
         actors: [
           { id: 1, name: candA, server: 'Azralon' },
@@ -194,6 +202,13 @@ describe('Titan Bet — E2E (T-E01)', () => {
               { id: 1, name: candA, total: 30_000_000 },
               { id: 2, name: candB, total: 20_000_000 },
             ],
+            healing: [],
+            dispels: { entries: [] },
+            rankingsDps: [],
+            rankingsHps: [],
+          },
+          2: {
+            damage: [],
             healing: [],
             dispels: { entries: [] },
             rankingsDps: [],
@@ -217,7 +232,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
     // 6. Confirmar e liquidar; pagar a Ana.
     await new SettlementService(repo).confirmar(auditId, OFFICER);
     const ledger = new LedgerService(repo);
-    // Top DPS: V 1.000 → P 900, só a Ana em A → 900. Weekly: V 300 → P 270, K = {boss} → 270.
+    // Top DPS: V 1.000 → P 900, só a Ana em A → 900. Weekly: V 300 → P 270, o prog morreu → 270.
     expect(await ledger.saldo(slipAna.slipId)).toBe(1170);
     expect(await ledger.saldo(slipBia.slipId)).toBe(0);
     await ledger.pagar(slipAna.slipId, OFFICER);
@@ -242,7 +257,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
       vencedores: [{ name: candA, realm: 'Azralon' }],
       ganhos: [{ membro: { name: ana, realm: 'azralon' }, valor: 900 }],
     });
-    expect(doc.mercados.find((m) => m.marketId === weekly)!.kills).toEqual(['Boss E2E']);
+    expect(doc.mercados.find((m) => m.marketId === weekly)!.bossesVencedores).toEqual(['Prog E2E']);
     expect(JSON.stringify(doc)).not.toContain(contaAna.battletag);
     expect(JSON.stringify(doc)).not.toContain(bia);
   });

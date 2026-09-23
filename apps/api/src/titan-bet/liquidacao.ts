@@ -4,7 +4,8 @@ import { restituirMercado, type ApostaNoRateio } from './rateio';
  * Liquidação da rodada inteira, com a redistribuição do mercado sem aposta
  * vencedora (D-44; spec §8.6). Domínio puro, aritmética inteira.
  *
- * Um mercado com resultado válido e `W = 0` é **órfão**: não é VOID, ninguém é
+ * Um mercado com resultado válido e `W = 0` (D-44), ou sem vencedor premiável na
+ * semana (D-61), é **órfão**: não é VOID, ninguém é
  * restituído, o `G₀` dele fica com o Guild Bank e o `P` é repartido igualmente
  * entre os mercados **premiáveis** da rodada (resultado `vencedores` e
  * `W > 0`). Cada órfão reparte o próprio `P`, e o resto de cada divisão é do
@@ -13,8 +14,11 @@ import { restituirMercado, type ApostaNoRateio } from './rateio';
 
 export interface MercadoParaLiquidar {
   marketId: string;
-  /** O desfecho confirmado: vencedores (mesmo que ninguém tenha apostado neles) ou VOID. */
-  desfecho: 'vencedores' | 'anulado';
+  /**
+   * O desfecho confirmado: vencedores (mesmo que ninguém tenha apostado neles),
+   * sem vencedor premiável (D-61) ou VOID.
+   */
+  desfecho: 'vencedores' | 'sem_vencedor' | 'anulado';
   /** Apostas válidas do mercado (D-12), marcadas se estão numa opção vencedora. */
   apostas: ApostaNoRateio[];
 }
@@ -64,7 +68,11 @@ export type Liquidacao =
 
 export function liquidarRodada(mercados: MercadoParaLiquidar[]): Liquidacao {
   const premiaveis = mercados.filter((m) => m.desfecho === 'vencedores' && W(m) > 0);
-  const orfaos = mercados.filter((m) => m.desfecho === 'vencedores' && W(m) === 0);
+  // Órfão: tem resultado e nenhum vencedor premiável — `W = 0` (D-44) ou sem
+  // vencedor na semana (D-61). Os dois repartem o P da mesma forma.
+  const orfaos = mercados.filter(
+    (m) => m.desfecho === 'sem_vencedor' || (m.desfecho === 'vencedores' && W(m) === 0),
+  );
   const receptores = premiaveis.map((m) => m.marketId);
 
   const travados = orfaos.filter((m) => P(m) > 0 && receptores.length === 0);

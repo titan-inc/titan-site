@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { GoldLedgerKind } from '@prisma/client';
 import { closingReportSchema, type ClosingPublicado, type ClosingReport } from '@titan/shared';
 import { ClosingRepository } from './closing.repository';
+import { motivoDaEvidencia } from './resultados';
 
 /** A publicação foi recusada; nada foi publicado. */
 export class ClosingRecusado extends Error {
@@ -97,9 +98,9 @@ function montar(
       kind: r.market.kind,
       encounterName: r.market.roundEncounter?.encounterName ?? null,
       desfecho: r.outcome,
-      voidReason: r.voidReason,
+      motivo: r.voidReason ?? motivoDaEvidencia(r.evidence),
       vencedores: r.winners.map((w) => w.candidate),
-      kills: r.kills.map((k) => k.roundEncounter.encounterName),
+      bossesVencedores: r.kills.map((k) => k.roundEncounter.encounterName),
       ganhos: [...ganhos.values()],
     };
   });

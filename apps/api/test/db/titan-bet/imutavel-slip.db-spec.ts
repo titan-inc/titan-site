@@ -44,7 +44,7 @@ describe('Titan Bet — imutabilidade do slip e das apostas (banco)', () => {
   };
 
   describe('T-S04 — aposta só muda com o slip em rascunho (D-27)', () => {
-    it('controle: em rascunho, a aposta e a seleção da Weekly mudam', async () => {
+    it('controle: em rascunho, as apostas — inclusive a da Weekly — mudam', async () => {
       const r = await ciclo.aberta();
       const { slip, aposta } = await ciclo.slipComAposta(r);
       expect(await escrita(db.bet.update({ where: { id: aposta.id }, data: { stake: 700 } }))).toBe(
@@ -57,21 +57,13 @@ describe('Titan Bet — imutabilidade do slip e das apostas (banco)', () => {
           marketId: r.weekly.id,
           marketKind: 'weekly_progression',
           stake: 300,
+          targetEncounterId: r.prog.id,
+          targetEncounterTrack: 'progressao',
         },
       });
-      expect(
-        await escrita(
-          db.betWeeklySelection.create({
-            data: {
-              betId: weekly.id,
-              roundId: r.rodada.id,
-              marketKind: 'weekly_progression',
-              roundEncounterId: r.farm.id,
-              inWeeklyProgression: true,
-            },
-          }),
-        ),
-      ).toBe('aceito');
+      expect(await escrita(db.bet.update({ where: { id: weekly.id }, data: { stake: 400 } }))).toBe(
+        'aceito',
+      );
       expect(await escrita(db.bet.delete({ where: { id: aposta.id } }))).toBe('aceito');
     });
 
@@ -88,6 +80,8 @@ describe('Titan Bet — imutabilidade do slip e das apostas (banco)', () => {
               marketId: r.weekly.id,
               marketKind: 'weekly_progression',
               stake: 300,
+              targetEncounterId: r.prog.id,
+              targetEncounterTrack: 'progressao',
             },
           }),
         ),
@@ -98,49 +92,9 @@ describe('Titan Bet — imutabilidade do slip e das apostas (banco)', () => {
       expect(await escrita(db.bet.delete({ where: { id: aposta.id } }))).toBe('trigger');
     });
 
-    it('recusa criar e apagar seleção da Weekly de slip submetido', async () => {
-      const r = await ciclo.aberta();
-      const slip = await f.slip(r.rodada.id, r.dono.id);
-      const weekly = await db.bet.create({
-        data: {
-          slipId: slip.id,
-          roundId: r.rodada.id,
-          marketId: r.weekly.id,
-          marketKind: 'weekly_progression',
-          stake: 300,
-        },
-      });
-      const selecao = {
-        betId: weekly.id,
-        roundId: r.rodada.id,
-        marketKind: 'weekly_progression' as const,
-        roundEncounterId: r.farm.id,
-        inWeeklyProgression: true,
-      };
-      const chave = { betId_roundEncounterId: { betId: weekly.id, roundEncounterId: r.farm.id } };
-
-      // Uma seleção gravada em rascunho, para o teste de apagar.
-      await db.betWeeklySelection.create({ data: selecao });
-      await ciclo.submeter(slip, 300);
-
-      expect(await escrita(db.betWeeklySelection.delete({ where: chave }))).toBe('trigger');
-      // Recriar a mesma seleção depois de apagada seria "criar"; como o apagar
-      // acima foi recusado no GREEN, a criação é testada numa aposta sem seleção.
-      const slip2 = await f.slip(r.rodada.id, r.dono.id, 'rascunho', { ownerUserId: 'outra' });
-      const weekly2 = await db.bet.create({
-        data: {
-          slipId: slip2.id,
-          roundId: r.rodada.id,
-          marketId: r.weekly.id,
-          marketKind: 'weekly_progression',
-          stake: 300,
-        },
-      });
-      await ciclo.submeter(slip2, 300);
-      expect(
-        await escrita(db.betWeeklySelection.create({ data: { ...selecao, betId: weekly2.id } })),
-      ).toBe('trigger');
-    });
+    // Mudança de produto (D-54): o caso "recusa criar e apagar seleção da Weekly
+    // de slip submetido" saiu com a tabela de seleções. A aposta da Weekly é uma
+    // Bet como as outras, coberta pelo caso acima.
   });
 
   describe('T-S05 / T-S19 / T-S23 / T-S25 — só as transições da §16.5', () => {
@@ -275,6 +229,8 @@ describe('Titan Bet — imutabilidade do slip e das apostas (banco)', () => {
               marketId: r.weekly.id,
               marketKind: 'weekly_progression',
               stake: 300,
+              targetEncounterId: r.prog.id,
+              targetEncounterTrack: 'progressao',
             },
           }),
         ),

@@ -9,12 +9,11 @@ import { preparacaoDaRodadaSchema, prepararRodadaSchema } from './config.js';
 const farm = (encounterId: number, mercados: string[] = ['top_dps']) => ({
   encounterId,
   track: 'farm',
-  inWeeklyProgression: false,
   mercados,
 });
 
 describe('prepararRodadaSchema', () => {
-  it('aceita farm com os seis mercados de boss e a Weekly com bosses marcados', () => {
+  it('aceita farm com os seis mercados de boss e a Weekly ligada', () => {
     const r = prepararRodadaSchema.safeParse({
       weekly: true,
       encounters: [
@@ -27,12 +26,10 @@ describe('prepararRodadaSchema', () => {
             'top_dispels',
             'first_death',
           ]),
-          inWeeklyProgression: true,
         },
         {
           encounterId: 2,
           track: 'progressao',
-          inWeeklyProgression: true,
           mercados: ['first_death'],
         },
       ],
@@ -43,9 +40,7 @@ describe('prepararRodadaSchema', () => {
   it('T-G04: progressão aceita só First Death (D-29)', () => {
     const r = prepararRodadaSchema.safeParse({
       weekly: false,
-      encounters: [
-        { encounterId: 2, track: 'progressao', inWeeklyProgression: false, mercados: ['top_dps'] },
-      ],
+      encounters: [{ encounterId: 2, track: 'progressao', mercados: ['top_dps'] }],
     });
     expect(r.success).toBe(false);
   });
@@ -59,10 +54,12 @@ describe('prepararRodadaSchema', () => {
     ).toBe(false);
   });
 
-  it('boss marcado na Weekly exige a Weekly ligada', () => {
+  // Mudança de produto (D-54): o officer não marca mais bosses da Weekly — ela
+  // usa os de progressão. Substitui "boss marcado na Weekly exige a Weekly ligada".
+  it('T-W15: a marcação de boss da Weekly não existe mais no contrato', () => {
     expect(
       prepararRodadaSchema.safeParse({
-        weekly: false,
+        weekly: true,
         encounters: [{ ...farm(1), inWeeklyProgression: true }],
       }).success,
     ).toBe(false);
@@ -121,7 +118,6 @@ describe('preparacaoDaRodadaSchema', () => {
           encounterName: 'Boss',
           zoneName: 'Raid',
           track: 'farm',
-          inWeeklyProgression: true,
           mercados: [{ marketId: 'm1', kind: 'top_dps' }],
         },
       ],

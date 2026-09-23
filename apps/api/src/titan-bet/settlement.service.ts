@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import type { SaldosDaRodada } from '@titan/shared';
 import { liquidarRodada, type MercadoParaLiquidar } from './liquidacao';
 import { saldoDevido } from './rateio';
-import { weeklyVence } from './resultados';
 import {
   TitanBetRepository,
   type DadosDaConfirmacao,
@@ -81,12 +80,10 @@ export function planejarSettlement(
       apostas: doMercado.map((a) => ({
         betId: a.id,
         stake: a.stake,
+        // Weekly (D-54): vence a aposta no boss de progressão que morreu.
         vence:
           r.market.kind === 'weekly_progression'
-            ? weeklyVence(
-                a.weeklySelections.map((s) => s.roundEncounterId),
-                k,
-              )
+            ? a.targetEncounterId !== null && k.includes(a.targetEncounterId)
             : a.targetCharacterId !== null && vencedores.has(a.targetCharacterId),
       })),
     });

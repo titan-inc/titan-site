@@ -107,7 +107,6 @@ export class PreparacaoService {
         encounterName: e.encounterName,
         zoneName: e.zoneName,
         track: e.track,
-        inWeeklyProgression: e.inWeeklyProgression,
         mercados: e.markets.map((m) => ({
           marketId: m.id,
           kind: m.kind as Exclude<BetMarketKind, 'weekly_progression'>,
@@ -169,9 +168,6 @@ function validar(input: PrepararRodada, catalogo: RaidCatalog): void {
     if (e.track === 'progressao' && e.mercados.some((m) => m !== 'first_death')) {
       throw new PreparacaoInvalida('boss em progressão só tem First Death (D-29)');
     }
-    if (!input.weekly && e.inWeeklyProgression) {
-      throw new PreparacaoInvalida('boss marcado na Weekly Progression exige a Weekly ligada');
-    }
   }
 }
 
@@ -217,12 +213,9 @@ function planejar(
     }
     plano.encountersExistentes.push([e.encounterId, e.id]);
     const trocouTrack = quer.track !== e.track;
-    if (trocouTrack || quer.inWeeklyProgression !== e.inWeeklyProgression) {
-      plano.alterarEncounters.push({
-        id: e.id,
-        track: quer.track,
-        inWeeklyProgression: quer.inWeeklyProgression,
-      });
+    // Sem marcação da Weekly (D-54), alterar um encounter é trocar o track.
+    if (trocouTrack) {
+      plano.alterarEncounters.push({ id: e.id, track: quer.track });
       encounters.alterados.push(e.encounterId);
     }
     // Com o track trocado, os mercados saem todos e voltam os desejados: a FK
@@ -247,7 +240,6 @@ function planejar(
       encounterName: boss.name,
       zoneName: boss.zoneName,
       track: e.track,
-      inWeeklyProgression: e.inWeeklyProgression,
     });
     encounters.criados.push(e.encounterId);
     for (const kind of e.mercados) {

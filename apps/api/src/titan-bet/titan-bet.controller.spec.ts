@@ -365,9 +365,7 @@ describe('Titan Bet — autorização das rotas', () => {
 
       const corpo = {
         weekly: false,
-        encounters: [
-          { encounterId: 7, track: 'farm', inWeeklyProgression: false, mercados: ['top_dps'] },
-        ],
+        encounters: [{ encounterId: 7, track: 'farm', mercados: ['top_dps'] }],
       };
       await request(server)
         .put('/internal/titan-bet/officer/rodadas/r1/preparacao')
