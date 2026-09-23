@@ -26,8 +26,9 @@ export type Rateio =
       premios: Array<{ betId: string; amount: number }>;
     }
   /**
-   * Há resultado, mas nenhuma aposta válida numa opção vencedora (`W = 0`). A
-   * spec não diz o que acontece com a pool nesse caso; o domínio não inventa.
+   * Há resultado, mas nenhuma aposta válida numa opção vencedora (`W = 0`). Um
+   * mercado sozinho não decide o destino do `P`: ele é repartido entre os
+   * outros mercados da rodada (D-44) — ver `liquidarRodada`.
    */
   | { tipo: 'sem_aposta_vencedora'; V: number };
 

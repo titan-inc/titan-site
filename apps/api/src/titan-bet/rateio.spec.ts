@@ -89,7 +89,7 @@ describe('ratearMercado', () => {
     }
   });
 
-  it('opção vencedora sem nenhuma aposta (W = 0): não inventa rateio — a spec não define', () => {
+  it('opção vencedora sem nenhuma aposta (W = 0): o mercado sozinho não rateia — a rodada reparte (D-44)', () => {
     const r = ratearMercado([aposta('a', 500, false), aposta('b', 300, false)]);
     expect(r).toEqual({ tipo: 'sem_aposta_vencedora', V: 800 });
   });

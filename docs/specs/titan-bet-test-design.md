@@ -1081,3 +1081,21 @@ depois do settlement.
 ### 19.4 Resultado
 
 `pnpm test` api **821** (+11); `api` lint e typecheck OK.
+
+---
+
+## 20. Redistribuição do `W = 0` — execução (23/09/2026)
+
+**Status: GREEN.** T-M10–T-M15 (D-44; spec §8.6).
+
+| Testes      | Onde                                   | Antes da implementação                                                       |
+| ----------- | -------------------------------------- | ---------------------------------------------------------------------------- |
+| T-M10–T-M15 | `src/titan-bet/liquidacao.spec.ts` — 9 | **`RED awaiting implementation seam`** — `Cannot find module './liquidacao'` |
+
+`src/titan-bet/liquidacao.ts` — `liquidarRodada`: premiáveis (`vencedores` e `W > 0`)
+rateiam `P + cotas`; órfãos (`vencedores` e `W = 0`) dão `G₀` e o resto da divisão à
+guilda e repartem o `P` igualmente entre os premiáveis; `VOID` restitui. Órfão com
+`P > 0` sem premiável → `sem_mercado_premiavel`, nada liquidado — o caso que a D-44 manda
+parar e consultar. Órfão com `P = 0` não tem o que repartir e não trava.
+
+`pnpm test` api **830** (+9); lint e typecheck OK.
