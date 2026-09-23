@@ -8,6 +8,10 @@
 > correção pós-pagamento, self-bet e odds. As OQs resolvidas saíram da lista de
 > pendências e estão registradas na §2. O M0 foi reescopado (§14).
 >
+> **Revisão 10 (23/09/2026):** identidade pública no Closing Report (D-48, OQ-51); `K` só
+> com os encounters da Weekly (D-49, OQ-47); saldo negativo continua recusado (D-50,
+> OQ-52); role do Ready decide os mercados (D-51, OQ-34). Gates #1 e #2 validados.
+>
 > **Revisão 9 (23/09/2026):** Parse % é a coluna da tela do WCL, capturada no Auditar e
 > congelada (D-43, resolve a parte de parse da OQ-25); mercado com resultado e nenhuma
 > aposta vencedora redistribui o prize pool (D-44, OQ-57); preparação da semana pelo
@@ -321,6 +325,15 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | —    | OQ-53   | **O desenho da D-38 está aprovado como está**: roster da Blizzard → `Character` → `BetRoundBettor(roundId, characterId)` com rank, nome e realm; `GuildCharacter` associa a conta depois; `BetSlip.eligibilityCharacterId`; um slip ativo por conta. O id numérico da Blizzard **não** entra agora. Rename/transfer entre o Ready e o primeiro login pode fazer a associação daquela semana falhar — limitação documentada, **não** bloqueia o M2, e não se resolve fora do escopo do Titan Bet.                       |
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
+
+### Revisão 10 (23/09/2026) — identidade pública, `K`, saldo negativo e role
+
+| D    | Resolve | Decisão                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-48 | OQ-51   | **No Closing Report público, o membro é o nome do personagem de elegibilidade da aposta** (`BetSlip.eligibilityCharacterId`, com nome e realm do snapshot de bettors) — nunca o BattleTag. Por mercado: vencedor e valor ganho. Por membro/personagem: o total devido agregado. **Nunca:** stakes, apostas perdedoras, escolhas privadas, slips ou depósitos. |
+| D-49 | OQ-47   | **`K` da Weekly Progression considera só os encounters marcados para a Weekly e congelados no Ready.** Kill Mythic de boss fora desse conjunto é ignorada para `K` e **não bloqueia** o cálculo.                                                                                                                                                              |
+| D-50 | OQ-52   | **Ajuste que produziria saldo negativo continua recusado.** Não existe conceito de dívida do membro.                                                                                                                                                                                                                                                          |
+| D-51 | OQ-34   | **A elegibilidade por role é a role congelada no Ready** (snapshot de candidatos). A spec ou role jogada na luta não muda os mercados em que o candidato participa.                                                                                                                                                                                           |
 
 ### Revisão 9 (23/09/2026) — Parse %, `W = 0`, preparação da semana e gates
 
@@ -947,17 +960,13 @@ a resposta faria com o schema, se fizer algo.
 | **OQ-45**  | Fluxo de sessão **sem fonte** (D-24), raid cancelada e anomalias da §7.2: o que o officer pode fazer, há prazo?                                                                                                                                                              | Não: valores a mais em `resolution`/`voidReason` — aditivo.           | M7     |
 | **OQ-50**  | Liquidação **parcial** da rodada?                                                                                                                                                                                                                                            | Não na 1ª: confirmação por resultado seria coluna nova — aditivo.     | M7     |
 | **OQ-25**  | Métricas de farm além do parse: DPS/HPS sobre a duração da luta ou tempo ativo, cura com absorb, dispels com purge em inimigo. **Parse % resolvido na D-43.** Seja qual for, o valor usado fica congelado na evidência e nunca é recalculado.                                | Não: evidência.                                                       | M7     |
-| **OQ-34**  | Candidato fora da role do snapshot: HPS/HPS parse da spec DPS contam?                                                                                                                                                                                                        | Não.                                                                  | M7     |
 | **OQ-39**  | Report `titanbet*` parcial.                                                                                                                                                                                                                                                  | Não.                                                                  | M7     |
 | **OQ-40**  | Pull repetida dentro do report, ou o mesmo boss morto nas duas sessões.                                                                                                                                                                                                      | Não.                                                                  | M8     |
-| **OQ-47**  | `K` = kills ∩ encounters configurados para a Weekly?                                                                                                                                                                                                                         | Não: algoritmo.                                                       | M8     |
 | **OQ-03**  | Quem perde membership com slip `VALID` continua concorrendo e recebe?                                                                                                                                                                                                        | Não.                                                                  | M9     |
-| **OQ-51**  | Identidade do vencedor no Closing Report.                                                                                                                                                                                                                                    | Não: conteúdo do documento.                                           | M9     |
-| **OQ-52**  | Saldo negativo depois de ajuste.                                                                                                                                                                                                                                             | Não: `ajuste` já tem sinal.                                           | M9     |
 | **OQ-30**  | Avisos no Discord?                                                                                                                                                                                                                                                           | Não.                                                                  | pós-M9 |
 
-**Gates, não OQs:** M0 #1 e #2 bloqueiam **ligar settlement automático em produção**,
-não o schema (§14). O #6 deixou de ser gate (D-46).
+**Gates, não OQs:** M0 #1 e #2 **validados** em 23/09/2026 (§15.0). O #6 deixou de ser
+gate (D-46).
 
 ---
 
@@ -1136,7 +1145,12 @@ variante com `playerMetric: hps` — a captura de Healing não tinha a coluna; a
 segue a mesma lógica, por indicação do produto. Dispels: a amostra não tem ocorrência; o
 mapeamento para a tabela é coberto por teste (D-47).
 
-**Gate #2 (First Death) continua pendente** da comparação com a aba Deaths.
+**Gate #2 (First Death) validado (23/09/2026).** Captura da aba Deaths de uma kill Mythic
+real (Vashnik, 6:38; imagem fora do repositório), comparada com `events(dataType: Deaths,
+hostilityType: Friendlies)` da mesma fight: **6 de 6** mortes na mesma ordem, com o mesmo
+personagem e o mesmo tempo desde o pull (`timestamp − fight.startTime`, truncado no
+segundo como a tela mostra). A duração da luta também bate. O First Death é a primeira
+morte elegível dessa lista (D-13, D-14).
 
 ### 15.1 Amostra
 
