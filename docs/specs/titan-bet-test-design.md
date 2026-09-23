@@ -344,6 +344,69 @@ gate #1 (§6), não teste.
 | T-C04 | D-48 | membro identificado pelo personagem de elegibilidade, nunca BattleTag | service + contrato | closing → nome e realm do personagem de elegibilidade; o JSON não contém BattleTag            | aguarda seam                           | infra-DB |
 | T-C05 | D-48 | total devido agregado por membro/personagem                           | service + banco    | prêmio + restituição + ajuste da conta → um total por personagem                              | aguarda seam                           | infra-DB |
 
+### 3.18 Revisão 11 da spec (D-53 a D-66) — o que muda na matriz
+
+**Casos substituídos por mudança de produto.** A expectativa antiga deixa de valer porque a
+decisão mudou — não é correção de teste. Cada um é reescrito com o id novo indicado, e o
+teste antigo sai no mesmo commit que o novo entra.
+
+| Antigo                                                         | O que exigia                                                     | Decisão | Substituído por                              |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- | ------- | -------------------------------------------- |
+| T-W01, T-W02, T-W03, T-W05                                     | Weekly por conjunto exato, `{}`, `K` indeterminado, `K` ∩ Weekly | D-54    | T-W10–T-W13                                  |
+| T-W04                                                          | kill fora de terça/quinta fora de `K`                            | D-54    | T-W12 (a mesma regra, por boss)              |
+| T-S11, T-S22                                                   | Weekly com 0..N bosses, um stake para o conjunto                 | D-54    | T-W14                                        |
+| T-G05 e o `inWeeklyProgression`                                | officer marca os bosses da Weekly                                | D-54    | T-W15 (progressão = opção)                   |
+| T-R14 (parte "Weekly sem boss")                                | Weekly precisa de boss marcado                                   | D-54    | T-W16 (Weekly precisa de boss de progressão) |
+| T-Q03, T-X05                                                   | `K` gravado; W por conjunto; kill ∈ encounters da rodada         | D-54    | T-W17 (bosses mortos = opções vencedoras)    |
+| T-O04 (bloqueado) e o caso "Weekly fora das odds"              | Weekly sem odds                                                  | D-54    | T-W18                                        |
+| T-F04, T-P05, o `sem_vencedor` do T-F02/T-F05, T-Q05 (1º caso) | "sem kill / sem pull / sem candidato" → proposta de VOID         | D-61    | T-M16–T-M18                                  |
+| o caso "duas kills → revisão" (T-Q06, `killDaSemana`)          | recusar e pedir revisão                                          | D-62    | T-F08                                        |
+| T-A06, T-A12 (escolha), CHECKs de `escolha_officer`/`ambigua`  | um report por sessão, o officer escolhe entre vários             | D-63    | T-A16–T-A18                                  |
+| T-S16 (depositante da conta)                                   | depositante precisa ser `GuildCharacter` da conta                | D-55    | T-S26                                        |
+| T-S15 (só o depositante)                                       | self-bet só no depositante                                       | D-56    | T-S27                                        |
+| "conta fora do snapshot não vê odds" (odds)                    | 403 para quem não é bettor                                       | D-53b   | T-Z11                                        |
+| membro sem roster → 403 nas rotas do membro                    | ex-membro barrado                                                | D-53a   | T-Z10                                        |
+
+**Casos desbloqueados:** T-A13 (D-60) → T-A19; T-A14 (D-63) → T-A16; T-A15 (D-62/D-63) →
+T-F08 e T-A18; T-S21 (D-56) → T-S27; T-Z09 (D-57); T-Z10 (D-53); T-B07 (D-53a) → T-Z10;
+T-O04 (D-54) → T-W18; T-M09 (D-61: sem parcial) → T-M16.
+
+**Casos novos:**
+
+| T     | Decisão    | Comportamento                                                                                            | Camada             |
+| ----- | ---------- | -------------------------------------------------------------------------------------------------------- | ------------------ |
+| T-W10 | D-54       | só boss de **progressão** é opção da Weekly; farm fica fora                                              | domínio + banco    |
+| T-W11 | D-54       | a aposta da Weekly escolhe **um** boss de progressão (uma aposta por mercado, D-28)                      | contrato + banco   |
+| T-W12 | D-54       | boss de progressão morto em Mythic, em terça/quinta, é opção vencedora; vários mortos, vários vencedores | domínio            |
+| T-W13 | D-54, D-61 | nenhum boss de progressão morto → Weekly sem resultado premiável                                         | domínio + service  |
+| T-W14 | D-54       | aposta da Weekly tem alvo = encounter de progressão da rodada; farm ou outra rodada → erro               | banco              |
+| T-W15 | D-54       | a preparação não marca bosses da Weekly: a Weekly usa os de progressão                                   | contrato + service |
+| T-W16 | D-54       | Ready com Weekly e sem boss de progressão → recusado                                                     | service            |
+| T-W17 | D-54       | cálculo e settlement da Weekly por boss: bosses mortos gravados; W = stake nos mortos                    | service + banco    |
+| T-W18 | D-54       | odds da Weekly: um multiplicador por boss de progressão                                                  | service + contrato |
+| T-F08 | D-62       | várias kills do mesmo boss → vale a primeira, cronologicamente                                           | domínio            |
+| T-A16 | D-63       | todos os `titanbet*` da sessão são fonte, congelados; nada de escolha                                    | service + banco    |
+| T-A17 | D-63       | pull duplicada entre reports conta uma vez (mesmo encounter, início absoluto < 10 s)                     | domínio            |
+| T-A18 | D-62/63    | kill em dois reports: vale a primeira; valores lidos do report dessa cópia                               | domínio + service  |
+| T-A19 | D-60       | officer declara "sem raid oficial" com motivo; sessão resolvida sem pulls; ausência sozinha não resolve  | service + banco    |
+| T-M16 | D-61       | mercado sem resultado premiável: `G₀` para a guilda, `P` redistribuído; nenhuma restituição              | domínio + service  |
+| T-M17 | D-61       | desfecho `sem_vencedor` no banco e nos contratos, com o motivo                                           | banco + contrato   |
+| T-M18 | D-61       | nenhum caminho automático produz `anulado`                                                               | service            |
+| T-S26 | D-55       | depositante: qualquer personagem informado (nome + realm), congelado no slip                             | contrato + service |
+| T-S27 | D-56       | First Death em qualquer personagem reconhecido do apostador → recusado (Salvar e Submeter)               | service            |
+| T-Z09 | D-57       | officer vê o slip como submetido, só leitura, e o acesso vira `BetEvent`                                 | API + service      |
+| T-Z10 | D-53a      | ex-membro com slip na rodada acessa a própria rodada e aposta; nada fora dela                            | API + service      |
+| T-Z11 | D-53b      | membro da guilda fora do snapshot vê mercados e odds; não salva nem submete                              | API + service      |
+
+Sem teste, por decisão: D-58 (officer confirma o próprio depósito — o comportamento atual),
+D-59 (recusado não restitui — o atual), D-64 (sem validação no WCL — o atual), D-65 (quem
+sai continua concorrendo — o atual do cálculo e do settlement; o acesso é o T-Z10), D-66
+(sem Discord).
+
+**Milestones da revisão 11**, nesta ordem: (1) Weekly por boss e `sem_vencedor` (D-54,
+D-61) — muda schema, contratos, cálculo e settlement juntos; (2) fontes da auditoria (D-60,
+D-62, D-63); (3) depositante e self-bet (D-55, D-56); (4) acesso (D-53) e ver slip (D-57).
+
 ### 3.11 E2E (um fluxo, não a suíte inteira)
 
 | T     | Fluxo                                                                                                             | Quando                                      |
