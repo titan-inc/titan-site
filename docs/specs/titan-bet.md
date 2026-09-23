@@ -1504,21 +1504,21 @@ Zero linhas = aposta em `{}`.
 
 **Unique e FK (Prisma):**
 
-| Tabela                           | Constraint                                                                                                                                           |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BetRound`                       | `period` único                                                                                                                                       |
-| `BetRoundEncounter`              | `(roundId, encounterId)` único; `(id, roundId, inWeeklyProgression)` e `(id, track)` únicos (alvos de FK)                                            |
-| `BetMarket`                      | `(roundId, kind, roundEncounterId)` único; `(id, roundId, kind)` único (alvo); FK `(roundEncounterId, track)` → encounter                            |
-| `BetRoundBettor`                 | `(roundId, characterId)` único                                                                                                                       |
-| `BetRoundCandidate`              | `(roundId, characterId)` único; `(roundId, characterId, role)` único (alvo)                                                                          |
-| `BetSlip`                        | `(id, roundId)` único (alvo); FK `(roundId, eligibilityCharacterId)` → `BetRoundBettor`                                                              |
-| `Bet`                            | `(slipId, marketId)` único; `(id, roundId, marketKind)` único (alvo); FKs compostas para slip, mercado e candidate                                   |
-| `BetWeeklySelection`             | PK `(betId, roundEncounterId)`; FKs compostas `(betId, roundId, marketKind)` → `Bet`, `(roundEncounterId, roundId, inWeeklyProgression)` → encounter |
-| `BetAudit`                       | `(roundId, attempt)` único                                                                                                                           |
-| `BetAuditSource`                 | `(auditId, session)` único                                                                                                                           |
-| `BetMarketResult`                | `(auditId, marketId)` único                                                                                                                          |
-| `BetMarketResultWinner` / `Kill` | `(resultId, characterId)` / `(resultId, roundEncounterId)` únicos                                                                                    |
-| `RoundClosingReport`             | `(roundId, version)` único                                                                                                                           |
+| Tabela                           | Constraint                                                                                                                                                                                                     |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BetRound`                       | `period` único                                                                                                                                                                                                 |
+| `BetRoundEncounter`              | `(roundId, encounterId)` único; `(id, roundId, inWeeklyProgression)` e `(id, roundId, track)` únicos (alvos de FK)                                                                                             |
+| `BetMarket`                      | `(roundId, kind, roundEncounterId)` único; `(id, roundId, kind)` único (alvo); FK `(roundEncounterId, roundId, track)` → encounter — o `roundId` entrou no GREEN-M2B para cumprir o §16.3 (nada cruza rodadas) |
+| `BetRoundBettor`                 | `(roundId, characterId)` único                                                                                                                                                                                 |
+| `BetRoundCandidate`              | `(roundId, characterId)` único; `(roundId, characterId, role)` único (alvo)                                                                                                                                    |
+| `BetSlip`                        | `(id, roundId)` único (alvo); FK `(roundId, eligibilityCharacterId)` → `BetRoundBettor`                                                                                                                        |
+| `Bet`                            | `(slipId, marketId)` único; `(id, roundId, marketKind)` único (alvo); FKs compostas para slip, mercado e candidate                                                                                             |
+| `BetWeeklySelection`             | PK `(betId, roundEncounterId)`; FKs compostas `(betId, roundId, marketKind)` → `Bet`, `(roundEncounterId, roundId, inWeeklyProgression)` → encounter                                                           |
+| `BetAudit`                       | `(roundId, attempt)` único                                                                                                                                                                                     |
+| `BetAuditSource`                 | `(auditId, session)` único                                                                                                                                                                                     |
+| `BetMarketResult`                | `(auditId, marketId)` único                                                                                                                                                                                    |
+| `BetMarketResultWinner` / `Kill` | `(resultId, characterId)` / `(resultId, roundEncounterId)` únicos                                                                                                                                              |
+| `RoundClosingReport`             | `(roundId, version)` único                                                                                                                                                                                     |
 
 **Índices únicos parciais (SQL na migration — precedente `WowDataBuild_um_ativo_so`):**
 

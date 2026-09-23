@@ -157,6 +157,11 @@ model Character {
   votes          LootSessionVote[]
   awards         LootSessionAward[]
 
+  /// Titan Bet — ver docs/specs/titan-bet.md §16.
+  betBettorSnapshots    BetRoundBettor[]
+  betCandidateSnapshots BetRoundCandidate[]
+  betSlipsDeposit       BetSlip[]           @relation("DepositanteDoSlip")
+
   /// A identidade é o par nome + realm, nunca o nome sozinho.
   @@unique([nameKey, realmKey])
 }
@@ -188,7 +193,6 @@ model OfficerGrant {
   /// de centenas de candidatos não pode ser uma ação anônima.
   grantedBy String
   grantedAt DateTime @default(now())
-
 }
 
 /// Sessão com estado no banco, não JWT.
@@ -825,11 +829,11 @@ model WowDataBuild {
   /// dependência de dev disponível que este modelo existe para remover.
   active Boolean @default(false)
 
-  itens        WowItemData[]
-  bonuses      WowBonus[]
-  contextos    WowItemContextBonus[]
-  escalas      WowItemLevelScaling[]
-  sets         WowItemSet[]
+  itens     WowItemData[]
+  bonuses   WowBonus[]
+  contextos WowItemContextBonus[]
+  escalas   WowItemLevelScaling[]
+  sets      WowItemSet[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1339,7 +1343,7 @@ model LootLine {
   /// `Restrict` mesmo sendo nulável: identidade não se apaga, e se alguém
   /// tentar, o certo é o banco recusar — não anular em silêncio a informação de
   /// quem lootou.
-  looter Character? @relation("LooterDaLinha", fields: [looterCharacterId], references: [id], onDelete: Restrict)
+  looter            Character? @relation("LooterDaLinha", fields: [looterCharacterId], references: [id], onDelete: Restrict)
 
   /// O item. `itemId` para casar com o catálogo, `itemString` cru e inteiro.
   ///
@@ -1858,4 +1862,291 @@ model MplusVaga {
 
   @@index([quando])
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Titan Bet — ver docs/specs/titan-bet.md §16 e titan-bet-test-design.md.
+//
+// As invariantes da §16.4 vivem em dois lugares:
+//
+// - aqui: UNIQUE e FKs compostas — o que o Prisma sabe representar;
+// - só na migration 20260923190000_titan_bet_invariantes: os índices únicos
+//   parciais e os CHECKs, que o Prisma não modela. Precedente: o índice
+//   parcial `WowDataBuild_um_ativo_so`.
+//
+// As FKs compostas existem para que "da mesma rodada" e "na role certa" sejam
+// garantidos pelo banco, não pelo service. Os `@@unique` com `id` servem só de
+// alvo para elas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Tipo de mercado. Todos semanais (D-29), todos escolhidos por officer (D-20).
+enum BetMarketKind {
+  top_dps
+  top_dps_parse
+  top_hps
+  top_hps_parse
+  top_dispels
+  first_death
+  weekly_progression
+}
+
+/// Farm × progressão é do boss na rodada, declarado pelo officer (§6.3).
+enum BetEncounterTrack {
+  farm
+  progressao
+}
+
+/// Role do Titan Roster como o WoWAudit escreve, congelada no Ready (D-33).
+enum BetCandidateRole {
+  Tank
+  Melee
+  Heal
+  Ranged
+}
+
+/// Estado do Bet Slip (§16.5). Ativos: rascunho, aguardando_deposito, valido.
+enum BetSlipStatus {
+  rascunho
+  aguardando_deposito
+  valido
+  recusado
+  expirado
+}
+
+/// Uma semana do Titan Bet — a unidade de aposta e de settlement (D-29).
+///
+/// `readyAt` nulo = PREPARATION. As demais fases são derivadas (§16.5).
+/// CHECK na migration: Ready antes do cutoff, e Ready com officer (D-31).
+model BetRound {
+  id String @id @default(cuid())
+
+  /// Period da Blizzard: uma rodada por reset.
+  period Int @unique
+
+  /// Informativo. Sem FK: a rodada não depende de a season estar gravada.
+  seasonId Int?
+
+  opensAt  DateTime
+  cutoffAt DateTime
+
+  /// Configuration freeze (D-31). Ator sem FK, como no LootSession.
+  readyAt          DateTime?
+  readyByUserId    String?
+  readyByBattletag String?
+
+  /// De quando é o dado externo congelado no Ready.
+  bettorSourceFetchedAt    DateTime?
+  candidateSourceFetchedAt DateTime?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  encounters BetRoundEncounter[]
+  markets    BetMarket[]
+  bettors    BetRoundBettor[]
+  candidates BetRoundCandidate[]
+  slips      BetSlip[]
+  bets       Bet[]
+  selections BetWeeklySelection[]
+}
+
+/// Um boss na rodada, escolhido do catálogo do WCL (D-22).
+model BetRoundEncounter {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  /// `encounterID` do Warcraft Logs.
+  encounterId   Int
+  encounterName String
+  zoneName      String
+
+  track               BetEncounterTrack
+  inWeeklyProgression Boolean
+
+  createdByUserId    String
+  createdByBattletag String
+  updatedByUserId    String?
+  updatedByBattletag String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  markets    BetMarket[]
+  selections BetWeeklySelection[]
+
+  @@unique([roundId, encounterId])
+  /// Alvo da FK do mercado: mesma rodada e mesmo track.
+  @@unique([id, roundId, track])
+  /// Alvo da FK da seleção da Weekly: mesma rodada e marcado para ela.
+  @@unique([id, roundId, inWeeklyProgression])
+}
+
+/// Mercado semanal. Sem status: existe = publicado (§16.5).
+///
+/// Índice parcial na migration: uma Weekly Progression por rodada. CHECKs:
+/// Weekly ⇔ sem boss; boss em progressão só tem First Death (R-22/R-24).
+model BetMarket {
+  id      String        @id @default(cuid())
+  roundId String
+  round   BetRound      @relation(fields: [roundId], references: [id])
+  kind    BetMarketKind
+
+  /// Nulo só na Weekly Progression.
+  roundEncounterId String?
+
+  /// Cópia do `track` do encounter, amarrada pela FK composta.
+  track BetEncounterTrack?
+
+  /// Encounter da mesma rodada e com o mesmo track (§16.3, §16.4).
+  roundEncounter BetRoundEncounter? @relation(fields: [roundEncounterId, roundId, track], references: [id, roundId, track])
+
+  createdByUserId    String
+  createdByBattletag String
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  bets Bet[]
+
+  @@unique([roundId, kind, roundEncounterId])
+  /// Alvo da FK da aposta: mesma rodada e mesmo tipo.
+  @@unique([id, roundId, kind])
+}
+
+/// Snapshot de quem pode apostar: personagens da guilda no Ready (D-32, D-38).
+model BetRoundBettor {
+  id          String    @id @default(cuid())
+  roundId     String
+  round       BetRound  @relation(fields: [roundId], references: [id])
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
+
+  /// Rank do personagem no Ready — a evidência da elegibilidade.
+  rank  Int
+  name  String
+  realm String
+
+  slips BetSlip[]
+
+  @@unique([roundId, characterId])
+}
+
+/// Snapshot dos candidatos: Titan Roster no Ready, com a role (D-33).
+model BetRoundCandidate {
+  id          String           @id @default(cuid())
+  roundId     String
+  round       BetRound         @relation(fields: [roundId], references: [id])
+  characterId String
+  character   Character        @relation(fields: [characterId], references: [id])
+  role        BetCandidateRole
+  name        String
+  realm       String
+
+  bets Bet[]
+
+  @@unique([roundId, characterId])
+  /// Alvo da FK da aposta: candidato desta rodada, com esta role.
+  @@unique([roundId, characterId, role])
+}
+
+/// O Bet Slip de uma conta numa rodada (D-27, D-34). Dado privado.
+///
+/// Índice parcial na migration: no máximo um slip ATIVO por conta e rodada
+/// (rascunho, aguardando_deposito, valido) — recusados e expirados ficam como
+/// histórico. CHECKs: campos obrigatórios por estado.
+model BetSlip {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  /// A conta dona. Sem FK: registro de dinheiro não some com a conta.
+  ownerUserId    String
+  ownerBattletag String
+
+  /// O personagem do snapshot desta rodada que deu a elegibilidade (D-38).
+  eligibilityCharacterId String
+  eligibility            BetRoundBettor @relation(fields: [roundId, eligibilityCharacterId], references: [roundId, characterId])
+
+  status BetSlipStatus @default(rascunho)
+
+  /// Congelados no "Submeter pagamento".
+  depositCharacterId String?
+  depositCharacter   Character? @relation("DepositanteDoSlip", fields: [depositCharacterId], references: [id])
+  expectedTotal      Int?
+  submittedAt        DateTime?
+
+  validatedByUserId    String?
+  validatedByBattletag String?
+  validatedAt          DateTime?
+
+  rejectedByUserId    String?
+  rejectedByBattletag String?
+  rejectedAt          DateTime?
+  rejectionReason     String?
+
+  expiredAt DateTime?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  bets Bet[]
+
+  /// Alvo da FK da aposta: slip desta rodada.
+  @@unique([id, roundId])
+}
+
+/// Uma aposta num mercado (D-28). Dado privado.
+///
+/// CHECKs na migration: stake 200–1.000; escolha simples com exatamente um
+/// alvo e Weekly sem alvo; role do alvo compatível com o tipo do mercado.
+model Bet {
+  id      String   @id @default(cuid())
+  slipId  String
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  /// Slip da mesma rodada.
+  slip BetSlip @relation(fields: [slipId, roundId], references: [id, roundId])
+
+  marketId   String
+  marketKind BetMarketKind
+
+  /// Mercado da mesma rodada, e o tipo copiado para os CHECKs.
+  market BetMarket @relation(fields: [marketId, roundId, marketKind], references: [id, roundId, kind])
+
+  /// Um stake por aposta, em gold inteiro.
+  stake Int
+
+  /// Alvo das escolhas simples. Nulos na Weekly Progression.
+  targetCharacterId String?
+  targetRole        BetCandidateRole?
+
+  /// Candidato do snapshot desta rodada, com a role congelada (D-33).
+  target BetRoundCandidate? @relation(fields: [roundId, targetCharacterId, targetRole], references: [roundId, characterId, role])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  weeklySelections BetWeeklySelection[]
+
+  @@unique([slipId, marketId])
+  /// Alvo da FK da seleção: aposta desta rodada, deste tipo.
+  @@unique([id, roundId, marketKind])
+}
+
+/// Um boss escolhido numa aposta de Weekly Progression. Zero linhas = `{}`.
+///
+/// CHECKs na migration: `marketKind` é Weekly e `inWeeklyProgression` é true —
+/// com as FKs compostas, a seleção só existe em aposta de Weekly e em boss
+/// marcado para ela, na mesma rodada.
+model BetWeeklySelection {
+  betId               String
+  roundEncounterId    String
+  roundId             String
+  round               BetRound      @relation(fields: [roundId], references: [id])
+  marketKind          BetMarketKind
+  inWeeklyProgression Boolean
+
+  bet            Bet               @relation(fields: [betId, roundId, marketKind], references: [id, roundId, marketKind])
+  roundEncounter BetRoundEncounter @relation(fields: [roundEncounterId, roundId, inWeeklyProgression], references: [id, roundId, inWeeklyProgression])
+
+  @@id([betId, roundEncounterId])
 }

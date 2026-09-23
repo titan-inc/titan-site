@@ -231,6 +231,9 @@ Mesmas colunas; `BLOCKED BY OQ-xx` quando o resultado esperado depende de decis�
 
 | T     | Spec         | Comportamento                                                                           | Camada / tipo        | Setup → Ação → Esperado                                                                                                      | Mecanismo                                      | RED esperado                                | Dependência           | Automatizável |
 | ----- | ------------ | --------------------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------- | --------------------- | ------------- |
+| T-R16 | §16.4        | um encounter por boss na rodada                                                         | banco                | mesmo `encounterId` duas vezes na rodada → erro; rodadas diferentes → ok                                                     | UNIQUE `(roundId, encounterId)`                | insert aceito pelo schema estrutural        | —                     | infra-DB      |
+| T-B08 | §16.4        | um personagem por snapshot de bettors                                                   | banco                | mesmo personagem duas vezes na rodada → erro                                                                                 | UNIQUE `(roundId, characterId)`                | insert aceito pelo schema estrutural        | —                     | infra-DB      |
+| T-K03 | §16.4        | um personagem por snapshot de candidatos                                                | banco                | mesmo personagem duas vezes na rodada → erro                                                                                 | UNIQUE `(roundId, characterId)`                | insert aceito pelo schema estrutural        | —                     | infra-DB      |
 | T-B01 | D-32, D-38   | personagem fora do roster no Ready não entra no snapshot                                | service / integração | roster fake com A e B; C fora → Ready → sem linha para C                                                                     | domínio                                        | aguarda seam (§5.1)                         | fake Blizzard         | infra-DB      |
 | T-B02 | D-32         | entrar na guilda depois do Ready não cria bettor                                        | service / integração | Ready; depois o fake passa a ter D → qualquer operação da rodada → nenhuma linha para D                                      | domínio (não existe caminho de refresh)        | aguarda seam (§5.1)                         | fake Blizzard         | infra-DB      |
 | T-B03 | D-32         | sair da guilda depois do Ready não apaga o histórico                                    | banco + service      | Ready com A; A sai (o `GuildCharacter` some) → linha de A em `BetRoundBettor` continua                                       | trigger de snapshot + ausência de cascata      | insert/delete aceito pelo schema estrutural | —                     | infra-DB      |
@@ -360,22 +363,22 @@ prova que os números do WCL real batem com a tela.
 Cada milestone RED termina com evidência revisada **antes** do GREEN correspondente.
 GREENs não são adiantados.
 
-| Milestone             | Conteúdo                                                                                                                                          | Testes                                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **RED-M2A**           | infraestrutura: `titan_test`, proteção contra URL errada, runner `*.db-spec.ts`, um spec de sanidade da infra, baseline. **Não é RED funcional.** | sanidade: conecta no `titan_test`, recusa URL de dev, aplica migrations                                                 |
-| **RED-M2B**           | invariantes do schema central: rodada, snapshots, slip, Bet, Weekly, integridade relacional, slip ativo único                                     | T-R07, T-R13, T-R14, T-S02, T-S09, T-S10, T-S11, T-S12, T-S13 (CHECK), T-S14, T-S17, T-B04, T-B05; guardas T-S22, T-F07 |
-| GREEN-M2B             | Prisma models, migration, CHECK/FK/índices                                                                                                        | os mesmos                                                                                                               |
-| **RED-M2C**           | imutabilidade no banco: configuração, snapshots, slip, ledger                                                                                     | T-R01, T-R03, T-R09, T-B03, T-S04, T-S05, T-S06, T-S07, T-S19, T-D04, T-L01, T-L02, T-L03; guarda T-L08                 |
-| GREEN-M2C             | triggers mínimas                                                                                                                                  | os mesmos                                                                                                               |
-| RED/GREEN Ready       | workflow do Ready                                                                                                                                 | T-R04, T-R05, T-R06, T-R08, T-R10, T-R11, T-R12, T-B01, T-B02, T-K01, T-K02                                             |
-| RED/GREEN Apostas     | Salvar, Submeter, depósito, cutoff                                                                                                                | T-S01, T-S03, T-S08, T-S13 (Zod), T-S15, T-S16, T-S18, T-D02, T-D03                                                     |
-| RED/GREEN Autorização | Officer Panel e dado privado                                                                                                                      | T-R02, T-D05, T-Z01, T-Z02, T-Z03, T-Z07, T-D01                                                                         |
-| RED/GREEN Odds        | projected payout                                                                                                                                  | T-O01, T-O02, T-O03, T-Z06, T-Z08                                                                                       |
-| RED/GREEN Auditar     | fontes e WCL                                                                                                                                      | T-A01–T-A12, T-Z05                                                                                                      |
-| RED/GREEN Resultados  | farm, progressão, Weekly                                                                                                                          | T-F01–T-F06, T-P01–T-P05, T-W01–T-W04                                                                                   |
-| RED/GREEN Settlement  | rateio e ledger                                                                                                                                   | T-M01–T-M08, T-L04–T-L07                                                                                                |
-| RED/GREEN Closing     | relatório de fechamento                                                                                                                           | T-C01–T-C03                                                                                                             |
-| E2E                   | um fluxo                                                                                                                                          | T-E01                                                                                                                   |
+| Milestone             | Conteúdo                                                                                                                                          | Testes                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **RED-M2A**           | infraestrutura: `titan_test`, proteção contra URL errada, runner `*.db-spec.ts`, um spec de sanidade da infra, baseline. **Não é RED funcional.** | sanidade: conecta no `titan_test`, recusa URL de dev, aplica migrations                                                                      |
+| **RED-M2B**           | schema **estrutural** (models Prisma e migration só com tabelas, colunas, PK, enums e FK simples) + testes das invariantes centrais, rodando RED  | T-R07, T-R13, T-R14, T-R16, T-S02, T-S09, T-S10, T-S11, T-S12, T-S13 (CHECK), T-S14, T-S17, T-B04, T-B05, T-B08, T-K03; guardas T-S22, T-F07 |
+| GREEN-M2B             | migration **só** com as invariantes: UNIQUE, índices parciais, FKs compostas, CHECKs                                                              | os mesmos                                                                                                                                    |
+| **RED-M2C**           | imutabilidade no banco: configuração, snapshots, slip, ledger                                                                                     | T-R01, T-R03, T-R09, T-B03, T-S04, T-S05, T-S06, T-S07, T-S19, T-D04, T-L01, T-L02, T-L03; guarda T-L08                                      |
+| GREEN-M2C             | triggers mínimas                                                                                                                                  | os mesmos                                                                                                                                    |
+| RED/GREEN Ready       | workflow do Ready                                                                                                                                 | T-R04, T-R05, T-R06, T-R08, T-R10, T-R11, T-R12, T-B01, T-B02, T-K01, T-K02                                                                  |
+| RED/GREEN Apostas     | Salvar, Submeter, depósito, cutoff                                                                                                                | T-S01, T-S03, T-S08, T-S13 (Zod), T-S15, T-S16, T-S18, T-D02, T-D03                                                                          |
+| RED/GREEN Autorização | Officer Panel e dado privado                                                                                                                      | T-R02, T-D05, T-Z01, T-Z02, T-Z03, T-Z07, T-D01                                                                                              |
+| RED/GREEN Odds        | projected payout                                                                                                                                  | T-O01, T-O02, T-O03, T-Z06, T-Z08                                                                                                            |
+| RED/GREEN Auditar     | fontes e WCL                                                                                                                                      | T-A01–T-A12, T-Z05                                                                                                                           |
+| RED/GREEN Resultados  | farm, progressão, Weekly                                                                                                                          | T-F01–T-F06, T-P01–T-P05, T-W01–T-W04                                                                                                        |
+| RED/GREEN Settlement  | rateio e ledger                                                                                                                                   | T-M01–T-M08, T-L04–T-L07                                                                                                                     |
+| RED/GREEN Closing     | relatório de fechamento                                                                                                                           | T-C01–T-C03                                                                                                                                  |
+| E2E                   | um fluxo                                                                                                                                          | T-E01                                                                                                                                        |
 
 Os casos **BLOCKED** (§4) entram no milestone da sua área quando a OQ for resolvida.
 
@@ -442,3 +445,138 @@ scripts `db:*` não foram alterados.
   separada, não feita aqui.
 - **Ambiente desta máquina** (fora do Titan Bet): o cache `apps/web/.next/dev` desatualizado
   e a dependência de lint quebrada no `node_modules` do web.
+
+---
+
+## 10. RED-M2B — execução (23/09/2026)
+
+**Status: RED registrado, aguardando revisão. GREEN-M2B não iniciado.**
+
+### 10.1 O que foi criado
+
+| Arquivo                                                          | Papel                                                                                                                                                                                                    |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/prisma/schema.prisma`                                  | 8 models e 4 enums do Titan Bet, **só estrutura**; relações inversas em `Character`                                                                                                                      |
+| `apps/api/prisma/migrations/20260923180000_titan_bet_estrutura/` | enums, tabelas, PKs e FKs simples para a entidade pai. **Nenhuma** UNIQUE, índice, CHECK ou FK composta. Gerada por `prisma migrate diff --from-schema <HEAD> --to-schema <novo>`, sem conectar em banco |
+| `apps/api/test/db/titan-bet/escrita.ts`                          | traduz o SQLSTATE (`23505`/`23503`/`23514`) em `unique`/`fk`/`check`; escrita aceita = `aceito`; qualquer outra falha = `outro:…`, nunca contada como recusa                                             |
+| `apps/api/test/db/titan-bet/fabrica.ts`                          | dado **válido** por estado; cada teste cria sua rodada (period aleatório) e seus personagens                                                                                                             |
+| `apps/api/test/db/titan-bet/rodada-e-mercados.db-spec.ts`        | T-R13, T-R07, T-R16, T-R14; guarda T-F07                                                                                                                                                                 |
+| `apps/api/test/db/titan-bet/snapshots-e-slip.db-spec.ts`         | T-B08, T-K03, T-B04, T-S02/T-B05, T-S17                                                                                                                                                                  |
+| `apps/api/test/db/titan-bet/apostas.db-spec.ts`                  | T-S13, T-S09, T-S10, T-S12, T-S14, T-S11; guarda T-S22                                                                                                                                                   |
+
+O SQLSTATE vem de `meta.driverAdapterError.cause.originalCode` (Prisma 7 + `adapter-pg`),
+medido numa sonda descartável no `titan_test` antes dos testes.
+
+### 10.2 Evidência
+
+`pnpm test:db` no `titan_test` (34 migrations, incluindo a estrutural): **79 testes — 53
+RED, 26 GREEN.**
+
+- **Os 53 RED falham todos pelo mesmo motivo: `Received: "aceito"`** — o banco aceitou a
+  escrita que a invariante proíbe. Esperados: 29 `check`, 11 `fk`, 13 `unique`. Nenhuma
+  falha por fixture, import ou infraestrutura (`outro:` = 0).
+- **Os 26 GREEN** são: 11 de infraestrutura (RED-M2A), 13 **controles positivos** (dado
+  válido aceito — continuam verdes depois do GREEN e provam que as fixtures são boas) e 2
+  **guardas de regressão** (T-F07, T-S22), que não contam como RED.
+
+| Caso         | RED | Esperado no GREEN          |
+| ------------ | --- | -------------------------- |
+| T-R13        | 1   | unique                     |
+| T-R07        | 2   | check                      |
+| T-R16        | 1   | unique                     |
+| T-R14        | 6   | check ×2, fk ×2, unique ×2 |
+| T-B08, T-K03 | 2   | unique                     |
+| T-B04        | 2   | fk                         |
+| T-S02/T-B05  | 5   | unique                     |
+| T-S17        | 10  | check                      |
+| T-S13        | 4   | check                      |
+| T-S09        | 2   | unique                     |
+| T-S10        | 4   | check ×3, fk ×1            |
+| T-S12        | 9   | fk ×3, check ×6            |
+| T-S14        | 2   | fk                         |
+| T-S11        | 3   | fk ×1, check ×2            |
+
+### 10.3 Validações
+
+`pnpm test` GREEN, **1.126** (igual ao baseline); `api` lint e typecheck OK;
+`pnpm format:check` OK; banco de dev `titan` com o mesmo hash de antes.
+
+### 10.4 Para o GREEN-M2B — o que os testes cobram
+
+1. **Três casos acrescentados** (T-R16, T-B08, T-K03): as UNIQUE de encounter e dos dois
+   snapshots estão na §16.4 da spec, mas não tinham teste na matriz. Sem eles, o GREEN
+   criaria constraint sem RED.
+2. **Mercado e encounter na mesma rodada.** O teste "mercado apontando para encounter de
+   outra rodada" (T-R14) aplica o §16.3 ("nada cruza rodadas"). A §16.4 listava a FK
+   composta do mercado só como `(roundEncounterId, track)`; para esse teste passar ela
+   precisa incluir o `roundId`: `(roundEncounterId, roundId, track)` →
+   `BetRoundEncounter(id, roundId, track)`. Não é regra nova — é a mesma FK com a coluna
+   que o §16.3 já exige.
+3. `200,5` (T-S13) não entra no teste de banco: a coluna é `Int` e o Prisma recusa antes
+   de chegar ao Postgres. O "gold inteiro" da entrada fica no schema Zod, no milestone de
+   Apostas.
+
+---
+
+## 11. GREEN-M2B — execução (23/09/2026)
+
+**Status: GREEN, aguardando revisão. Nada de M2C ou comportamento funcional.**
+
+### 11.1 O que foi feito
+
+- `apps/api/prisma/schema.prisma`: os models do RED-M2B ganharam só invariantes —
+  `@unique`/`@@unique` e as relações **compostas** no lugar das FKs simples que elas
+  substituem (slip → snapshot de bettors; aposta → slip, mercado e candidato; mercado →
+  encounter; seleção → aposta e encounter). `Character` perdeu duas relações inversas
+  que passaram a chegar pelos snapshots.
+- `apps/api/prisma/migrations/20260923190000_titan_bet_invariantes/`: parte gerada por
+  `prisma migrate diff` (schema estrutural → schema com invariantes, sem conectar em
+  banco) e, escritos à mão, 2 índices únicos parciais e 15 CHECKs.
+- **Nenhum arquivo de teste foi alterado depois do RED**: os cinco arquivos de
+  `test/db/titan-bet/` têm data de modificação anterior ao run que gerou a evidência RED.
+
+### 11.2 Constraints implementadas
+
+| Tipo           | Constraint                                                                                                                                                                                                             | Testes              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| UNIQUE         | `BetRound(period)`                                                                                                                                                                                                     | T-R13               |
+| UNIQUE         | `BetRoundEncounter(roundId, encounterId)`                                                                                                                                                                              | T-R16               |
+| UNIQUE         | `BetMarket(roundId, kind, roundEncounterId)`                                                                                                                                                                           | T-R14               |
+| UNIQUE         | `BetRoundBettor(roundId, characterId)`, `BetRoundCandidate(roundId, characterId)`                                                                                                                                      | T-B08, T-K03        |
+| UNIQUE         | `Bet(slipId, marketId)`                                                                                                                                                                                                | T-S09               |
+| UNIQUE (alvo)  | `BetRoundEncounter(id, roundId, track)`, `(id, roundId, inWeeklyProgression)`; `BetMarket(id, roundId, kind)`; `BetRoundCandidate(roundId, characterId, role)`; `BetSlip(id, roundId)`; `Bet(id, roundId, marketKind)` | alvos das FKs       |
+| UNIQUE parcial | `BetSlip_um_ativo_por_conta` — `(roundId, ownerUserId) WHERE status IN (rascunho, aguardando_deposito, valido)`                                                                                                        | T-S02, T-B05        |
+| UNIQUE parcial | `BetMarket_uma_weekly_por_rodada` — `(roundId) WHERE kind = weekly_progression`                                                                                                                                        | T-R14               |
+| FK composta    | `BetMarket(roundEncounterId, roundId, track)` → encounter                                                                                                                                                              | T-R14               |
+| FK composta    | `BetSlip(roundId, eligibilityCharacterId)` → `BetRoundBettor(roundId, characterId)`                                                                                                                                    | T-B04               |
+| FK composta    | `Bet(slipId, roundId)` → slip; `Bet(marketId, roundId, marketKind)` → mercado; `Bet(roundId, targetCharacterId, targetRole)` → candidato                                                                               | T-S10, T-S12, T-S14 |
+| FK composta    | `BetWeeklySelection(betId, roundId, marketKind)` → aposta; `(roundEncounterId, roundId, inWeeklyProgression)` → encounter                                                                                              | T-S11               |
+| CHECK          | `BetRound_ready_antes_do_cutoff`, `BetRound_ready_com_officer`                                                                                                                                                         | T-R07               |
+| CHECK          | `BetMarket_weekly_sem_boss`, `BetMarket_progressao_so_first_death`                                                                                                                                                     | T-R14               |
+| CHECK          | `BetSlip_submetido_completo`, `BetSlip_valido_com_officer`, `BetSlip_recusado_com_officer_e_motivo`, `BetSlip_expirado_com_data`, `BetSlip_total_positivo`                                                             | T-S17               |
+| CHECK          | `Bet_stake_200_a_1000`                                                                                                                                                                                                 | T-S13               |
+| CHECK          | `Bet_alvo_conforme_tipo`, `Bet_alvo_com_role`, `Bet_role_conforme_tipo`                                                                                                                                                | T-S10, T-S12        |
+| CHECK          | `BetWeeklySelection_so_weekly`, `BetWeeklySelection_so_boss_marcado`                                                                                                                                                   | T-S11               |
+
+### 11.3 Resultado
+
+| Comando                                          | Resultado                                                                                                 |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `pnpm test:db`                                   | **79/79** (35 migrations). Os **53 RED** do §10 passam, pelo nome; mesmo conjunto de testes nos dois runs |
+| `pnpm test`                                      | **1.126**, igual ao baseline                                                                              |
+| `api` lint, typecheck, build; `shared` typecheck | OK                                                                                                        |
+| `pnpm format:check`                              | OK                                                                                                        |
+| banco de dev `titan`                             | mesmo hash de antes; 11 migrations; nenhuma tabela `Bet*`                                                 |
+
+### 11.4 Diferenças em relação à spec e pendências
+
+1. **FK do mercado com `roundId`** — aprovada; a §16.4 da spec foi atualizada.
+2. **Buraco conhecido, sem constraint porque não há RED:** a FK composta do mercado é
+   `MATCH SIMPLE`, então um mercado de boss gravado com `track = NULL` escapa da
+   conferência do track contra o encounter. Fecha com um CHECK
+   `(roundEncounterId IS NULL) = (track IS NULL)`. Não foi implementado para não criar
+   constraint sem teste RED antes — fica proposto para um RED pequeno antes do M2C.
+3. **`ON DELETE` das FKs compostas** ficou `RESTRICT`, o default do Prisma para elas.
+   A FK simples `BetMarket → BetRoundEncounter` do estrutural era `SET NULL`; com a
+   composta, apagar um encounter com mercados é recusado. Em `PREPARATION` isso obriga a
+   remover os mercados antes do boss — coerente com o M2C, que trava a configuração.
