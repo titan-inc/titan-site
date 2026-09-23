@@ -1954,6 +1954,7 @@ model BetRound {
   ledger     GoldLedgerEntry[]
   events     BetEvent[]
   audits     BetAudit[]
+  results    BetMarketResult[]
 }
 
 /// Um boss na rodada, escolhido do catálogo do WCL (D-22).
@@ -1977,14 +1978,17 @@ model BetRoundEncounter {
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  markets    BetMarket[]
-  selections BetWeeklySelection[]
+  markets     BetMarket[]
+  selections  BetWeeklySelection[]
+  resultKills BetMarketResultKill[]
 
   @@unique([roundId, encounterId])
   /// Alvo da FK do mercado: mesma rodada e mesmo track.
   @@unique([id, roundId, track])
   /// Alvo da FK da seleção da Weekly: mesma rodada e marcado para ela.
   @@unique([id, roundId, inWeeklyProgression])
+  /// Alvo da FK do kill da Weekly: encounter desta rodada.
+  @@unique([id, roundId])
 }
 
 /// Mercado semanal. Sem status: existe = publicado (§16.5).
@@ -2011,12 +2015,15 @@ model BetMarket {
   createdByBattletag String
   createdAt          DateTime @default(now()) @map("created_at")
 
-  bets   Bet[]
-  ledger GoldLedgerEntry[]
+  bets    Bet[]
+  ledger  GoldLedgerEntry[]
+  results BetMarketResult[]
 
   @@unique([roundId, kind, roundEncounterId])
   /// Alvo da FK da aposta: mesma rodada e mesmo tipo.
   @@unique([id, roundId, kind])
+  /// Alvo da FK do resultado: mercado desta rodada.
+  @@unique([id, roundId])
 }
 
 /// Snapshot de quem pode apostar: personagens da guilda no Ready (D-32, D-38).
@@ -2048,7 +2055,8 @@ model BetRoundCandidate {
   name        String
   realm       String
 
-  bets Bet[]
+  bets       Bet[]
+  resultWins BetMarketResultWinner[]
 
   @@unique([roundId, characterId])
   /// Alvo da FK da aposta: candidato desta rodada, com esta role.
@@ -2310,8 +2318,11 @@ model BetAudit {
   supersededByAuditId String?
 
   sources BetAuditSource[]
+  results BetMarketResult[]
 
   @@unique([roundId, attempt])
+  /// Alvo da FK do resultado: auditoria desta rodada.
+  @@unique([id, roundId])
 }
 
 /// A fonte de uma sessão: qual report oficial `titanbet*` e como foi escolhido.
@@ -2339,4 +2350,72 @@ model BetAuditSource {
 
   /// Uma fonte por sessão por tentativa (T-A11).
   @@unique([auditId, session])
+}
+
+// ─── Titan Bet: resultado da auditoria (§7.3, §16.2) ──────────────────────────
+
+/// O desfecho calculado de um mercado. `anulado` é a proposta de VOID (D-06,
+/// D-16): só vale quando o officer confirma a auditoria.
+enum BetResultOutcome {
+  vencedores
+  anulado
+}
+
+/// O resultado de um mercado numa tentativa de Auditar. Imutável: recalcular é
+/// outra tentativa (D-30). V/P/W explicam o cálculo; o dinheiro é do ledger.
+model BetMarketResult {
+  id       String    @id @default(cuid())
+  auditId  String
+  /// Auditoria, mercado e resultado da mesma rodada (T-X02).
+  audit    BetAudit  @relation(fields: [auditId, roundId], references: [id, roundId])
+  marketId String
+  market   BetMarket @relation(fields: [marketId, roundId], references: [id, roundId])
+  roundId  String
+  round    BetRound  @relation(fields: [roundId], references: [id])
+
+  outcome    BetResultOutcome
+  voidReason String?
+
+  /// V, P e W da §8.1. P e W nulos quando anulado.
+  validPool    Int
+  prizePool    Int?
+  winningStake Int?
+
+  /// O que foi lido e usado, versionado (§15.10). Congelado: o parse do Auditar
+  /// é o que vale, não o de hoje (D-43).
+  evidence         Json
+  algorithmVersion String
+  computedAt       DateTime @default(now())
+
+  winners BetMarketResultWinner[]
+  kills   BetMarketResultKill[]
+
+  /// Um resultado por mercado por tentativa (T-X01).
+  @@unique([auditId, marketId])
+  /// Alvo das FKs de vencedor e kill: resultado desta rodada.
+  @@unique([id, roundId])
+}
+
+/// Personagem vencedor de um resultado — sempre candidato do snapshot (D-13).
+model BetMarketResultWinner {
+  resultId    String
+  result      BetMarketResult   @relation(fields: [resultId, roundId], references: [id, roundId])
+  roundId     String
+  characterId String
+  /// Só candidato do snapshot vence (D-13, T-X04).
+  candidate   BetRoundCandidate @relation(fields: [roundId, characterId], references: [roundId, characterId])
+
+  @@id([resultId, characterId])
+}
+
+/// `K` da Weekly Progression: um encounter morto por linha. Zero linhas com
+/// `vencedores` é `K = {}` (D-15).
+model BetMarketResultKill {
+  resultId         String
+  result           BetMarketResult   @relation(fields: [resultId, roundId], references: [id, roundId])
+  roundId          String
+  roundEncounterId String
+  roundEncounter   BetRoundEncounter @relation(fields: [roundEncounterId, roundId], references: [id, roundId])
+
+  @@id([resultId, roundEncounterId])
 }

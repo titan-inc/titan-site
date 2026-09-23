@@ -308,6 +308,18 @@ Mesmas colunas; `BLOCKED BY OQ-xx` quando o resultado esperado depende de decis�
 **Parse % (D-43).** O congelamento no Auditar é o T-F06; a escolha do campo da API é o
 gate #1 (§6), não teste.
 
+### 3.15 Resultado persistido (§16.2, §16.4)
+
+| T     | Spec        | Comportamento                                    | Setup → Ação → Esperado                                               | Mecanismo                             | RED esperado  | Agora?   |
+| ----- | ----------- | ------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------- | ------------- | -------- |
+| T-X01 | §16.3       | um resultado por mercado por tentativa           | segundo resultado do mesmo mercado na mesma auditoria → erro          | unique `(auditId, marketId)`          | insert aceito | infra-DB |
+| T-X02 | §16.4       | auditoria, mercado e resultado da mesma rodada   | mercado ou auditoria de outra rodada → erro                           | FKs compostas com `roundId`           | insert aceito | infra-DB |
+| T-X03 | §16.4       | desfecho coerente                                | anulado sem motivo, anulado com P/W, vencedores sem P/W, V < 0 → erro | CHECK                                 | insert aceito | infra-DB |
+| T-X04 | D-13        | vencedor é candidato do snapshot                 | outsider ou candidato de outra rodada → erro                          | FK → `BetRoundCandidate`              | insert aceito | infra-DB |
+| T-X05 | D-15        | kill da Weekly é encounter da rodada             | encounter de outra rodada → erro                                      | FK composta                           | insert aceito | infra-DB |
+| T-X06 | D-43, T-F06 | resultado, vencedor e kill nunca mudam nem somem | UPDATE/DELETE → erro                                                  | trigger `titanbet_resultado_imutavel` | aceito        | infra-DB |
+| T-X07 | D-30        | resultado só entra com a auditoria `pronta`      | auditoria em revisão, calculada, substituída ou confirmada → erro     | trigger                               | insert aceito | infra-DB |
+
 ### 3.11 E2E (um fluxo, não a suíte inteira)
 
 | T     | Fluxo                                                                                                             | Quando                                      |
@@ -1153,3 +1165,27 @@ officer/rodadas/:roundId/preparacao`; quatro requests no `yaak/`.
 
 `pnpm test:db` **216/216**; `pnpm test`: shared **349** (+8), api **850** (+20), web
 147; `api` lint, typecheck e build OK; `format:check` OK; banco de dev com o mesmo hash.
+
+---
+
+## 22. Resultado persistido — execução (23/09/2026)
+
+**Status: GREEN.** T-X01–T-X07 (§3.15) e a metade de banco do T-F06.
+
+| Testes      | Onde                                          | Antes da implementação                                                                                                                                                                |
+| ----------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-X01–T-X07 | `test/db/titan-bet/resultado.db-spec.ts` — 21 | **RED real** — com a estrutura (`20260923280000_titan_bet_resultado_estrutura`), 17 falhas, todas "esperado `unique`/`fk`/`check`/`trigger`, recebido `aceito`"; 4 controles passando |
+
+Migration `20260923290000_titan_bet_resultado_invariantes`: unique `(auditId, marketId)`,
+FKs compostas (auditoria e mercado da rodada; vencedor → `BetRoundCandidate`; kill →
+encounter da rodada), três CHECKs do desfecho e o trigger `titanbet_resultado_imutavel`
+em `BetMarketResult`, `BetMarketResultWinner` e `BetMarketResultKill` (só INSERT, e só com
+a auditoria `pronta`).
+
+**Guarda T-L08 alinhada à própria definição.** A matriz define o T-L08 como "nenhum valor
+financeiro fora do ledger **além de V/P/W** e `expectedTotal`", mas a implementação não
+fazia a exceção, e o `winningStake` (o W, §16.6) quebrou o guarda. Ele passou a nomear as
+três colunas de V/P/W do `BetMarketResult` como exceção; a regex e todo o resto seguem
+iguais — qualquer outra coluna de dinheiro continua quebrando.
+
+`pnpm test:db` **237/237**; `api` lint, typecheck e build OK; banco de dev com o mesmo hash.

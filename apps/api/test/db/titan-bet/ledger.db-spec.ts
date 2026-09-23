@@ -192,8 +192,18 @@ describe('Titan Bet — ledger (banco)', () => {
         SELECT table_name AS tabela, column_name AS nome FROM information_schema.columns
         WHERE table_schema = 'public'
           AND (table_name LIKE 'Bet%' OR table_name = 'GoldLedgerEntry')`;
-      const dinheiro = colunas.filter((c) =>
-        /amount|payout|paid|balance|owed|winning|premio|saldo|valor/i.test(c.nome),
+      // V, P e W do resultado são entrada do cálculo, não valor de ninguém — a
+      // exceção que a própria definição do T-L08 faz (§16.6). Nomeadas uma a
+      // uma: qualquer outra coluna de dinheiro continua quebrando o guarda.
+      const entradasDoCalculo = new Set([
+        'BetMarketResult.validPool',
+        'BetMarketResult.prizePool',
+        'BetMarketResult.winningStake',
+      ]);
+      const dinheiro = colunas.filter(
+        (c) =>
+          !entradasDoCalculo.has(`${c.tabela}.${c.nome}`) &&
+          /amount|payout|paid|balance|owed|winning|premio|saldo|valor/i.test(c.nome),
       );
       expect(dinheiro).toEqual([{ tabela: 'GoldLedgerEntry', nome: 'amount' }]);
     });
