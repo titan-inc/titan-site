@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { BlizzardModule } from '../blizzard/blizzard.module';
 import { CharactersModule } from '../characters/characters.module';
 import { WowAuditModule } from '../wowaudit/wowaudit.module';
+import { ApostasService } from './apostas.service';
+import { CutoffService } from './cutoff.service';
+import { DepositoService } from './deposito.service';
 import { ElegibilidadeService } from './elegibilidade.service';
 import { ReadyService } from './ready.service';
 import { TitanBetRepository } from './titan-bet.repository';
@@ -14,7 +17,14 @@ import { TitanBetRepository } from './titan-bet.repository';
  */
 @Module({
   imports: [BlizzardModule, CharactersModule, WowAuditModule],
-  providers: [TitanBetRepository, ReadyService, ElegibilidadeService],
-  exports: [ReadyService, ElegibilidadeService],
+  providers: [
+    TitanBetRepository,
+    ReadyService,
+    ElegibilidadeService,
+    ApostasService,
+    DepositoService,
+    CutoffService,
+  ],
+  exports: [ReadyService, ElegibilidadeService, ApostasService, DepositoService],
 })
 export class TitanBetModule {}

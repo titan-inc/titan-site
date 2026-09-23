@@ -743,3 +743,50 @@ falha vira `BetEvent` `ready_falhou` com o motivo.
 
 `pnpm test:db` **139/139** (40 migrations); `pnpm test` com `apps/api` em **708** (+28);
 `api` lint, typecheck e build OK; `format:check` OK; banco de dev com o mesmo hash.
+
+---
+
+## 14. Apostas — execução (23/09/2026)
+
+**Status: GREEN.** Milestone "RED/GREEN Apostas" da §7 (Salvar, Submeter, depósito,
+cutoff).
+
+### 14.1 Testes e evidência
+
+| Testes                                                                          | Onde                                                             | Antes da implementação                                                       |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| T-S13 (Zod — inclusive `200,5`, adiado do M2B), forma do slip, D-28, D-02, D-34 | `packages/shared/src/titan-bet/betting.spec.ts` — 19 casos       | **`RED awaiting implementation seam`** — `Cannot find module './betting.js'` |
+| T-S01, T-S03, T-S08, T-S15, T-S16, T-S18, T-D02, T-D03                          | `apps/api/test/db/titan-bet/apostas-fluxo.db-spec.ts` — 18 casos | **awaiting seam** — `Cannot find module '…/apostas.service'`                 |
+
+Não havia costura legítima para executar esses testes sem implementar a própria regra
+(D-42); foram escritos e rodados antes da implementação, e a falha registrada foi a
+ausência do módulo.
+
+### 14.2 Implementação
+
+- `packages/shared/src/titan-bet/betting.ts` — o contrato **privado** do slip (§9.1):
+  `salvarSlipSchema`, `submeterSlipSchema`, `recusarDepositoSchema`, stake inteiro de 200
+  a 1.000.
+- `apps/api/src/titan-bet/apostas.service.ts` — Salvar (cria ou reusa o slip ativo e
+  substitui as apostas do rascunho) e Submeter pagamento (depositante da conta, slip não
+  vazio, self-bet do depositante no First Death, total = Σ stakes).
+- `deposito.service.ts` — confirmar (com `deposito_validado` na mesma transação) e
+  recusar (terminal, com motivo).
+- `cutoff.service.ts` — expira rascunho e pendente de rodada vencida.
+- `titan-bet.repository.ts` — as operações com o slip travado (`SELECT … FOR UPDATE`),
+  que serializam Salvar, Submeter e confirmações concorrentes.
+
+**Duas escolhas de implementação, registradas para revisão:**
+
+1. **O job de cutoff roda a cada 10 minutos**, não uma vez na terça 12:00 como a tabela
+   de jobs da spec (§9) sugeria. O cutoff é regra do banco (§5.5), então o job só
+   materializa o `expirado`; rodando com frequência, ele pega sozinho o atraso de uma
+   instância que estava fora às 12:00, que é o que a §5.5 pede.
+2. **O self-bet do First Death é conferido no Submeter**, contra o depositante — é quando
+   o depositante passa a existir. O caso mais amplo (outros personagens da conta) segue
+   na OQ-27a.
+
+### 14.3 Resultado
+
+`pnpm test:db` **157/157**; `pnpm test`: shared **318** (+19), api 708, web 147; `api`
+lint, typecheck e build OK; `format:check` OK; banco de dev com o mesmo hash.

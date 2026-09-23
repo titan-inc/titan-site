@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { BetCandidateRole, BetEventType, BetMarketKind, Prisma } from '@prisma/client';
+import type {
+  BetCandidateRole,
+  BetEventType,
+  BetMarketKind,
+  BetSlipStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Uma linha do snapshot de bettors (D-32, D-38). */
@@ -126,4 +132,259 @@ export class TitanBetRepository {
       orderBy: [{ rank: 'asc' }, { characterId: 'asc' }],
     });
   }
+
+  /** O personagem é da conta (`GuildCharacter` de agora)? — D-02. */
+  async personagemEDaConta(userId: string, characterId: string): Promise<boolean> {
+    const achado = await this.prisma.guildCharacter.findFirst({
+      where: { userId, characterId },
+      select: { id: true },
+    });
+    return achado !== null;
+  }
+
+  /** O que a rodada oferece para apostar: mercados, encounters e o snapshot de candidatos. */
+  async cardapio(roundId: string): Promise<Cardapio> {
+    const [markets, encounters, candidatos] = await Promise.all([
+      this.prisma.betMarket.findMany({
+        where: { roundId },
+        select: { id: true, kind: true },
+      }),
+      this.prisma.betRoundEncounter.findMany({
+        where: { roundId },
+        select: { id: true, inWeeklyProgression: true },
+      }),
+      this.prisma.betRoundCandidate.findMany({
+        where: { roundId },
+        select: { characterId: true, role: true },
+      }),
+    ]);
+    return { markets, encounters, candidatos };
+  }
+
+  /**
+   * "Salvar" (D-27): substitui as apostas do rascunho ativo da conta, criando o
+   * slip se ainda não houver um ativo. O slip ativo fica travado (`FOR UPDATE`)
+   * durante a transação — Salvar e Submeter da mesma conta não se cruzam.
+   */
+  async salvarRascunho(r: {
+    roundId: string;
+    owner: { userId: string; battletag: string };
+    eligibilityCharacterId: string;
+    apostas: ApostaParaGravar[];
+  }): Promise<{ tipo: 'ok'; slipId: string } | { tipo: 'nao_editavel'; status: BetSlipStatus }> {
+    return this.prisma.$transaction(async (tx) => {
+      const [ativo] = await tx.$queryRaw<Array<{ id: string; status: BetSlipStatus }>>`
+        SELECT "id", "status" FROM "BetSlip"
+        WHERE "roundId" = ${r.roundId} AND "ownerUserId" = ${r.owner.userId}
+          AND "status" IN ('rascunho', 'aguardando_deposito', 'valido')
+        FOR UPDATE`;
+
+      if (ativo && ativo.status !== 'rascunho') {
+        return { tipo: 'nao_editavel' as const, status: ativo.status };
+      }
+
+      const slipId =
+        ativo?.id ??
+        (
+          await tx.betSlip.create({
+            data: {
+              roundId: r.roundId,
+              ownerUserId: r.owner.userId,
+              ownerBattletag: r.owner.battletag,
+              eligibilityCharacterId: r.eligibilityCharacterId,
+            },
+            select: { id: true },
+          })
+        ).id;
+
+      const anteriores = await tx.bet.findMany({ where: { slipId }, select: { id: true } });
+      await tx.betWeeklySelection.deleteMany({
+        where: { betId: { in: anteriores.map((b) => b.id) } },
+      });
+      await tx.bet.deleteMany({ where: { slipId } });
+
+      for (const a of r.apostas) {
+        const aposta = await tx.bet.create({
+          data: {
+            slipId,
+            roundId: r.roundId,
+            marketId: a.marketId,
+            marketKind: a.marketKind,
+            stake: a.stake,
+            targetCharacterId: a.alvo?.characterId ?? null,
+            targetRole: a.alvo?.role ?? null,
+          },
+          select: { id: true },
+        });
+        if (a.encounterIds.length > 0) {
+          await tx.betWeeklySelection.createMany({
+            data: a.encounterIds.map((roundEncounterId) => ({
+              betId: aposta.id,
+              roundId: r.roundId,
+              marketKind: a.marketKind,
+              roundEncounterId,
+              inWeeklyProgression: true,
+            })),
+          });
+        }
+      }
+
+      return { tipo: 'ok' as const, slipId };
+    });
+  }
+
+  /**
+   * "Submeter pagamento" (D-27): congela o rascunho ativo da conta. A regra de
+   * negócio (o que pode ser submetido e o total) vem do service e é avaliada
+   * aqui dentro, com o slip travado — as apostas lidas são exatamente as que
+   * ficam congeladas.
+   */
+  async submeterRascunho(r: {
+    roundId: string;
+    userId: string;
+    depositCharacterId: string;
+    agora: Date;
+    avaliar: (apostas: ApostaGravada[]) => { total: number } | { recusa: string };
+  }): Promise<
+    | { tipo: 'ok'; slipId: string; total: number }
+    | { tipo: 'sem_rascunho' }
+    | { tipo: 'recusado'; motivo: string }
+  > {
+    return this.prisma.$transaction(async (tx) => {
+      const [rascunho] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "BetSlip"
+        WHERE "roundId" = ${r.roundId} AND "ownerUserId" = ${r.userId} AND "status" = 'rascunho'
+        FOR UPDATE`;
+      if (!rascunho) return { tipo: 'sem_rascunho' as const };
+
+      const apostas = await tx.bet.findMany({
+        where: { slipId: rascunho.id },
+        select: { marketKind: true, stake: true, targetCharacterId: true },
+      });
+      const avaliacao = r.avaliar(apostas);
+      if ('recusa' in avaliacao) return { tipo: 'recusado' as const, motivo: avaliacao.recusa };
+
+      await tx.betSlip.update({
+        where: { id: rascunho.id },
+        data: {
+          status: 'aguardando_deposito',
+          submittedAt: r.agora,
+          expectedTotal: avaliacao.total,
+          depositCharacterId: r.depositCharacterId,
+        },
+      });
+      return { tipo: 'ok' as const, slipId: rascunho.id, total: avaliacao.total };
+    });
+  }
+
+  /**
+   * Confirmação do depósito (R-15): `valido` e o lançamento `deposito_validado`
+   * na mesma transação (§16.6). O slip travado serializa confirmações.
+   */
+  async confirmarDeposito(r: {
+    slipId: string;
+    officer: { userId: string; battletag: string };
+    agora: Date;
+  }): Promise<{ tipo: 'ok' } | { tipo: 'nao_pendente'; status: BetSlipStatus | null }> {
+    return this.prisma.$transaction(async (tx) => {
+      const slip = await this.travarSlip(tx, r.slipId);
+      if (slip?.status !== 'aguardando_deposito') {
+        return { tipo: 'nao_pendente' as const, status: slip?.status ?? null };
+      }
+
+      await tx.betSlip.update({
+        where: { id: r.slipId },
+        data: {
+          status: 'valido',
+          validatedAt: r.agora,
+          validatedByUserId: r.officer.userId,
+          validatedByBattletag: r.officer.battletag,
+        },
+      });
+      await tx.goldLedgerEntry.create({
+        data: {
+          roundId: slip.roundId,
+          account: 'membro',
+          slipId: r.slipId,
+          kind: 'deposito_validado',
+          amount: slip.expectedTotal!,
+          actorUserId: r.officer.userId,
+          actorBattletag: r.officer.battletag,
+        },
+      });
+      return { tipo: 'ok' as const };
+    });
+  }
+
+  /** Recusa do depósito (D-34): terminal, com officer e motivo; sem lançamento. */
+  async recusarDeposito(r: {
+    slipId: string;
+    officer: { userId: string; battletag: string };
+    motivo: string;
+    agora: Date;
+  }): Promise<{ tipo: 'ok' } | { tipo: 'nao_pendente'; status: BetSlipStatus | null }> {
+    return this.prisma.$transaction(async (tx) => {
+      const slip = await this.travarSlip(tx, r.slipId);
+      if (slip?.status !== 'aguardando_deposito') {
+        return { tipo: 'nao_pendente' as const, status: slip?.status ?? null };
+      }
+
+      await tx.betSlip.update({
+        where: { id: r.slipId },
+        data: {
+          status: 'recusado',
+          rejectedAt: r.agora,
+          rejectedByUserId: r.officer.userId,
+          rejectedByBattletag: r.officer.battletag,
+          rejectionReason: r.motivo,
+        },
+      });
+      return { tipo: 'ok' as const };
+    });
+  }
+
+  /**
+   * O que o cutoff faz com o que não foi confirmado (D-07, D-35): rascunho e
+   * pendente de rodada vencida viram `expirado`. Idempotente.
+   */
+  async expirarVencidos(agora: Date): Promise<number> {
+    const { count } = await this.prisma.betSlip.updateMany({
+      where: {
+        status: { in: ['rascunho', 'aguardando_deposito'] },
+        round: { cutoffAt: { lte: agora } },
+      },
+      data: { status: 'expirado', expiredAt: agora },
+    });
+    return count;
+  }
+
+  private async travarSlip(tx: Prisma.TransactionClient, slipId: string) {
+    const [slip] = await tx.$queryRaw<
+      Array<{ roundId: string; status: BetSlipStatus; expectedTotal: number | null }>
+    >`SELECT "roundId", "status", "expectedTotal" FROM "BetSlip" WHERE "id" = ${slipId} FOR UPDATE`;
+    return slip;
+  }
+}
+
+/** O cardápio de uma rodada. */
+export interface Cardapio {
+  markets: Array<{ id: string; kind: BetMarketKind }>;
+  encounters: Array<{ id: string; inWeeklyProgression: boolean }>;
+  candidatos: Array<{ characterId: string; role: BetCandidateRole }>;
+}
+
+/** Uma aposta já validada pelo service, pronta para gravar. */
+export interface ApostaParaGravar {
+  marketId: string;
+  marketKind: BetMarketKind;
+  stake: number;
+  alvo: { characterId: string; role: BetCandidateRole } | null;
+  encounterIds: string[];
+}
+
+/** Uma aposta como está gravada — o que o "Submeter pagamento" avalia. */
+export interface ApostaGravada {
+  marketKind: BetMarketKind;
+  stake: number;
+  targetCharacterId: string | null;
 }

@@ -1,0 +1,366 @@
+import { randomUUID } from 'node:crypto';
+import { PrismaService } from '../../../src/prisma/prisma.service';
+import { ApostaRecusada, ApostasService } from '../../../src/titan-bet/apostas.service';
+import { CutoffService } from '../../../src/titan-bet/cutoff.service';
+import { DepositoRecusado, DepositoService } from '../../../src/titan-bet/deposito.service';
+import { ElegibilidadeService } from '../../../src/titan-bet/elegibilidade.service';
+import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
+import { Ciclo, esperarPassar } from './ciclo';
+import { Fabrica } from './fabrica';
+
+/**
+ * Milestone "RED/GREEN Apostas" — Salvar, Submeter, depósito e cutoff
+ * (D-02, D-27, D-28, D-34, D-35, D-09). titan-bet-test-design.md §3.2, §3.3, §7.
+ */
+jest.setTimeout(30_000);
+
+const OFFICER = { userId: 'officer-teste', battletag: 'Officer#0001' };
+
+describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
+  let db: PrismaService;
+  let f: Fabrica;
+  let ciclo: Ciclo;
+  let repo: TitanBetRepository;
+  let apostas: ApostasService;
+  let deposito: DepositoService;
+  let cutoff: CutoffService;
+
+  beforeAll(async () => {
+    db = new PrismaService();
+    await db.$connect();
+    f = new Fabrica(db);
+    ciclo = new Ciclo(db, f);
+    repo = new TitanBetRepository(db);
+    apostas = new ApostasService(repo, new ElegibilidadeService(repo));
+    deposito = new DepositoService(repo);
+    cutoff = new CutoffService(repo);
+  });
+
+  afterAll(async () => {
+    await db.$disconnect();
+  });
+
+  /**
+   * Rodada aberta montada no ciclo de vida: mercados em PREPARATION, snapshots,
+   * Ready. A conta tem um personagem no snapshot (que também é candidato Melee)
+   * e um alt da guilda fora do snapshot.
+   */
+  async function cenario(cutoffEmMs = 48 * 60 * 60 * 1000) {
+    const rodada = await f.rodada({ cutoffAt: new Date(Date.now() + cutoffEmMs) });
+    const boss = await f.encounter(rodada.id);
+    const topDps = await f.mercadoDeBoss(boss, 'top_dps');
+    const firstDeath = await f.mercadoDeBoss(boss, 'first_death');
+    const weekly = await f.mercadoWeekly(rodada.id);
+
+    const main = await f.personagem();
+    const alt = await f.personagem();
+    const cura = await f.personagem();
+    await f.bettor(rodada.id, main.id);
+    await f.candidato(rodada.id, main.id, 'Melee');
+    await f.candidato(rodada.id, cura.id, 'Heal');
+    await f.pronta(rodada.id);
+
+    const user = await db.user.create({
+      data: { battlenetId: randomUUID(), battletag: 'Apostador#1', membership: 'member' },
+    });
+    for (const [pj, rank] of [
+      [main, 5],
+      [alt, 7],
+    ] as const) {
+      await db.guildCharacter.create({ data: { userId: user.id, characterId: pj.id, rank } });
+    }
+    const conta = { userId: user.id, battletag: user.battletag };
+    return { rodada, boss, topDps, firstDeath, weekly, main, alt, cura, conta };
+  }
+
+  const slipsDa = (roundId: string, userId: string) =>
+    db.betSlip.findMany({ where: { roundId, ownerUserId: userId }, include: { bets: true } });
+
+  describe('T-S01 — Salvar cria o slip e depois reusa o mesmo (D-27)', () => {
+    it('duas vezes Salvar = um slip em rascunho, com as apostas da última', async () => {
+      const c = await cenario();
+      const primeiro = await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.main.id }],
+      });
+      const segundo = await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [
+          { marketId: c.topDps.id, stake: 700, targetCharacterId: c.main.id },
+          { marketId: c.firstDeath.id, stake: 200, targetCharacterId: c.cura.id },
+          { marketId: c.weekly.id, stake: 400, encounterIds: [c.boss.id] },
+        ],
+      });
+
+      expect(segundo.slipId).toBe(primeiro.slipId);
+      const [slip, ...outros] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(outros).toHaveLength(0);
+      expect(slip?.status).toBe('rascunho');
+      expect(slip?.eligibilityCharacterId).toBe(c.main.id);
+      expect(slip?.bets.map((b) => [b.marketKind, b.stake]).sort()).toEqual(
+        [
+          ['first_death', 200],
+          ['top_dps', 700],
+          ['weekly_progression', 400],
+        ].sort(),
+      );
+      const weekly = slip?.bets.find((b) => b.marketKind === 'weekly_progression');
+      expect(await db.betWeeklySelection.findMany({ where: { betId: weekly?.id } })).toHaveLength(
+        1,
+      );
+    });
+
+    it('Salvar remove apostas que saíram do rascunho', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.weekly.id, stake: 400, encounterIds: [c.boss.id] }],
+      });
+      await apostas.salvar(c.rodada.id, c.conta, { apostas: [] });
+      const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(slip?.status).toBe('rascunho');
+      expect(slip?.bets).toHaveLength(0);
+    });
+
+    it('recusa alvo que não é candidato na role do mercado', async () => {
+      const c = await cenario();
+      await expect(
+        apostas.salvar(c.rodada.id, c.conta, {
+          apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.cura.id }],
+        }),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+    });
+  });
+
+  describe('T-S16 — elegibilidade e depositante são da conta (D-02, D-38)', () => {
+    it('conta fora do snapshot não salva', async () => {
+      const c = await cenario();
+      const estranho = await db.user.create({
+        data: { battlenetId: randomUUID(), battletag: 'Fora#1', membership: 'member' },
+      });
+      await expect(
+        apostas.salvar(
+          c.rodada.id,
+          { userId: estranho.id, battletag: estranho.battletag },
+          { apostas: [] },
+        ),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+      expect(await slipsDa(c.rodada.id, estranho.id)).toHaveLength(0);
+    });
+
+    it('depositante que não é da conta é recusado', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.main.id }],
+      });
+      await expect(
+        apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.cura.id }),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+      const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(slip?.status).toBe('rascunho');
+    });
+
+    it('controle: o alt da conta, fora do snapshot, pode ser o depositante', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.main.id }],
+      });
+      await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.alt.id });
+      const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(slip?.depositCharacterId).toBe(c.alt.id);
+    });
+  });
+
+  describe('T-S03 — Submeter pagamento congela o slip (D-27)', () => {
+    it('muda para aguardando_deposito com total = Σ stakes, depositante e data', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [
+          { marketId: c.topDps.id, stake: 700, targetCharacterId: c.main.id },
+          { marketId: c.weekly.id, stake: 250, encounterIds: [] },
+        ],
+      });
+      await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id });
+
+      const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(slip?.status).toBe('aguardando_deposito');
+      expect(slip?.expectedTotal).toBe(950);
+      expect(slip?.depositCharacterId).toBe(c.main.id);
+      expect(slip?.submittedAt).not.toBeNull();
+    });
+
+    it('depois do submit, Salvar é recusado e nada muda', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 700, targetCharacterId: c.main.id }],
+      });
+      await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id });
+
+      await expect(apostas.salvar(c.rodada.id, c.conta, { apostas: [] })).rejects.toBeInstanceOf(
+        ApostaRecusada,
+      );
+      const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(slip?.bets).toHaveLength(1);
+    });
+
+    it('recusa submeter slip sem nenhuma aposta', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, { apostas: [] });
+      await expect(
+        apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id }),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+    });
+  });
+
+  describe('T-S15 — self-bet em First Death (D-09; caso do depositante)', () => {
+    it('recusa First Death no próprio personagem depositante', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.firstDeath.id, stake: 300, targetCharacterId: c.main.id }],
+      });
+      await expect(
+        apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id }),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+    });
+
+    it('controle: Top DPS no próprio personagem é permitido', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.main.id }],
+      });
+      await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id });
+      const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(slip?.status).toBe('aguardando_deposito');
+    });
+  });
+
+  describe('T-S18 — concorrência (§10)', () => {
+    it('dois submits ao mesmo tempo: um passa, o outro é recusado', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.main.id }],
+      });
+      const r = await Promise.allSettled([
+        apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id }),
+        apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.alt.id }),
+      ]);
+      expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+      const [slip] = await slipsDa(c.rodada.id, c.conta.userId);
+      expect(slip?.status).toBe('aguardando_deposito');
+    });
+  });
+
+  describe('T-D02 — confirmar depósito (R-15, §16.6)', () => {
+    it('válido, com officer e horário, e o lançamento deposito_validado na mesma operação', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 600, targetCharacterId: c.main.id }],
+      });
+      await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id });
+      const [pendente] = await slipsDa(c.rodada.id, c.conta.userId);
+
+      await deposito.confirmar(pendente!.id, OFFICER);
+
+      const slip = await db.betSlip.findUniqueOrThrow({ where: { id: pendente!.id } });
+      expect(slip.status).toBe('valido');
+      expect(slip.validatedByUserId).toBe(OFFICER.userId);
+      expect(slip.validatedAt).not.toBeNull();
+      const ledger = await db.goldLedgerEntry.findMany({ where: { slipId: slip.id } });
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0]).toMatchObject({
+        kind: 'deposito_validado',
+        account: 'membro',
+        amount: 600,
+        actorUserId: OFFICER.userId,
+      });
+    });
+
+    it('dois confirms ao mesmo tempo: um passa, um lançamento só', async () => {
+      const c = await cenario();
+      await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 600, targetCharacterId: c.main.id }],
+      });
+      await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id });
+      const [pendente] = await slipsDa(c.rodada.id, c.conta.userId);
+
+      const r = await Promise.allSettled([
+        deposito.confirmar(pendente!.id, OFFICER),
+        deposito.confirmar(pendente!.id, OFFICER),
+      ]);
+      expect(r.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+      expect(r.find((x) => x.status === 'rejected')).toMatchObject({
+        reason: expect.any(DepositoRecusado) as unknown,
+      });
+      expect(await db.goldLedgerEntry.count({ where: { slipId: pendente!.id } })).toBe(1);
+    });
+  });
+
+  describe('T-D03 — recusar depósito (D-34)', () => {
+    it('recusado com officer e motivo, sem lançamento; a conta abre um slip novo', async () => {
+      const c = await cenario();
+      const { slipId } = await apostas.salvar(c.rodada.id, c.conta, {
+        apostas: [{ marketId: c.topDps.id, stake: 600, targetCharacterId: c.main.id }],
+      });
+      await apostas.submeter(c.rodada.id, c.conta, { depositCharacterId: c.main.id });
+
+      await deposito.recusar(slipId, OFFICER, 'depósito de 500, não de 600');
+
+      const recusado = await db.betSlip.findUniqueOrThrow({ where: { id: slipId } });
+      expect(recusado.status).toBe('recusado');
+      expect(recusado.rejectionReason).toBe('depósito de 500, não de 600');
+      expect(recusado.rejectedByUserId).toBe(OFFICER.userId);
+      expect(await db.goldLedgerEntry.count({ where: { slipId } })).toBe(0);
+
+      const novo = await apostas.salvar(c.rodada.id, c.conta, { apostas: [] });
+      expect(novo.slipId).not.toBe(slipId);
+      expect((await db.betSlip.findUniqueOrThrow({ where: { id: slipId } })).status).toBe(
+        'recusado',
+      );
+    });
+
+    it('só se recusa slip aguardando depósito', async () => {
+      const c = await cenario();
+      const { slipId } = await apostas.salvar(c.rodada.id, c.conta, { apostas: [] });
+      await expect(deposito.recusar(slipId, OFFICER, 'x')).rejects.toBeInstanceOf(DepositoRecusado);
+    });
+  });
+
+  describe('T-S08 — job de cutoff (D-07, D-35)', () => {
+    it('expira rascunho e pendente vencidos, preserva válido e recusado, e é idempotente', async () => {
+      const r = await ciclo.aberta(4_000);
+      const [rascunho, pendente, valido, recusado] = await Promise.all(
+        ['a', 'b', 'c', 'd'].map((dono) =>
+          f.slip(r.rodada.id, r.dono.id, 'rascunho', { ownerUserId: dono }),
+        ),
+      );
+      await ciclo.submeter(pendente!);
+      await ciclo.submeter(valido!);
+      await ciclo.confirmar(valido!.id);
+      await ciclo.submeter(recusado!);
+      await ciclo.recusar(recusado!.id);
+
+      const aberta = await ciclo.aberta(); // outra rodada, cutoff longe
+      const intacto = await f.slip(aberta.rodada.id, aberta.dono.id);
+
+      await esperarPassar(db, r.rodada.cutoffAt);
+      await cutoff.expirarVencidos();
+      await cutoff.expirarVencidos(); // idempotente
+
+      const status = async (id: string) =>
+        (await db.betSlip.findUniqueOrThrow({ where: { id } })).status;
+      expect(await status(rascunho!.id)).toBe('expirado');
+      expect(await status(pendente!.id)).toBe('expirado');
+      expect(await status(valido!.id)).toBe('valido');
+      expect(await status(recusado!.id)).toBe('recusado');
+      expect(await status(intacto.id)).toBe('rascunho');
+    });
+
+    it('depois do cutoff, Salvar é recusado', async () => {
+      const c = await cenario(4_000);
+      await apostas.salvar(c.rodada.id, c.conta, { apostas: [] });
+      await esperarPassar(db, c.rodada.cutoffAt);
+      await expect(
+        apostas.salvar(c.rodada.id, c.conta, {
+          apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.main.id }],
+        }),
+      ).rejects.toBeInstanceOf(ApostaRecusada);
+    });
+  });
+});

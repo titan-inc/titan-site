@@ -28,3 +28,4 @@ export * from './raid-progress.js';
 export * from './rc-export.js';
 export * from './roster.js';
 export * from './session-paste.js';
+export * from './titan-bet/betting.js';
