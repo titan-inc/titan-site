@@ -1952,6 +1952,7 @@ model BetRound {
   bets       Bet[]
   selections BetWeeklySelection[]
   ledger     GoldLedgerEntry[]
+  events     BetEvent[]
 }
 
 /// Um boss na rodada, escolhido do catálogo do WCL (D-22).
@@ -2219,4 +2220,36 @@ model GoldLedgerEntry {
   actorBattletag String?
 
   createdAt DateTime @default(now()) @map("created_at")
+}
+
+/// O que um BetEvent registra (§16.8). Só o que nenhuma estrutura imutável já
+/// registra: por ora, a tentativa de Ready que falhou — que, por ser atômica,
+/// não deixa nenhum outro rastro.
+enum BetEventType {
+  ready_falhou
+}
+
+/// Trilha de auditoria do Titan Bet (§16.8), no molde do LootSessionEvent.
+/// Lado privado: pode carregar dado de aposta. Append-only no banco.
+model BetEvent {
+  id BigInt @id @default(autoincrement())
+
+  roundId String?
+  round   BetRound? @relation(fields: [roundId], references: [id])
+
+  type BetEventType
+
+  /// Quem fez. Sem FK — registro não some com a conta.
+  actorUserId    String
+  actorBattletag String
+
+  /// O que aconteceu, na forma do tipo.
+  payload Json
+
+  /// Id gerado pelo cliente, para reenvio não duplicar.
+  clientEventId String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([roundId, id])
 }

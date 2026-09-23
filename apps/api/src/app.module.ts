@@ -20,6 +20,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RaidProgressModule } from './raidprogress/raidprogress.module';
 import { RosterModule } from './roster/roster.module';
 import { SnapshotsModule } from './snapshots/snapshots.module';
+import { TitanBetModule } from './titan-bet/titan-bet.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     HealthModule,
     ApplicationsModule,
     MplusModule,
+    TitanBetModule,
     OpsModule,
   ],
   controllers: [AppController],
