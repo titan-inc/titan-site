@@ -8,6 +8,7 @@ import { OfficerGuard, RosterGuard } from '../auth/session.guard';
 import { ApostaRecusada, ApostasService, ContaNaoElegivel } from './apostas.service';
 import { AuditoriaRecusada, AuditoriaService } from './auditoria.service';
 import { CalculoService } from './calculo.service';
+import { LedgerRecusado, LedgerService, SettlementService } from './settlement.service';
 import { DepositoRecusado, DepositoService } from './deposito.service';
 import { OddsService } from './odds.service';
 import { PreparacaoRecusada, PreparacaoService } from './preparacao.service';
@@ -37,6 +38,14 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ['post', '/internal/titan-bet/officer/rodadas/r1/auditar'],
   ['post', '/internal/titan-bet/officer/auditorias/a1/calcular'],
   ['get', '/internal/titan-bet/officer/auditorias/a1/resultados'],
+  ['post', '/internal/titan-bet/officer/auditorias/a1/confirmar'],
+  ['get', '/internal/titan-bet/officer/rodadas/r1/saldos'],
+  ['post', '/internal/titan-bet/officer/slips/s1/pagar'],
+  [
+    'post',
+    '/internal/titan-bet/officer/slips/s1/ajustes',
+    { amount: 100, reason: 'kill conferida', correctsEntryId: '7' },
+  ],
   ['get', '/internal/titan-bet/officer/rodadas/r1/auditoria'],
   [
     'post',
@@ -69,6 +78,8 @@ describe('Titan Bet — autorização das rotas', () => {
   const auditoria = { auditar: jest.fn(), corrente: jest.fn(), escolherFonte: jest.fn() };
   const preparacao = { criar: jest.fn(), catalogo: jest.fn(), ver: jest.fn(), salvar: jest.fn() };
   const calculo = { calcular: jest.fn(), resultados: jest.fn() };
+  const settlement = { confirmar: jest.fn() };
+  const ledger = { saldos: jest.fn(), pagar: jest.fn(), ajustar: jest.fn() };
   const deposito = {
     pendentes: jest.fn(),
     confirmar: jest.fn(),
@@ -89,6 +100,8 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: AuditoriaService, useValue: auditoria },
         { provide: PreparacaoService, useValue: preparacao },
         { provide: CalculoService, useValue: calculo },
+        { provide: SettlementService, useValue: settlement },
+        { provide: LedgerService, useValue: ledger },
       ],
     }).compile();
 
@@ -123,6 +136,10 @@ describe('Titan Bet — autorização das rotas', () => {
     preparacao.ver.mockResolvedValue(null);
     preparacao.salvar.mockResolvedValue({ roundId: 'r1' });
     calculo.calcular.mockResolvedValue(undefined);
+    settlement.confirmar.mockResolvedValue(undefined);
+    ledger.saldos.mockResolvedValue({ saldos: [] });
+    ledger.pagar.mockResolvedValue(undefined);
+    ledger.ajustar.mockResolvedValue(undefined);
     calculo.resultados.mockResolvedValue({ auditId: 'a1', status: 'calculada', mercados: [] });
     deposito.confirmar.mockResolvedValue(undefined);
     deposito.recusar.mockResolvedValue(undefined);
@@ -139,7 +156,17 @@ describe('Titan Bet — autorização das rotas', () => {
   }
 
   function nenhumServiceChamado() {
-    for (const fake of [ready, apostas, deposito, odds, auditoria, preparacao, calculo]) {
+    for (const fake of [
+      ready,
+      apostas,
+      deposito,
+      odds,
+      auditoria,
+      preparacao,
+      calculo,
+      settlement,
+      ledger,
+    ]) {
       for (const fn of Object.values(fake)) expect(fn).not.toHaveBeenCalled();
     }
   }
@@ -259,6 +286,36 @@ describe('Titan Bet — autorização das rotas', () => {
 
       calculo.resultados.mockResolvedValue(null);
       await request(server).get('/internal/titan-bet/officer/auditorias/a1/resultados').expect(404);
+    });
+
+    it('confirmar, ver saldos, pagar e ajustar, com o officer da sessão (§16.6)', async () => {
+      comSessao('officer');
+      const officer = { userId: 'u1', battletag: 'Conta#1234' };
+
+      await request(server).post('/internal/titan-bet/officer/auditorias/a1/confirmar').expect(204);
+      expect(settlement.confirmar).toHaveBeenCalledWith('a1', officer);
+
+      await request(server).get('/internal/titan-bet/officer/rodadas/r1/saldos').expect(200);
+      expect(ledger.saldos).toHaveBeenCalledWith('r1');
+
+      await request(server).post('/internal/titan-bet/officer/slips/s1/pagar').expect(204);
+      expect(ledger.pagar).toHaveBeenCalledWith('s1', officer);
+
+      await request(server)
+        .post('/internal/titan-bet/officer/slips/s1/ajustes')
+        .send({ amount: -20, reason: 'prêmio a mais', correctsEntryId: '7' })
+        .expect(204);
+      expect(ledger.ajustar).toHaveBeenCalledWith(
+        { slipId: 's1', amount: -20, reason: 'prêmio a mais', correctsEntryId: 7n },
+        officer,
+      );
+
+      ledger.pagar.mockRejectedValue(new LedgerRecusado('não há saldo'));
+      await request(server).post('/internal/titan-bet/officer/slips/s1/pagar').expect(409);
+      await request(server)
+        .post('/internal/titan-bet/officer/slips/s1/ajustes')
+        .send({ amount: 0, reason: 'x', correctsEntryId: '7' })
+        .expect(400);
     });
 
     it('Auditar recusado é 409, com o motivo', async () => {

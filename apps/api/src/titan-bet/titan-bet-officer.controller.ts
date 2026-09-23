@@ -11,16 +11,19 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ajustarSchema,
   escolherFonteSchema,
   prepararRodadaSchema,
   recusarDepositoSchema,
   sessaoDaAuditoriaSchema,
+  type Ajustar,
   type AuditoriaCorrente,
   type CatalogoDeRaid,
   type DepositosPendentes,
   type EscolherFonte,
   type PreparacaoDaRodada,
   type ResultadosDaAuditoria,
+  type SaldosDaRodada,
   type PrepararRodada,
   type RecusarDeposito,
   type SessaoDaAuditoria,
@@ -30,6 +33,7 @@ import { OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuditoriaService } from './auditoria.service';
 import { CalculoService } from './calculo.service';
+import { LedgerService, SettlementService } from './settlement.service';
 import { DepositoService } from './deposito.service';
 import { comoHttp, contaDe } from './http';
 import { PreparacaoService } from './preparacao.service';
@@ -56,7 +60,53 @@ export class TitanBetOfficerController {
     private readonly auditoria: AuditoriaService,
     private readonly preparacao: PreparacaoService,
     private readonly calculo: CalculoService,
+    private readonly settlement: SettlementService,
+    private readonly ledger: LedgerService,
   ) {}
+
+  /**
+   * Confirma a auditoria calculada — inclusive as propostas de VOID (D-16) — e
+   * lança o settlement no ledger, na mesma transação (§16.6).
+   */
+  @Post('auditorias/:auditId/confirmar')
+  @HttpCode(204)
+  async confirmarAuditoria(@Param('auditId') auditId: string, @Req() req: Request): Promise<void> {
+    await comoHttp(() => this.settlement.confirmar(auditId, contaDe(req)));
+  }
+
+  /** O total por membro na rodada: devido e pago (§8.5). */
+  @Get('rodadas/:roundId/saldos')
+  saldos(@Param('roundId') roundId: string): Promise<SaldosDaRodada> {
+    return this.ledger.saldos(roundId);
+  }
+
+  /** Marca pago: lança o saldo inteiro da conta do membro (§16.6). */
+  @Post('slips/:slipId/pagar')
+  @HttpCode(204)
+  async pagar(@Param('slipId') slipId: string, @Req() req: Request): Promise<void> {
+    await comoHttp(() => this.ledger.pagar(slipId, contaDe(req)));
+  }
+
+  /** Corrige com `ajuste`, motivo e referência — nunca reescreve (D-11). */
+  @Post('slips/:slipId/ajustes')
+  @HttpCode(204)
+  async ajustar(
+    @Param('slipId') slipId: string,
+    @Body(new ZodValidationPipe(ajustarSchema)) body: Ajustar,
+    @Req() req: Request,
+  ): Promise<void> {
+    await comoHttp(() =>
+      this.ledger.ajustar(
+        {
+          slipId,
+          amount: body.amount,
+          reason: body.reason,
+          correctsEntryId: BigInt(body.correctsEntryId),
+        },
+        contaDe(req),
+      ),
+    );
+  }
 
   /**
    * Calcula os resultados da tentativa `pronta` com os reports congelados (§7.3).

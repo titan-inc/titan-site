@@ -1257,3 +1257,47 @@ officer/auditorias/:auditId/resultados`; contrato `resultadosDaAuditoriaSchema`;
 
 `pnpm test:db` **247/247**; `pnpm test`: shared **351**, api **873**, web 147; `api`
 lint, typecheck e build OK; banco de dev com o mesmo hash.
+
+---
+
+## 24. Settlement no banco — execução (23/09/2026)
+
+**Status: GREEN.** Fecha o milestone "RED/GREEN Settlement": T-M07, T-M08, T-L05,
+T-L06, T-L07, e T-M13/T-M14 integrados ao banco.
+
+### 24.1 Testes e evidência
+
+| Testes                                          | Onde                                               | Antes da implementação                                                               |
+| ----------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| T-M07, T-M08, T-M13, T-M14, T-L05, T-L06, T-L07 | `test/db/titan-bet/settlement.db-spec.ts` — 12     | **`RED awaiting implementation seam`** — `Cannot find module '…/settlement.service'` |
+| contrato de pagamento e ajuste                  | `packages/shared/src/titan-bet/ledger.spec.ts` — 3 | **awaiting seam** — `Cannot find module './ledger.js'`                               |
+| rotas (T-Z01 estendido, officer 2xx)            | controller spec +13                                | 13 falhas por rota inexistente (404; não conta como RED de autorização, §5.3)        |
+
+### 24.2 Implementação
+
+- `settlement.service.ts` — `SettlementService.confirmar`: com a auditoria travada, lê
+  resultados e apostas válidas, liquida a rodada inteira (`liquidarRodada`, com a D-44) e
+  lança `premio`, `restituicao_anulado`, `receita_guilda` e `residuo_guilda` junto com a
+  auditoria `confirmada`, na mesma transação. `planejarSettlement` é puro. Recusa: auditoria
+  que não está calculada; `V` que não bate com o do cálculo; e **nenhum mercado premiável
+  para um órfão** (D-44: consultar a liderança). Linha de valor zero não é lançada.
+- `LedgerService` — `saldos` (devido e pago por membro, §8.5), `saldo`, `pagar` (o saldo
+  inteiro, com o slip travado — dois pagamentos simultâneos pagam uma vez) e `ajustar`
+  (com sinal, motivo, lançamento corrigido da mesma conta; saldo negativo recusado —
+  OQ-52).
+- Rotas (`OfficerGuard`): `POST officer/auditorias/:auditId/confirmar`, `GET
+officer/rodadas/:roundId/saldos`, `POST officer/slips/:slipId/pagar`, `POST
+officer/slips/:slipId/ajustes`; contrato `ajustarSchema`, `saldosDaRodadaSchema`;
+  quatro requests no `yaak/`.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **A conta do membro é o slip** (§16.6): pagar e ajustar operam por slip — há no máximo
+   um slip válido por conta por rodada.
+2. **Confirmar sem apostas válidas** confirma e não lança nada.
+3. **Ajuste que zera exatamente o saldo** é aceito; só o negativo espera a OQ-52.
+
+### 24.3 Resultado
+
+`pnpm test:db` **259/259**; `pnpm test`: shared **354**, api **886**, web 147; `api`
+lint, typecheck e build OK; banco de dev com o mesmo hash.

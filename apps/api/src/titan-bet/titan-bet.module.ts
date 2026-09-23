@@ -7,6 +7,7 @@ import { WowAuditModule } from '../wowaudit/wowaudit.module';
 import { ApostasService } from './apostas.service';
 import { AuditoriaService } from './auditoria.service';
 import { CalculoService } from './calculo.service';
+import { LedgerService, SettlementService } from './settlement.service';
 import { CutoffService } from './cutoff.service';
 import { DepositoService } from './deposito.service';
 import { ElegibilidadeService } from './elegibilidade.service';
@@ -37,6 +38,8 @@ import { TitanBetRepository } from './titan-bet.repository';
     AuditoriaService,
     PreparacaoService,
     CalculoService,
+    SettlementService,
+    LedgerService,
   ],
   exports: [ReadyService, ElegibilidadeService, ApostasService, DepositoService],
 })

@@ -1,6 +1,6 @@
 type: http_request
 model: http_request
-id: rq_TitanBetConfirmar1
+id: rq_TitanBetSaldos1
 createdAt: 2026-09-23T23:00:00.000000
 updatedAt: 2026-09-23T23:00:00.000000
 workspaceId: wk_8LmjjnEbam
@@ -9,16 +9,16 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Confirma a auditoria calculada — inclusive as propostas de VOID (D-16) — e lança o settlement no ledger na mesma transação: prêmios, restituições de VOID, receita e resíduo da guilda, com a redistribuição do mercado sem aposta vencedora (D-44). 204; 409 se a auditoria não está calculada ou se não há mercado premiável para receber (consultar a liderança). MEXE EM DINHEIRO.'
+description: 'OfficerGuard. O total por membro na rodada (§8.5): devido agora e já pago. Sem apostas, stake ou escolha.'
 headers:
 - enabled: true
   name: Cookie
   value: titan_session=${[ session_cookie ]}
   id: null
-method: POST
-name: 'Confirmar auditoria e liquidar (officer)'
-sortPriority: 13000
-url: ${[ base_url ]}/internal/titan-bet/officer/auditorias/:auditId/confirmar
+method: GET
+name: 'Saldos por membro (officer)'
+sortPriority: 14000
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas/:roundId/saldos
 urlParameters: []
 settingSendCookies:
   enabled: false

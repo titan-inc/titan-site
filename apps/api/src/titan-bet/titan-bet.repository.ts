@@ -8,6 +8,7 @@ import type {
   BetMarketKind,
   BetSlipStatus,
   BetSourceResolution,
+  GoldLedgerKind,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -859,6 +860,141 @@ export class TitanBetRepository {
     });
   }
 
+  /**
+   * A confirmação do officer (D-16) e o settlement, numa transação (§16.6): a
+   * auditoria fica travada, o service decide os lançamentos sobre o que foi
+   * lido aqui dentro, e os lançamentos entram junto com o `confirmada`. O
+   * índice parcial "uma confirmada por rodada" segura duas confirmações.
+   */
+  async confirmarAuditoria(r: {
+    auditId: string;
+    officer: { userId: string; battletag: string };
+    agora: Date;
+    liquidar: (
+      d: DadosDaConfirmacao,
+    ) => { lancamentos: LancamentoDoSettlement[] } | { recusa: string };
+  }): Promise<{ tipo: 'ok' } | { tipo: 'recusado'; motivo: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const [auditoria] = await tx.$queryRaw<Array<{ roundId: string; status: BetAuditStatus }>>`
+        SELECT "roundId", "status" FROM "BetAudit" WHERE "id" = ${r.auditId} FOR UPDATE`;
+      if (!auditoria) return { tipo: 'recusado' as const, motivo: 'a auditoria não existe' };
+      if (auditoria.status !== 'calculada') {
+        return {
+          tipo: 'recusado' as const,
+          motivo: `a auditoria está ${auditoria.status} — só se confirma a calculada`,
+        };
+      }
+
+      const [resultados, apostas] = await Promise.all([
+        tx.betMarketResult.findMany({
+          where: { auditId: r.auditId },
+          select: {
+            id: true,
+            marketId: true,
+            outcome: true,
+            validPool: true,
+            market: { select: { kind: true } },
+            winners: { select: { characterId: true } },
+            kills: { select: { roundEncounterId: true } },
+          },
+        }),
+        tx.bet.findMany({
+          where: { roundId: auditoria.roundId, slip: { status: 'valido' } },
+          select: {
+            id: true,
+            slipId: true,
+            marketId: true,
+            stake: true,
+            targetCharacterId: true,
+            weeklySelections: { select: { roundEncounterId: true } },
+          },
+        }),
+      ]);
+
+      const decisao = r.liquidar({ roundId: auditoria.roundId, resultados, apostas });
+      if ('recusa' in decisao) return { tipo: 'recusado' as const, motivo: decisao.recusa };
+
+      if (decisao.lancamentos.length > 0) {
+        await tx.goldLedgerEntry.createMany({
+          data: decisao.lancamentos.map((l) => ({
+            roundId: auditoria.roundId,
+            ...l,
+            actorUserId: r.officer.userId,
+            actorBattletag: r.officer.battletag,
+          })),
+        });
+      }
+      await tx.betAudit.update({
+        where: { id: r.auditId },
+        data: {
+          status: 'confirmada',
+          confirmedAt: r.agora,
+          confirmedByUserId: r.officer.userId,
+          confirmedByBattletag: r.officer.battletag,
+        },
+      });
+      return { tipo: 'ok' as const };
+    });
+  }
+
+  /** Os slips da rodada com lançamento na conta do membro, e os lançamentos. */
+  contasDosMembros(roundId: string) {
+    return this.prisma.betSlip.findMany({
+      where: { roundId, ledger: { some: { account: 'membro' } } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        ownerBattletag: true,
+        ledger: { select: { kind: true, amount: true } },
+      },
+    });
+  }
+
+  /** Os lançamentos da conta do membro na rodada (o slip), em ordem. */
+  lancamentosDoSlip(slipId: string) {
+    return this.prisma.goldLedgerEntry.findMany({
+      where: { slipId },
+      orderBy: { id: 'asc' },
+      select: { id: true, kind: true, amount: true },
+    });
+  }
+
+  /**
+   * Um lançamento na conta do membro, decidido pelo service com o slip travado
+   * (`FOR UPDATE`) — dois pagamentos ao mesmo tempo se enfileiram, e o segundo
+   * vê o saldo já zerado (T-L05).
+   */
+  async lancarNaContaDoMembro(r: {
+    slipId: string;
+    officer: { userId: string; battletag: string };
+    decidir: (
+      lancamentos: Array<{ id: bigint; kind: GoldLedgerKind; amount: number }>,
+    ) => LancamentoDoMembro | { recusa: string };
+  }): Promise<{ tipo: 'ok' } | { tipo: 'recusado'; motivo: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const slip = await this.travarSlip(tx, r.slipId);
+      if (!slip) return { tipo: 'recusado' as const, motivo: 'o slip não existe' };
+      const lancamentos = await tx.goldLedgerEntry.findMany({
+        where: { slipId: r.slipId },
+        orderBy: { id: 'asc' },
+        select: { id: true, kind: true, amount: true },
+      });
+      const decisao = r.decidir(lancamentos);
+      if ('recusa' in decisao) return { tipo: 'recusado' as const, motivo: decisao.recusa };
+      await tx.goldLedgerEntry.create({
+        data: {
+          roundId: slip.roundId,
+          account: 'membro',
+          slipId: r.slipId,
+          ...decisao,
+          actorUserId: r.officer.userId,
+          actorBattletag: r.officer.battletag,
+        },
+      });
+      return { tipo: 'ok' as const };
+    });
+  }
+
   private async travarSlip(tx: Prisma.TransactionClient, slipId: string) {
     const [slip] = await tx.$queryRaw<
       Array<{ roundId: string; status: BetSlipStatus; expectedTotal: number | null }>
@@ -964,3 +1100,41 @@ export interface ResultadoParaGravar {
   /** `K` da Weekly: ids de `BetRoundEncounter`. */
   kills: string[];
 }
+
+/** O que a confirmação lê, dentro da transação, para decidir os lançamentos. */
+export interface DadosDaConfirmacao {
+  roundId: string;
+  resultados: Array<{
+    id: string;
+    marketId: string;
+    outcome: 'vencedores' | 'anulado';
+    validPool: number;
+    market: { kind: BetMarketKind };
+    winners: Array<{ characterId: string }>;
+    kills: Array<{ roundEncounterId: string }>;
+  }>;
+  apostas: Array<{
+    id: string;
+    slipId: string;
+    marketId: string;
+    stake: number;
+    targetCharacterId: string | null;
+    weeklySelections: Array<{ roundEncounterId: string }>;
+  }>;
+}
+
+/** Um lançamento do settlement (§16.6); o ator é o officer que confirmou. */
+export interface LancamentoDoSettlement {
+  account: 'membro' | 'guild_bank';
+  kind: 'premio' | 'restituicao_anulado' | 'receita_guilda' | 'residuo_guilda';
+  amount: number;
+  slipId: string | null;
+  betId: string | null;
+  marketId: string;
+  resultId: string;
+}
+
+/** Pagamento ou ajuste na conta do membro (§16.6, D-11). */
+export type LancamentoDoMembro =
+  | { kind: 'pagamento'; amount: number; coversThroughEntryId: bigint }
+  | { kind: 'ajuste'; amount: number; reason: string; correctsEntryId: bigint };
