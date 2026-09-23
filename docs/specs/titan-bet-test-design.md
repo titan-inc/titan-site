@@ -1012,3 +1012,37 @@ com um modelo de evidência que a outra metade vai mudar é o retrabalho que a m
 ### 18.4 Resultado
 
 `pnpm test` api **810** (+29); `api` lint e typecheck OK.
+
+---
+
+## 19. Settlement — domínio (23/09/2026)
+
+**Status: GREEN no domínio; o resto do milestone aguarda o resultado persistido.**
+
+### 19.1 Testes e evidência
+
+| Testes                                  | Onde                                | Antes da implementação                                                   |
+| --------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------ |
+| T-M01–T-M06, T-L04, `W = 0`, pool vazia | `src/titan-bet/rateio.spec.ts` — 11 | **`RED awaiting implementation seam`** — `Cannot find module './rateio'` |
+
+### 19.2 Implementação
+
+`src/titan-bet/rateio.ts`: `ratearMercado` (`V`, `P = floor(9V/10)`, `W`, prêmio
+`floor(P × stake / W)` por aposta vencedora, `G₀` e resíduo para a guilda),
+`restituirMercado` (VOID: stake inteiro, guilda 0) e `saldoDevido` (§16.6).
+
+**Caso não definido pela spec, registrado sem decidir:** mercado com resultado, mas
+**nenhuma aposta válida em opção vencedora** (`W = 0`) — o que acontece com a pool `V`?
+Restituir como `VOID`? Guild Bank? O domínio devolve `sem_aposta_vencedora` e não rateia.
+Proposta: **OQ-56**, para a liderança.
+
+### 19.3 O que falta no milestone, e por quê
+
+T-M07, T-M08 e T-L05–T-L07 gravam `premio`, `restituicao_anulado`, `receita_guilda`,
+`residuo_guilda` e `pagamento` a partir de `BetMarketResult` confirmado — que ainda não
+existe (§18.3: o passo de cálculo depende da OQ-25). Closing (T-C01–T-C03) e E2E vêm
+depois do settlement.
+
+### 19.4 Resultado
+
+`pnpm test` api **821** (+11); `api` lint e typecheck OK.
