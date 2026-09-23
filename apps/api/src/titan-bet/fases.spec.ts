@@ -1,4 +1,4 @@
-import { faseDaRodada, podeDarReady, type EstadoDaRodada } from './fases';
+import { faseDaRodada, podeAuditar, podeDarReady, type EstadoDaRodada } from './fases';
 
 /**
  * T-R08 e T-R12 — fases da rodada, derivadas (§16.5).
@@ -77,5 +77,25 @@ describe('podeDarReady (T-R08) — sem dia fixo, só antes do cutoff', () => {
 
   it('rodada que já teve Ready: não pode de novo', () => {
     expect(podeDarReady(aberta, new Date('2026-09-28T12:00:00Z'))).toBe(false);
+  });
+});
+
+describe('podeAuditar (D-30, §16.2) — depois do cutoff, antes de confirmar', () => {
+  const depois = new Date('2026-10-01T23:00:00Z');
+
+  it('BETTING_CLOSED, AUDITING e CALCULATED: sim — refazer é outra tentativa', () => {
+    expect(podeAuditar({ ...aberta, auditoria: null }, depois)).toBe(true);
+    expect(podeAuditar({ ...aberta, auditoria: 'aguardando_revisao' }, depois)).toBe(true);
+    expect(podeAuditar({ ...aberta, auditoria: 'pronta' }, depois)).toBe(true);
+    expect(podeAuditar({ ...aberta, auditoria: 'calculada' }, depois)).toBe(true);
+  });
+
+  it('antes do cutoff, sem Ready, confirmada ou fechada: não', () => {
+    expect(podeAuditar(aberta, new Date('2026-09-29T14:59:59Z'))).toBe(false);
+    expect(podeAuditar(emPreparacao, depois)).toBe(false);
+    expect(podeAuditar({ ...aberta, auditoria: 'confirmada' }, depois)).toBe(false);
+    expect(
+      podeAuditar({ ...aberta, auditoria: 'confirmada', temClosingReport: true }, depois),
+    ).toBe(false);
   });
 });

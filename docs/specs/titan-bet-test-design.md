@@ -900,3 +900,68 @@ multiplicador }]`. `multiplicador` positivo ou `null` ("—").
 `pnpm test:db` **168/168**; `pnpm test`: shared **337** (+9), api **743** (+7), web 147;
 `api` lint, typecheck e build OK; `shared` typecheck OK; `format:check` OK; banco de dev
 com o mesmo hash.
+
+---
+
+## 17. Auditar — execução (23/09/2026)
+
+**Status: GREEN.** Milestone "RED/GREEN Auditar" da §7: descobrir e resolver a fonte de
+cada sessão. O cálculo dos resultados é o milestone seguinte.
+
+### 17.1 Testes e evidência
+
+| Testes                                                    | Onde                                                  | Antes da implementação                                                                                                                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-A06 (CHECK), T-A07, T-A08, T-A11                        | `test/db/titan-bet/auditoria.db-spec.ts` — 15         | **RED real** — com a estrutura (`20260923250000_titan_bet_auditoria_estrutura`), 10 falhas, todas "esperado `unique`/`check`/`trigger`, recebido `aceito`"; 5 controles passando |
+| T-A01, T-A02, T-A03, classificação e resolução por sessão | `src/titan-bet/auditoria.spec.ts` — 24                | **`RED awaiting implementation seam`** — `Cannot find module './auditoria'`                                                                                                      |
+| `podeAuditar`                                             | `src/titan-bet/fases.spec.ts` — +2                    | **RED** — `podeAuditar is not a function` (o módulo existia; a função, não)                                                                                                      |
+| T-A04, T-A05, T-A06, T-A09, T-A12, pré-condições          | `test/db/titan-bet/auditar-fluxo.db-spec.ts` — 14     | **awaiting seam** — `Cannot find module '…/auditoria.service'`                                                                                                                   |
+| contrato do Officer Panel                                 | `packages/shared/src/titan-bet/auditoria.spec.ts` — 4 | **awaiting seam** — `Cannot find module './auditoria.js'`                                                                                                                        |
+| T-Z01 estendido (3 rotas novas) e T-Z07 do Auditar        | `src/titan-bet/titan-bet.controller.spec.ts` — +15    | 12 falhas por **rota inexistente (404)** — não contam como RED de autorização (§5.3); as rotas nasceram com o `OfficerGuard` do controller                                       |
+
+"Sessão fora do enum" (T-A11) passa desde a estrutura — é o enum, não o invariante — e
+está declarado assim no teste. T-A10 (`difficulty 5` de dungeon) já é coberto pelo
+`toRaidPulls` (`warcraftlogs.service.spec.ts`, "descarta boss de dungeon mesmo em
+difficulty de raid"): **guarda de regressão**, sem RED; o Titan Bet passa a depender dele
+no cálculo de resultados. Depois do GREEN, um teste a mais confere a vista do Officer
+Panel contra o contrato do shared (não conta como RED).
+
+### 17.2 Implementação
+
+- Migrations `20260923250000_titan_bet_auditoria_estrutura` (enums `BetAuditStatus`,
+  `BetAuditSession`, `BetSourceResolution`; `BetAudit`, `BetAuditSource`) e
+  `20260923260000_titan_bet_auditoria_invariantes` (unique `(auditId, session)`, índice
+  parcial `BetAudit_uma_confirmada_por_rodada`, três CHECKs, trigger
+  `titanbet_resultado_imutavel` em `BetAudit` e `BetAuditSource`).
+- `src/titan-bet/auditoria.ts` — `ehReportTitanbet`, `sessaoDoReport`, `sessaoDaFight`,
+  `classificarReports`, `resolverSessao`.
+- `auditoria.service.ts` — `auditar`, `escolherFonte`, `corrente`; `fases.ts` —
+  `podeAuditar`.
+- `WarcraftLogsService.listGuildReports` — `code title revision startTime`; nenhuma regra de
+  aposta no módulo do WCL. `loadGuildTimezone()` no `guild.config.ts`.
+- Rotas (`OfficerGuard`): `POST officer/rodadas/:roundId/auditar`, `GET
+officer/rodadas/:roundId/auditoria`, `POST
+officer/auditorias/:auditId/fontes/:session/escolher`. Contrato em
+  `packages/shared/src/titan-bet/auditoria.ts`. Três requests no `yaak/`.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **As sessões saem do `cutoffAt`, no fuso da guilda:** terça é o dia local do cutoff, e
+   só a partir dele; quinta é dois dias depois. Report iniciado na terça **antes** do
+   cutoff é da semana anterior ao reset e não conta — contar deixaria apostar com a raid
+   já em andamento.
+2. **Os CHECKs da fonte são mais estritos que a §16.4:** `⇔` em vez de `⇒` (fonte
+   `ausente`/`ambigua` não tem report) e a referência inteira ou nula — congelar `code` sem
+   `revision` não congela nada. A §16.4 foi atualizada.
+3. **`substituida` também é terminal no trigger**, não só `confirmada`: é o "intacta" do
+   T-A09 garantido pelo banco. A §16.4 foi atualizada.
+4. **A escolha do officer só vale entre os candidatos gravados**, sem nova consulta ao WCL
+   (T-A12), e só na sessão `ambigua`. A sessão `ausente` continua sem saída: é a OQ-45
+   (T-A13, bloqueado); refazer o Auditar é o que existe hoje.
+5. **WCL fora do ar não cria tentativa** (§7.4) — o Auditar é recusado com o motivo.
+
+### 17.3 Resultado
+
+`pnpm test:db` **198/198**; `pnpm test`: shared **341** (+4), api **781** (+38), web
+147; `api` lint, typecheck e build OK; `shared` typecheck OK; `format:check` OK; banco
+de dev com o mesmo hash.

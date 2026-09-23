@@ -50,3 +50,12 @@ export function faseDaRodada(estado: EstadoDaRodada, agora: Date): FaseDaRodada 
 export function podeDarReady(estado: EstadoDaRodada, agora: Date): boolean {
   return faseDaRodada(estado, agora) === 'PREPARATION';
 }
+
+/**
+ * Auditar vale depois do cutoff de uma rodada que teve Ready, até a auditoria
+ * ser confirmada (D-30, §16.2). Refazer antes disso é outra tentativa.
+ */
+export function podeAuditar(estado: EstadoDaRodada, agora: Date): boolean {
+  const fase = faseDaRodada(estado, agora);
+  return fase === 'BETTING_CLOSED' || fase === 'AUDITING' || fase === 'CALCULATED';
+}

@@ -374,20 +374,41 @@ export class WarcraftLogsService {
     return relatorios;
   }
 
-  /** Relatórios da guilda na janela (código e início), paginando até o fim. */
-  private async listReports(
+  /**
+   * Relatórios da guilda na janela, com título e revisão — o que o Auditar do
+   * Titan Bet precisa para achar o report oficial `titanbet*` e congelar a
+   * referência lida (spec do Titan Bet §7.2, §15.10). Nenhuma regra de aposta
+   * aqui: quem decide o que é oficial é o Titan Bet.
+   */
+  async listGuildReports(
+    from: Date,
+    to: Date,
+  ): Promise<Array<{ code: string; title: string; revision: number; startTime: number }>> {
+    return this.listReports<{ code: string; title: string; revision: number; startTime: number }>(
+      from,
+      to,
+      'code title revision startTime',
+    );
+  }
+
+  /**
+   * Relatórios da guilda na janela, paginando até o fim. `campos` é o que se
+   * pede de cada um; por padrão, código e início.
+   */
+  private async listReports<T = { code: string; startTime: number }>(
     from: Date,
     to: Date | null,
-  ): Promise<Array<{ code: string; startTime: number }>> {
+    campos = 'code startTime',
+  ): Promise<T[]> {
     const guildId = await this.getGuildId();
-    const relatorios: Array<{ code: string; startTime: number }> = [];
+    const relatorios: T[] = [];
 
     for (let page = 1; ; page++) {
       const data = await this.query<{
         reportData: {
           reports: {
             has_more_pages: boolean;
-            data: Array<{ code: string; startTime: number }>;
+            data: T[];
           };
         };
       }>(
@@ -395,7 +416,7 @@ export class WarcraftLogsService {
           reportData {
             reports(guildID: $guild, startTime: $start, endTime: $end, limit: 100, page: $page) {
               has_more_pages
-              data { code startTime }
+              data { ${campos} }
             }
           }
         }`,

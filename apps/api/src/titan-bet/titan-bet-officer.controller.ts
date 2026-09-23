@@ -1,18 +1,34 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from '@nestjs/common';
 import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  NotFoundException,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  escolherFonteSchema,
   recusarDepositoSchema,
+  sessaoDaAuditoriaSchema,
+  type AuditoriaCorrente,
   type DepositosPendentes,
+  type EscolherFonte,
   type RecusarDeposito,
+  type SessaoDaAuditoria,
 } from '@titan/shared';
 import type { Request } from 'express';
 import { OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { AuditoriaService } from './auditoria.service';
 import { DepositoService } from './deposito.service';
 import { comoHttp, contaDe } from './http';
 import { ReadyService } from './ready.service';
 
 /**
- * O Officer Panel do Titan Bet (D-36; spec §16.9).
+ * O Officer Panel do Titan Bet (D-36; spec §16.9): Ready, depósitos e Auditar.
  *
  * `OfficerGuard` no **controller**, não por rota: toda rota daqui é de officer,
  * e uma rota nova que esquecesse o decorator seria o Officer Panel aberto a
@@ -28,6 +44,7 @@ export class TitanBetOfficerController {
   constructor(
     private readonly ready: ReadyService,
     private readonly deposito: DepositoService,
+    private readonly auditoria: AuditoriaService,
   ) {}
 
   /** Ready (D-31): congela a configuração e abre as apostas. */
@@ -58,5 +75,34 @@ export class TitanBetOfficerController {
     @Req() req: Request,
   ): Promise<void> {
     await comoHttp(() => this.deposito.recusar(slipId, contaDe(req), body.motivo));
+  }
+
+  /** Auditar (D-30): procura os `titanbet*` de terça e quinta e abre uma tentativa. */
+  @Post('rodadas/:roundId/auditar')
+  auditar(@Param('roundId') roundId: string, @Req() req: Request): Promise<{ auditId: string }> {
+    return comoHttp(() => this.auditoria.auditar(roundId, contaDe(req)));
+  }
+
+  /** A tentativa corrente, com fontes e candidatos; 404 antes do primeiro Auditar. */
+  @Get('rodadas/:roundId/auditoria')
+  async auditoriaCorrente(@Param('roundId') roundId: string): Promise<AuditoriaCorrente> {
+    const a = await this.auditoria.corrente(roundId);
+    if (!a) throw new NotFoundException('A rodada ainda não foi auditada');
+    return a;
+  }
+
+  /** A escolha do officer numa sessão ambígua (D-25). */
+  @Post('auditorias/:auditId/fontes/:session/escolher')
+  @HttpCode(204)
+  async escolherFonte(
+    @Param('auditId') auditId: string,
+    @Param('session', new ZodValidationPipe(sessaoDaAuditoriaSchema, 'Sessão'))
+    session: SessaoDaAuditoria,
+    @Body(new ZodValidationPipe(escolherFonteSchema)) body: EscolherFonte,
+    @Req() req: Request,
+  ): Promise<void> {
+    await comoHttp(() =>
+      this.auditoria.escolherFonte(auditId, session, body.reportCode, contaDe(req)),
+    );
   }
 }

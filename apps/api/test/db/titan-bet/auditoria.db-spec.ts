@@ -1,0 +1,252 @@
+import type { BetAuditStatus, Prisma } from '@prisma/client';
+import { PrismaService } from '../../../src/prisma/prisma.service';
+import { escrita } from './escrita';
+import { Fabrica } from './fabrica';
+
+/**
+ * Auditar no banco (§16.4): T-A06, T-A07, T-A08, T-A11.
+ * titan-bet-test-design.md §3.7.
+ *
+ * Os dados seguem o ciclo de vida: a fonte é gravada com a auditoria aberta, e
+ * só depois a auditoria vira `confirmada` — é a ordem que o service usa.
+ */
+describe('Titan Bet — auditoria e fontes (banco)', () => {
+  let db: PrismaService;
+  let f: Fabrica;
+
+  beforeAll(async () => {
+    db = new PrismaService();
+    await db.$connect();
+    f = new Fabrica(db);
+  });
+
+  afterAll(async () => {
+    await db.$disconnect();
+  });
+
+  const OFFICER = { startedByUserId: 'officer-teste', startedByBattletag: 'Officer#0001' };
+  const CONFIRMOU = {
+    confirmedByUserId: 'officer-teste',
+    confirmedByBattletag: 'Officer#0001',
+    confirmedAt: new Date(),
+  };
+  const REFERENCIA = {
+    reportCode: 'AbC123',
+    reportTitle: 'titanbet',
+    reportRevision: 3,
+    reportStartTime: new Date('2026-09-30T00:00:00Z'),
+  };
+  const RESOLVEU = {
+    resolvedByUserId: 'officer-teste',
+    resolvedByBattletag: 'Officer#0001',
+    resolvedAt: new Date(),
+  };
+
+  function auditoria(roundId: string, attempt: number, status: BetAuditStatus = 'pronta') {
+    return db.betAudit.create({ data: { roundId, attempt, status, ...OFFICER } });
+  }
+
+  function fonte(auditId: string, data: Partial<Prisma.BetAuditSourceUncheckedCreateInput> = {}) {
+    return db.betAuditSource.create({
+      data: {
+        auditId,
+        session: 'terca',
+        resolution: 'automatica',
+        candidates: [],
+        ...REFERENCIA,
+        ...data,
+      },
+    });
+  }
+
+  /** Auditoria confirmada, gravada na ordem real: fontes, depois a confirmação. */
+  async function confirmada(roundId: string, attempt = 1) {
+    const a = await auditoria(roundId, attempt);
+    const terca = await fonte(a.id);
+    await fonte(a.id, { session: 'quinta', reportCode: 'QqQ999' });
+    await db.betAudit.update({ where: { id: a.id }, data: { status: 'confirmada', ...CONFIRMOU } });
+    return { auditoria: a, terca };
+  }
+
+  describe('T-A07 — uma auditoria confirmada por rodada (§16.4)', () => {
+    it('a segunda `confirmada` da mesma rodada é recusada', async () => {
+      const rodada = await f.rodada();
+      await confirmada(rodada.id, 1);
+      const segunda = await auditoria(rodada.id, 2);
+      expect(
+        await escrita(
+          db.betAudit.update({
+            where: { id: segunda.id },
+            data: { status: 'confirmada', ...CONFIRMOU },
+          }),
+        ),
+      ).toBe('unique');
+    });
+
+    it('controle: várias substituídas e uma confirmada convivem; outra rodada tem a sua', async () => {
+      const rodada = await f.rodada();
+      expect(await escrita(auditoria(rodada.id, 1, 'substituida'))).toBe('aceito');
+      expect(await escrita(auditoria(rodada.id, 2, 'substituida'))).toBe('aceito');
+      await confirmada(rodada.id, 3);
+      const outra = await f.rodada();
+      expect(await escrita(confirmada(outra.id, 1))).toBe('aceito');
+    });
+  });
+
+  describe('T-A11 — sessão só `terca`/`quinta`, no máximo uma de cada (D-37)', () => {
+    it('duas `terca` na mesma auditoria → recusado', async () => {
+      const rodada = await f.rodada();
+      const a = await auditoria(rodada.id, 1);
+      await fonte(a.id);
+      expect(await escrita(fonte(a.id, { reportCode: 'Outro1' }))).toBe('unique');
+    });
+
+    it('sessão fora do enum → recusada (estrutura: o enum já barra)', async () => {
+      const rodada = await f.rodada();
+      const a = await auditoria(rodada.id, 1);
+      const resultado = await escrita(
+        db.$executeRaw`INSERT INTO "BetAuditSource" ("id", "auditId", "session", "resolution", "candidates")
+          VALUES (${`s-${a.id}`}, ${a.id}, 'quarta', 'ausente', '[]')`,
+      );
+      expect(resultado).not.toBe('aceito');
+      expect(resultado).toMatch(/^outro:22P02/);
+    });
+
+    it('controle: terça e quinta na mesma auditoria; terça em outra tentativa', async () => {
+      const rodada = await f.rodada();
+      const a = await auditoria(rodada.id, 1);
+      expect(await escrita(fonte(a.id))).toBe('aceito');
+      expect(await escrita(fonte(a.id, { session: 'quinta' }))).toBe('aceito');
+      const b = await auditoria(rodada.id, 2);
+      expect(await escrita(fonte(b.id))).toBe('aceito');
+    });
+  });
+
+  describe('T-A06 no banco — fonte usada tem referência; escolha tem officer (§16.4)', () => {
+    it('`automatica` sem report → recusado', async () => {
+      const a = await auditoria((await f.rodada()).id, 1);
+      expect(
+        await escrita(
+          fonte(a.id, {
+            reportCode: null,
+            reportTitle: null,
+            reportRevision: null,
+            reportStartTime: null,
+          }),
+        ),
+      ).toBe('check');
+    });
+
+    it('`escolha_officer` sem officer → recusado', async () => {
+      const a = await auditoria((await f.rodada()).id, 1);
+      expect(await escrita(fonte(a.id, { resolution: 'escolha_officer' }))).toBe('check');
+    });
+
+    it('referência pela metade (code sem revision) → recusado: congelar é congelar tudo', async () => {
+      const a = await auditoria((await f.rodada()).id, 1);
+      expect(await escrita(fonte(a.id, { reportRevision: null }))).toBe('check');
+    });
+
+    it('`ausente` ou `ambigua` com report → recusado: não há report usado', async () => {
+      const a = await auditoria((await f.rodada()).id, 1);
+      expect(await escrita(fonte(a.id, { resolution: 'ausente' }))).toBe('check');
+      expect(await escrita(fonte(a.id, { session: 'quinta', resolution: 'ambigua' }))).toBe(
+        'check',
+      );
+    });
+
+    it('controle: escolha com officer; ausente e ambígua sem report', async () => {
+      const r = await f.rodada();
+      const a = await auditoria(r.id, 1);
+      expect(await escrita(fonte(a.id, { resolution: 'escolha_officer', ...RESOLVEU }))).toBe(
+        'aceito',
+      );
+      const semReport = {
+        reportCode: null,
+        reportTitle: null,
+        reportRevision: null,
+        reportStartTime: null,
+      };
+      expect(
+        await escrita(fonte(a.id, { session: 'quinta', resolution: 'ausente', ...semReport })),
+      ).toBe('aceito');
+      const b = await auditoria(r.id, 2);
+      expect(await escrita(fonte(b.id, { resolution: 'ambigua', ...semReport }))).toBe('aceito');
+    });
+  });
+
+  describe('T-A08 — auditoria confirmada é imutável (D-08, §16.4)', () => {
+    it('não muda status nem campos da auditoria confirmada', async () => {
+      const { auditoria: a } = await confirmada((await f.rodada()).id);
+      expect(
+        await escrita(db.betAudit.update({ where: { id: a.id }, data: { status: 'pronta' } })),
+      ).toBe('trigger');
+      expect(
+        await escrita(
+          db.betAudit.update({ where: { id: a.id }, data: { confirmedByBattletag: 'Outro#1' } }),
+        ),
+      ).toBe('trigger');
+      expect(await escrita(db.betAudit.delete({ where: { id: a.id } }))).toBe('trigger');
+    });
+
+    it('não muda nem apaga fonte de auditoria confirmada', async () => {
+      const { terca } = await confirmada((await f.rodada()).id);
+      expect(
+        await escrita(
+          db.betAuditSource.update({ where: { id: terca.id }, data: { reportRevision: 4 } }),
+        ),
+      ).toBe('trigger');
+      expect(await escrita(db.betAuditSource.delete({ where: { id: terca.id } }))).toBe('trigger');
+    });
+
+    it('não acrescenta fonte depois da confirmação', async () => {
+      // Confirmada só com a terça, para a quinta não esbarrar no unique de sessão.
+      const a = await auditoria((await f.rodada()).id, 1);
+      await fonte(a.id);
+      await db.betAudit.update({
+        where: { id: a.id },
+        data: { status: 'confirmada', ...CONFIRMOU },
+      });
+      expect(await escrita(fonte(a.id, { session: 'quinta', reportCode: 'Novo1' }))).toBe(
+        'trigger',
+      );
+    });
+
+    it('tentativa substituída também fica intacta (T-A09 no banco)', async () => {
+      const a = await auditoria((await f.rodada()).id, 1);
+      const terca = await fonte(a.id);
+      await db.betAudit.update({ where: { id: a.id }, data: { status: 'substituida' } });
+      expect(
+        await escrita(db.betAudit.update({ where: { id: a.id }, data: { status: 'pronta' } })),
+      ).toBe('trigger');
+      expect(
+        await escrita(
+          db.betAuditSource.update({ where: { id: terca.id }, data: { reportRevision: 9 } }),
+        ),
+      ).toBe('trigger');
+    });
+
+    it('controle: auditoria aberta aceita resolver fonte e mudar de estado', async () => {
+      const a = await auditoria((await f.rodada()).id, 1, 'aguardando_revisao');
+      const quinta = await fonte(a.id, {
+        session: 'quinta',
+        resolution: 'ambigua',
+        reportCode: null,
+        reportTitle: null,
+        reportRevision: null,
+        reportStartTime: null,
+      });
+      expect(
+        await escrita(
+          db.betAuditSource.update({
+            where: { id: quinta.id },
+            data: { resolution: 'escolha_officer', ...REFERENCIA, ...RESOLVEU },
+          }),
+        ),
+      ).toBe('aceito');
+      expect(
+        await escrita(db.betAudit.update({ where: { id: a.id }, data: { status: 'pronta' } })),
+      ).toBe('aceito');
+    });
+  });
+});

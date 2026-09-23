@@ -6,6 +6,7 @@ import {
 import type { Request } from 'express';
 import type { UserWithCharacters } from '../auth/auth.repository';
 import { ApostaRecusada, ContaNaoElegivel } from './apostas.service';
+import { AuditoriaRecusada } from './auditoria.service';
 import { DepositoRecusado } from './deposito.service';
 import { ReadyRecusado } from './ready.service';
 
@@ -25,7 +26,8 @@ export function contaDe(req: Request): { userId: string; battletag: string } {
  *
  * - conta fora do snapshot de bettors → 403: é permissão, não forma (D-38);
  * - aposta recusada → 422: o pedido é bem formado, a regra não deixa;
- * - Ready e depósito recusados → 409: o estado da rodada ou do slip não permite.
+ * - Ready, depósito e Auditar recusados → 409: o estado da rodada, do slip ou
+ *   da auditoria não permite.
  */
 export async function comoHttp<T>(operacao: () => Promise<T>): Promise<T> {
   try {
@@ -33,7 +35,11 @@ export async function comoHttp<T>(operacao: () => Promise<T>): Promise<T> {
   } catch (erro: unknown) {
     if (erro instanceof ContaNaoElegivel) throw new ForbiddenException(erro.message);
     if (erro instanceof ApostaRecusada) throw new UnprocessableEntityException(erro.message);
-    if (erro instanceof ReadyRecusado || erro instanceof DepositoRecusado) {
+    if (
+      erro instanceof ReadyRecusado ||
+      erro instanceof DepositoRecusado ||
+      erro instanceof AuditoriaRecusada
+    ) {
       throw new ConflictException(erro.message);
     }
     throw erro;

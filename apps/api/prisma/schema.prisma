@@ -1953,6 +1953,7 @@ model BetRound {
   selections BetWeeklySelection[]
   ledger     GoldLedgerEntry[]
   events     BetEvent[]
+  audits     BetAudit[]
 }
 
 /// Um boss na rodada, escolhido do catálogo do WCL (D-22).
@@ -2252,4 +2253,86 @@ model BetEvent {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([roundId, id])
+}
+
+// ─── Titan Bet: Auditar (§7.2, §16.2) ────────────────────────────────────────
+
+/// Estados da auditoria (§16.5): aguardando_revisao ⇄ pronta → calculada →
+/// confirmada; qualquer não confirmada → substituida quando outra começa.
+enum BetAuditStatus {
+  aguardando_revisao
+  pronta
+  calculada
+  confirmada
+  substituida
+}
+
+/// As duas sessões de evidência da rodada (D-19, D-23). Não existe outra.
+enum BetAuditSession {
+  terca
+  quinta
+}
+
+/// Como a fonte da sessão foi resolvida (D-24, D-25, D-30). `ausente` e
+/// `ambigua` param a auditoria; o que resolve a ausência é a OQ-45.
+enum BetSourceResolution {
+  automatica
+  escolha_officer
+  ausente
+  ambigua
+}
+
+/// Cada Auditar é uma tentativa (D-30). Refazer cria outra; a anterior fica
+/// `substituida`, intacta. No máximo uma `confirmada` por rodada.
+model BetAudit {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  attempt Int
+  status  BetAuditStatus
+
+  startedByUserId    String
+  startedByBattletag String
+  startedAt          DateTime @default(now())
+
+  calculatedAt DateTime?
+
+  confirmedByUserId    String?
+  confirmedByBattletag String?
+  confirmedAt          DateTime?
+
+  /// A tentativa que substituiu esta. Sem FK: é trilha, não estrutura.
+  supersededByAuditId String?
+
+  sources BetAuditSource[]
+
+  @@unique([roundId, attempt])
+}
+
+/// A fonte de uma sessão: qual report oficial `titanbet*` e como foi escolhido.
+/// A referência lida (code, title, revision, startTime) fica congelada aqui —
+/// é ela, e não uma nova consulta ao WCL, que o cálculo usa (§15.10).
+model BetAuditSource {
+  id      String   @id @default(cuid())
+  auditId String
+  audit   BetAudit @relation(fields: [auditId], references: [id])
+
+  session    BetAuditSession
+  resolution BetSourceResolution
+
+  reportCode      String?
+  reportTitle     String?
+  reportRevision  Int?
+  reportStartTime DateTime?
+
+  /// Evidência: os `titanbet*` achados para a sessão, como o WCL respondeu.
+  candidates Json
+
+  resolvedByUserId    String?
+  resolvedByBattletag String?
+  resolvedAt          DateTime?
+
+  /// Uma fonte por sessão por tentativa (T-A11).
+  @@unique([auditId, session])
 }

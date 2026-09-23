@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  BetAuditSession,
+  BetAuditStatus,
   BetCandidateRole,
   BetEventType,
   BetMarketKind,
   BetSlipStatus,
+  BetSourceResolution,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -426,6 +429,169 @@ export class TitanBetRepository {
     }));
   }
 
+  /** O que o Auditar precisa da rodada: o relógio, o Ready e a tentativa corrente. */
+  async rodadaParaAuditar(roundId: string) {
+    const rodada = await this.prisma.betRound.findUnique({
+      where: { id: roundId },
+      select: {
+        cutoffAt: true,
+        readyAt: true,
+        audits: {
+          where: { status: { not: 'substituida' } },
+          orderBy: { attempt: 'desc' },
+          take: 1,
+          select: { status: true },
+        },
+      },
+    });
+    if (!rodada) return null;
+    const [corrente] = rodada.audits;
+    return {
+      cutoffAt: rodada.cutoffAt,
+      readyAt: rodada.readyAt,
+      auditoria: (corrente?.status ?? null) as Exclude<BetAuditStatus, 'substituida'> | null,
+    };
+  }
+
+  /**
+   * Uma tentativa nova de Auditar (D-30), com as fontes das duas sessões, numa
+   * transação. As tentativas abertas anteriores viram `substituida`, apontando
+   * esta — intactas, porque o banco não deixa mudar mais nada nelas (T-A09).
+   */
+  async gravarAuditoria(g: {
+    roundId: string;
+    officer: { userId: string; battletag: string };
+    status: 'aguardando_revisao' | 'pronta';
+    fontes: FonteParaGravar[];
+  }): Promise<{ auditId: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const ultima = await tx.betAudit.aggregate({
+        where: { roundId: g.roundId },
+        _max: { attempt: true },
+      });
+      const nova = await tx.betAudit.create({
+        data: {
+          roundId: g.roundId,
+          attempt: (ultima._max.attempt ?? 0) + 1,
+          status: g.status,
+          startedByUserId: g.officer.userId,
+          startedByBattletag: g.officer.battletag,
+        },
+        select: { id: true },
+      });
+      for (const f of g.fontes) {
+        await tx.betAuditSource.create({
+          data: {
+            auditId: nova.id,
+            session: f.session,
+            resolution: f.resolution,
+            ...referenciaDoReport(f.report),
+            candidates: f.candidatos as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+      await tx.betAudit.updateMany({
+        where: {
+          roundId: g.roundId,
+          id: { not: nova.id },
+          status: { in: ['aguardando_revisao', 'pronta', 'calculada'] },
+        },
+        data: { status: 'substituida', supersededByAuditId: nova.id },
+      });
+      return { auditId: nova.id };
+    });
+  }
+
+  /**
+   * A escolha do officer numa sessão ambígua (D-25). A auditoria fica travada
+   * (`FOR UPDATE`) durante a transação; quem decide se a escolha vale é o
+   * service, com a fonte gravada — nunca uma leitura nova do WCL (T-A12).
+   * Resolvida a última pendência, a auditoria fica `pronta`.
+   */
+  async escolherFonte(r: {
+    auditId: string;
+    session: BetAuditSession;
+    officer: { userId: string; battletag: string };
+    agora: Date;
+    escolher: (fonte: {
+      resolution: BetSourceResolution;
+      candidatos: ReportGravado[];
+    }) => { report: ReportGravado } | { recusa: string };
+  }): Promise<{ tipo: 'ok' } | { tipo: 'recusado'; motivo: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const [auditoria] = await tx.$queryRaw<Array<{ status: BetAuditStatus }>>`
+        SELECT "status" FROM "BetAudit" WHERE "id" = ${r.auditId} FOR UPDATE`;
+      if (!auditoria) return { tipo: 'recusado' as const, motivo: 'a auditoria não existe' };
+      if (auditoria.status !== 'aguardando_revisao') {
+        return {
+          tipo: 'recusado' as const,
+          motivo: `a auditoria está ${auditoria.status} — só se escolhe fonte em revisão`,
+        };
+      }
+
+      const fontes = await tx.betAuditSource.findMany({
+        where: { auditId: r.auditId },
+        select: { id: true, session: true, resolution: true, candidates: true },
+      });
+      const fonte = fontes.find((f) => f.session === r.session);
+      if (!fonte) return { tipo: 'recusado' as const, motivo: 'a sessão não tem fonte' };
+
+      const decisao = r.escolher({
+        resolution: fonte.resolution,
+        candidatos: fonte.candidates as unknown as ReportGravado[],
+      });
+      if ('recusa' in decisao) return { tipo: 'recusado' as const, motivo: decisao.recusa };
+
+      await tx.betAuditSource.update({
+        where: { id: fonte.id },
+        data: {
+          resolution: 'escolha_officer',
+          ...referenciaDoReport(decisao.report),
+          resolvedByUserId: r.officer.userId,
+          resolvedByBattletag: r.officer.battletag,
+          resolvedAt: r.agora,
+        },
+      });
+
+      const pendentes = fontes.filter(
+        (f) => f.id !== fonte.id && !['automatica', 'escolha_officer'].includes(f.resolution),
+      );
+      if (pendentes.length === 0) {
+        await tx.betAudit.update({ where: { id: r.auditId }, data: { status: 'pronta' } });
+      }
+      return { tipo: 'ok' as const };
+    });
+  }
+
+  /** A tentativa corrente da rodada, com as fontes — o que o Officer Panel mostra. */
+  auditoriaCorrente(roundId: string) {
+    return this.prisma.betAudit.findFirst({
+      where: { roundId, status: { not: 'substituida' } },
+      orderBy: { attempt: 'desc' },
+      select: {
+        id: true,
+        attempt: true,
+        status: true,
+        startedByBattletag: true,
+        startedAt: true,
+        sources: {
+          orderBy: { session: 'asc' },
+          select: {
+            session: true,
+            resolution: true,
+            reportCode: true,
+            reportTitle: true,
+            reportRevision: true,
+            reportStartTime: true,
+            candidates: true,
+            resolvedByBattletag: true,
+            resolvedAt: true,
+          },
+        },
+      },
+    });
+  }
+
   private async travarSlip(tx: Prisma.TransactionClient, slipId: string) {
     const [slip] = await tx.$queryRaw<
       Array<{ roundId: string; status: BetSlipStatus; expectedTotal: number | null }>
@@ -455,4 +621,33 @@ export interface ApostaGravada {
   marketKind: BetMarketKind;
   stake: number;
   targetCharacterId: string | null;
+}
+
+/**
+ * Um report como ficou gravado na evidência do Auditar: `startTime` em epoch
+ * ms, como o WCL responde. É a referência congelada (§15.10).
+ */
+export interface ReportGravado {
+  code: string;
+  title: string;
+  revision: number;
+  startTime: number;
+}
+
+/** A fonte de uma sessão, pronta para gravar. */
+export interface FonteParaGravar {
+  session: BetAuditSession;
+  resolution: 'automatica' | 'ausente' | 'ambigua';
+  report: ReportGravado | null;
+  candidatos: ReportGravado[];
+}
+
+/** As colunas da referência do report — todas, ou nenhuma (CHECK do banco). */
+function referenciaDoReport(report: ReportGravado | null) {
+  return {
+    reportCode: report?.code ?? null,
+    reportTitle: report?.title ?? null,
+    reportRevision: report?.revision ?? null,
+    reportStartTime: report ? new Date(report.startTime) : null,
+  };
 }

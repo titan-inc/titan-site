@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_TitanBetAuditoriaEscolher1
+createdAt: 2026-09-23T18:00:00.000000
+updatedAt: 2026-09-23T18:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"reportCode": ""}'
+bodyType: application/json
+description: 'OfficerGuard. Sessão ambígua (D-25): o officer escolhe um dos candidatos gravados pelo Auditar. :session é terca ou quinta; reportCode tem que estar entre os candidatos. Fica registrado quem escolheu e quando. 204; 409 se a sessão não está ambígua ou o report não é candidato.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Escolher fonte ambígua (officer)'
+sortPriority: 10000
+url: ${[ base_url ]}/internal/titan-bet/officer/auditorias/:auditId/fontes/:session/escolher
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

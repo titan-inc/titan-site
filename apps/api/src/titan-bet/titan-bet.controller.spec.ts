@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AuthService } from '../auth/auth.service';
 import { OfficerGuard, RosterGuard } from '../auth/session.guard';
 import { ApostaRecusada, ApostasService, ContaNaoElegivel } from './apostas.service';
+import { AuditoriaRecusada, AuditoriaService } from './auditoria.service';
 import { DepositoRecusado, DepositoService } from './deposito.service';
 import { OddsService } from './odds.service';
 import { ReadyRecusado, ReadyService } from './ready.service';
@@ -27,6 +28,13 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/officer/rodadas/r1/depositos'],
   ['post', '/internal/titan-bet/officer/slips/s1/confirmar'],
   ['post', '/internal/titan-bet/officer/slips/s1/recusar', { motivo: 'valor diferente' }],
+  ['post', '/internal/titan-bet/officer/rodadas/r1/auditar'],
+  ['get', '/internal/titan-bet/officer/rodadas/r1/auditoria'],
+  [
+    'post',
+    '/internal/titan-bet/officer/auditorias/a1/fontes/terca/escolher',
+    { reportCode: 'AbC123' },
+  ],
 ];
 
 const MEMBRO_ROTAS: Array<[Verbo, string, object?]> = [
@@ -50,6 +58,7 @@ describe('Titan Bet — autorização das rotas', () => {
   const ready = { ready: jest.fn() };
   const apostas = { meuSlip: jest.fn(), salvar: jest.fn(), submeter: jest.fn() };
   const odds = { daRodada: jest.fn() };
+  const auditoria = { auditar: jest.fn(), corrente: jest.fn(), escolherFonte: jest.fn() };
   const deposito = {
     pendentes: jest.fn(),
     confirmar: jest.fn(),
@@ -67,6 +76,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: ApostasService, useValue: apostas },
         { provide: DepositoService, useValue: deposito },
         { provide: OddsService, useValue: odds },
+        { provide: AuditoriaService, useValue: auditoria },
       ],
     }).compile();
 
@@ -93,6 +103,9 @@ describe('Titan Bet — autorização das rotas', () => {
     apostas.submeter.mockResolvedValue({ total: 300 });
     deposito.pendentes.mockResolvedValue({ depositos: [] });
     odds.daRodada.mockResolvedValue({ roundId: 'r1', mercados: [] });
+    auditoria.auditar.mockResolvedValue({ auditId: 'a1' });
+    auditoria.corrente.mockResolvedValue(null);
+    auditoria.escolherFonte.mockResolvedValue(undefined);
     deposito.confirmar.mockResolvedValue(undefined);
     deposito.recusar.mockResolvedValue(undefined);
   });
@@ -108,7 +121,7 @@ describe('Titan Bet — autorização das rotas', () => {
   }
 
   function nenhumServiceChamado() {
-    for (const fake of [ready, apostas, deposito, odds]) {
+    for (const fake of [ready, apostas, deposito, odds, auditoria]) {
       for (const fn of Object.values(fake)) expect(fn).not.toHaveBeenCalled();
     }
   }
@@ -178,6 +191,48 @@ describe('Titan Bet — autorização das rotas', () => {
         .send({ motivo: 'valor diferente' })
         .expect(204);
       expect(deposito.recusar).toHaveBeenCalledWith('s1', officer, 'valor diferente');
+    });
+
+    it('Auditar, ver a auditoria e escolher fonte, com o officer da sessão (D-25, D-30)', async () => {
+      comSessao('officer');
+      const officer = { userId: 'u1', battletag: 'Conta#1234' };
+
+      const criada = await request(server)
+        .post('/internal/titan-bet/officer/rodadas/r1/auditar')
+        .expect(201);
+      expect(criada.body).toEqual({ auditId: 'a1' });
+      expect(auditoria.auditar).toHaveBeenCalledWith('r1', officer);
+
+      await request(server).get('/internal/titan-bet/officer/rodadas/r1/auditoria').expect(404);
+      expect(auditoria.corrente).toHaveBeenCalledWith('r1');
+
+      await request(server)
+        .post('/internal/titan-bet/officer/auditorias/a1/fontes/quinta/escolher')
+        .send({ reportCode: 'AbC123' })
+        .expect(204);
+      expect(auditoria.escolherFonte).toHaveBeenCalledWith('a1', 'quinta', 'AbC123', officer);
+    });
+
+    it('sessão fora de terça/quinta e escolha sem report são 400 antes do service', async () => {
+      comSessao('officer');
+      await request(server)
+        .post('/internal/titan-bet/officer/auditorias/a1/fontes/quarta/escolher')
+        .send({ reportCode: 'AbC123' })
+        .expect(400);
+      await request(server)
+        .post('/internal/titan-bet/officer/auditorias/a1/fontes/terca/escolher')
+        .send({})
+        .expect(400);
+      expect(auditoria.escolherFonte).not.toHaveBeenCalled();
+    });
+
+    it('Auditar recusado é 409, com o motivo', async () => {
+      comSessao('officer');
+      auditoria.auditar.mockRejectedValue(new AuditoriaRecusada('o cutoff não passou'));
+      const r = await request(server)
+        .post('/internal/titan-bet/officer/rodadas/r1/auditar')
+        .expect(409);
+      expect(JSON.stringify(r.body)).toContain('o cutoff não passou');
     });
 
     it('recusar sem motivo é 400 antes do service (D-34)', async () => {
