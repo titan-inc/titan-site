@@ -7,6 +7,7 @@ import { ApostasService } from './apostas.service';
 import { CutoffService } from './cutoff.service';
 import { DepositoService } from './deposito.service';
 import { ElegibilidadeService } from './elegibilidade.service';
+import { OddsService } from './odds.service';
 import { ReadyService } from './ready.service';
 import { TitanBetMemberController } from './titan-bet-member.controller';
 import { TitanBetOfficerController } from './titan-bet-officer.controller';
@@ -28,6 +29,7 @@ import { TitanBetRepository } from './titan-bet.repository';
     ApostasService,
     DepositoService,
     CutoffService,
+    OddsService,
   ],
   exports: [ReadyService, ElegibilidadeService, ApostasService, DepositoService],
 })

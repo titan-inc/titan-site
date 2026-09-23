@@ -7,6 +7,7 @@ import { AuthService } from '../auth/auth.service';
 import { OfficerGuard, RosterGuard } from '../auth/session.guard';
 import { ApostaRecusada, ApostasService, ContaNaoElegivel } from './apostas.service';
 import { DepositoRecusado, DepositoService } from './deposito.service';
+import { OddsService } from './odds.service';
 import { ReadyRecusado, ReadyService } from './ready.service';
 import { TitanBetMemberController } from './titan-bet-member.controller';
 import { TitanBetOfficerController } from './titan-bet-officer.controller';
@@ -30,6 +31,7 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
 
 const MEMBRO_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/rodadas/r1/slip'],
+  ['get', '/internal/titan-bet/rodadas/r1/odds'],
   ['put', '/internal/titan-bet/rodadas/r1/slip', { apostas: [] }],
   ['post', '/internal/titan-bet/rodadas/r1/slip/submeter', { depositCharacterId: 'c1' }],
 ];
@@ -47,6 +49,7 @@ describe('Titan Bet — autorização das rotas', () => {
   const auth = { resolveSession: jest.fn(), toSessionUser: jest.fn() };
   const ready = { ready: jest.fn() };
   const apostas = { meuSlip: jest.fn(), salvar: jest.fn(), submeter: jest.fn() };
+  const odds = { daRodada: jest.fn() };
   const deposito = {
     pendentes: jest.fn(),
     confirmar: jest.fn(),
@@ -63,6 +66,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: ReadyService, useValue: ready },
         { provide: ApostasService, useValue: apostas },
         { provide: DepositoService, useValue: deposito },
+        { provide: OddsService, useValue: odds },
       ],
     }).compile();
 
@@ -88,6 +92,7 @@ describe('Titan Bet — autorização das rotas', () => {
     apostas.salvar.mockResolvedValue({ slipId: 's1' });
     apostas.submeter.mockResolvedValue({ total: 300 });
     deposito.pendentes.mockResolvedValue({ depositos: [] });
+    odds.daRodada.mockResolvedValue({ roundId: 'r1', mercados: [] });
     deposito.confirmar.mockResolvedValue(undefined);
     deposito.recusar.mockResolvedValue(undefined);
   });
@@ -103,7 +108,7 @@ describe('Titan Bet — autorização das rotas', () => {
   }
 
   function nenhumServiceChamado() {
-    for (const fake of [ready, apostas, deposito]) {
+    for (const fake of [ready, apostas, deposito, odds]) {
       for (const fn of Object.values(fake)) expect(fn).not.toHaveBeenCalled();
     }
   }
@@ -225,6 +230,16 @@ describe('Titan Bet — autorização das rotas', () => {
         .send({ depositCharacterId: 'c1' })
         .expect(200);
       expect(apostas.submeter).toHaveBeenCalledWith('r1', conta, { depositCharacterId: 'c1' });
+    });
+
+    it('T-Z08 — odds pela superfície do membro, com a conta da sessão', async () => {
+      comSessao('social');
+      const r = await request(server).get('/internal/titan-bet/rodadas/r1/odds').expect(200);
+      expect(r.body).toEqual({ roundId: 'r1', mercados: [] });
+      expect(odds.daRodada).toHaveBeenCalledWith('r1', 'u1');
+
+      odds.daRodada.mockRejectedValue(new ContaNaoElegivel());
+      await request(server).get('/internal/titan-bet/rodadas/r1/odds').expect(403);
     });
 
     it('corpo fora do contrato é 400 antes do service', async () => {

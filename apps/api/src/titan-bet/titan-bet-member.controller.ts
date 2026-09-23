@@ -14,6 +14,7 @@ import {
   salvarSlipSchema,
   submeterSlipSchema,
   type MeuSlip,
+  type OddsDaRodada,
   type SalvarSlip,
   type SubmeterSlip,
 } from '@titan/shared';
@@ -22,6 +23,7 @@ import { RosterGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ApostasService } from './apostas.service';
 import { comoHttp, contaDe } from './http';
+import { OddsService } from './odds.service';
 
 /**
  * A superfície de apostas do membro (D-01, D-36; spec §16.9).
@@ -34,12 +36,21 @@ import { comoHttp, contaDe } from './http';
  * Só o próprio slip: nenhuma rota aceita id de slip. O slip é "o da conta da
  * sessão nesta rodada" — não há id de outra pessoa para pedir.
  */
-@Controller('internal/titan-bet/rodadas/:roundId/slip')
+@Controller('internal/titan-bet/rodadas/:roundId')
 @UseGuards(RosterGuard)
 export class TitanBetMemberController {
-  constructor(private readonly apostas: ApostasService) {}
+  constructor(
+    private readonly apostas: ApostasService,
+    private readonly odds: OddsService,
+  ) {}
 
-  @Get()
+  /** Projected payout de todos os mercados publicados — só multiplicadores (§16.10). */
+  @Get('odds')
+  oddsDaRodada(@Param('roundId') roundId: string, @Req() req: Request): Promise<OddsDaRodada> {
+    return comoHttp(() => this.odds.daRodada(roundId, contaDe(req).userId));
+  }
+
+  @Get('slip')
   async meuSlip(@Param('roundId') roundId: string, @Req() req: Request): Promise<MeuSlip> {
     const slip = await this.apostas.meuSlip(roundId, contaDe(req).userId);
     if (!slip) throw new NotFoundException('Você não tem slip nesta rodada');
@@ -47,7 +58,7 @@ export class TitanBetMemberController {
   }
 
   /** "Salvar" (D-27): o rascunho inteiro, como está agora. */
-  @Put()
+  @Put('slip')
   salvar(
     @Param('roundId') roundId: string,
     @Body(new ZodValidationPipe(salvarSlipSchema)) body: SalvarSlip,
@@ -57,7 +68,7 @@ export class TitanBetMemberController {
   }
 
   /** "Submeter pagamento" (D-27): congela o rascunho e devolve o total a depositar. */
-  @Post('submeter')
+  @Post('slip/submeter')
   @HttpCode(200)
   submeter(
     @Param('roundId') roundId: string,

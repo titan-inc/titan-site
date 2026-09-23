@@ -407,6 +407,25 @@ export class TitanBetRepository {
     });
   }
 
+  /**
+   * Σ stake por opção dos mercados de escolha simples, só de slips `valido`
+   * (D-12). Agregado no banco (§16.10): nenhuma aposta individual sai daqui.
+   */
+  async somasValidasPorOpcao(
+    roundId: string,
+  ): Promise<Array<{ marketId: string; characterId: string; soma: number }>> {
+    const grupos = await this.prisma.bet.groupBy({
+      by: ['marketId', 'targetCharacterId'],
+      where: { roundId, targetCharacterId: { not: null }, slip: { status: 'valido' } },
+      _sum: { stake: true },
+    });
+    return grupos.map((g) => ({
+      marketId: g.marketId,
+      characterId: g.targetCharacterId!,
+      soma: g._sum.stake ?? 0,
+    }));
+  }
+
   private async travarSlip(tx: Prisma.TransactionClient, slipId: string) {
     const [slip] = await tx.$queryRaw<
       Array<{ roundId: string; status: BetSlipStatus; expectedTotal: number | null }>

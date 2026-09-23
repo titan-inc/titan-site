@@ -849,3 +849,54 @@ testes.
 
 `pnpm test:db` **162/162**; `pnpm test`: shared **328** (+10), api **736** (+28), web
 147; `api` lint, typecheck e build OK; `format:check` OK; banco de dev com o mesmo hash.
+
+---
+
+## 16. Odds — execução (23/09/2026)
+
+**Status: GREEN.** Milestone "RED/GREEN Odds" da §7 (projected payout).
+
+### 16.1 Testes e evidência
+
+| Testes                                    | Onde                                                       | Antes da implementação                                                                       |
+| ----------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| T-O03                                     | `packages/shared/src/titan-bet/published.spec.ts` — 8      | **`RED awaiting implementation seam`** — `Cannot find module './published.js'`               |
+| T-O01                                     | `apps/api/src/titan-bet/odds.spec.ts` — 4                  | **awaiting seam** — `Cannot find module './odds'`                                            |
+| T-Z08 no HTTP (rota de odds: 401/403/200) | `apps/api/src/titan-bet/titan-bet.controller.spec.ts` — +3 | **awaiting seam** — `Cannot find module './odds.service'`; a rota nasceu com o `RosterGuard` |
+| T-O02, T-Z06, T-Z08                       | `apps/api/test/db/titan-bet/odds.db-spec.ts` — 6           | **awaiting seam** — `Cannot find module '…/odds.service'`                                    |
+| T-Z05                                     | `published.spec.ts` — 1                                    | **guarda de regressão**, sem RED (§5.4); entrou junto com o `published.ts`                   |
+
+T-Z05 estava listado no milestone de Auditar; entrou aqui porque o `published.ts` nasceu
+neste milestone, e a guarda protege o arquivo desde o primeiro commit.
+
+### 16.2 Implementação
+
+- `packages/shared/src/titan-bet/published.ts` — `oddsDaRodadaSchema`, estrito em todos
+  os níveis: `roundId`, e por mercado `marketId` e `opcoes[{ characterId,
+multiplicador }]`. `multiplicador` positivo ou `null` ("—").
+- `apps/api/src/titan-bet/odds.ts` — `multiplicadorProjetado(V, S)` =
+  `floor(9V/10) / S`, `null` se `S = 0`.
+- `odds.service.ts` — confere o snapshot de bettors (`ContaNaoElegivel` → 403), junta o
+  cardápio às somas e monta uma opção por candidato do mercado.
+- `TitanBetRepository.somasValidasPorOpcao` — `groupBy` sobre `Bet` de slips `valido`:
+  nenhuma aposta individual sai do repository.
+- `GET /internal/titan-bet/rodadas/:roundId/odds` no controller do membro (`RosterGuard`);
+  o controller passou a ter base `rodadas/:roundId`, com as rotas de slip iguais por fora.
+- `yaak/` — request de odds.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **A Weekly Progression fica fora da resposta.** É a OQ-55 (T-O04, bloqueado): listar
+   conjuntos publicaria seleções privadas. Omitir não expõe nada e não decide a OQ — o
+   que vier dela entra como campo novo no contrato.
+2. **A resposta só tem o multiplicador**, sem o `V` do mercado que a §16.10 permite "se a
+   tela quiser": com `V` e o multiplicador, `S(o)` sai por conta, e nada pediu esse número
+   ainda.
+3. **Odds não dependem da fase da rodada.** Quem vê é o bettor do snapshot, que só existe
+   depois do Ready; depois do cutoff a pool não muda mais e o número continua certo.
+
+### 16.3 Resultado
+
+`pnpm test:db` **168/168**; `pnpm test`: shared **337** (+9), api **743** (+7), web 147;
+`api` lint, typecheck e build OK; `shared` typecheck OK; `format:check` OK; banco de dev
+com o mesmo hash.
