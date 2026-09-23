@@ -1386,3 +1386,30 @@ officer/rodadas/:roundId/closing` (`OfficerGuard`) e `GET rodadas/:roundId/closi
 2. **VOID aparece com o motivo e sem linhas por membro**: a restituição por aposta é o
    stake e não é publicada; entra só no total agregado da pessoa, como a D-48 pede.
 3. **Membro sem crédito não aparece** nos totais (quem só perdeu não é listado).
+
+---
+
+## 28. E2E — execução (23/09/2026)
+
+**Status: GREEN.** T-E01, `test/db/titan-bet/e2e.db-spec.ts`: preparar a semana → Ready
+→ Salvar → Submeter pagamento → confirmar depósito → cutoff → Auditar → calcular →
+confirmar → pagar → Closing Report, com todos os serviços e o banco reais e só as fontes
+externas como dublês (roster da Blizzard, Titan Roster, WCL).
+
+**Sem RED, declarado:** o E2E é integração, escrito depois de todos os componentes; passar
+na primeira execução é o esperado — cada peça já tinha o seu RED no milestone próprio.
+
+O que ele confere de ponta a ponta: o total a depositar do Submeter, o rateio de dois
+mercados (Top DPS e Weekly com `K` da D-49), o saldo e o pagamento, a reconciliação da
+§16.6 (Σ depósitos = Σ prêmios + receita da guilda) e o Closing Report com o membro pelo
+personagem de elegibilidade (D-48), sem BattleTag e sem quem só perdeu.
+
+Limitação conhecida: o report de "terça" do teste começa 1 s depois do cutoff; se o teste
+rodar exatamente no último segundo do dia no fuso da guilda, a sessão cai no dia seguinte.
+
+## 29. Estado da matriz (23/09/2026)
+
+Todos os milestones da §7 estão GREEN, com a revisão 10 incorporada. O que resta na
+matriz está **bloqueado por OQ** (§4): OQ-03, OQ-04a, OQ-27a, OQ-28, OQ-30, OQ-39, OQ-40,
+OQ-45, OQ-46, OQ-48, OQ-50, OQ-54, OQ-55 e OQ-56. As telas do front (`/interno/bet`) e o
+cardápio de mercados para a tela do membro não estão na matriz.
