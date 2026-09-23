@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetClosingVer1
+createdAt: 2026-09-24T00:00:00.000000
+updatedAt: 2026-09-24T00:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'RosterGuard. A última versão publicada do Round Closing Report da rodada — de qualquer membro da guilda (D-21). 404 antes da primeira publicação.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Closing Report (membro)'
+sortPriority: 1600
+url: ${[ base_url ]}/internal/titan-bet/rodadas/:roundId/closing
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

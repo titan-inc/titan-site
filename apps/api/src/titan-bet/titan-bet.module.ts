@@ -7,6 +7,8 @@ import { WowAuditModule } from '../wowaudit/wowaudit.module';
 import { ApostasService } from './apostas.service';
 import { AuditoriaService } from './auditoria.service';
 import { CalculoService } from './calculo.service';
+import { ClosingRepository } from './closing.repository';
+import { ClosingService } from './closing.service';
 import { LedgerService, SettlementService } from './settlement.service';
 import { CutoffService } from './cutoff.service';
 import { DepositoService } from './deposito.service';
@@ -16,6 +18,7 @@ import { PreparacaoService } from './preparacao.service';
 import { ReadyService } from './ready.service';
 import { TitanBetMemberController } from './titan-bet-member.controller';
 import { TitanBetOfficerController } from './titan-bet-officer.controller';
+import { TitanBetResultsController } from './titan-bet-results.controller';
 import { TitanBetRepository } from './titan-bet.repository';
 
 /**
@@ -26,7 +29,7 @@ import { TitanBetRepository } from './titan-bet.repository';
  */
 @Module({
   imports: [AuthModule, BlizzardModule, CharactersModule, WarcraftLogsModule, WowAuditModule],
-  controllers: [TitanBetMemberController, TitanBetOfficerController],
+  controllers: [TitanBetMemberController, TitanBetOfficerController, TitanBetResultsController],
   providers: [
     TitanBetRepository,
     ReadyService,
@@ -40,6 +43,8 @@ import { TitanBetRepository } from './titan-bet.repository';
     CalculoService,
     SettlementService,
     LedgerService,
+    ClosingRepository,
+    ClosingService,
   ],
   exports: [ReadyService, ElegibilidadeService, ApostasService, DepositoService],
 })

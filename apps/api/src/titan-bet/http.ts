@@ -7,6 +7,7 @@ import type { Request } from 'express';
 import type { UserWithCharacters } from '../auth/auth.repository';
 import { ApostaRecusada, ContaNaoElegivel } from './apostas.service';
 import { AuditoriaRecusada } from './auditoria.service';
+import { ClosingRecusado } from './closing.service';
 import { DepositoRecusado } from './deposito.service';
 import { LedgerRecusado } from './settlement.service';
 import { PreparacaoInvalida, PreparacaoRecusada } from './preparacao.service';
@@ -45,7 +46,8 @@ export async function comoHttp<T>(operacao: () => Promise<T>): Promise<T> {
       erro instanceof DepositoRecusado ||
       erro instanceof AuditoriaRecusada ||
       erro instanceof PreparacaoRecusada ||
-      erro instanceof LedgerRecusado
+      erro instanceof LedgerRecusado ||
+      erro instanceof ClosingRecusado
     ) {
       throw new ConflictException(erro.message);
     }

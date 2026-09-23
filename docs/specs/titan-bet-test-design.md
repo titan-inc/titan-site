@@ -1349,3 +1349,40 @@ OQ-47 foi **substituído** pelo T-W05: não é afrouxamento, é a decisão de pr
 mudou o esperado.
 
 D-50 (OQ-52) não mudou código: o T-L06 já exige a recusa do saldo negativo.
+
+---
+
+## 27. Closing Report — execução (23/09/2026)
+
+**Status: GREEN.** T-C01, T-C03, T-C04, T-C05 (D-48).
+
+| Testes                  | Onde                                                   | Antes da implementação                                                                        |
+| ----------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| T-C01, T-C04 (contrato) | `packages/shared/src/titan-bet/published.spec.ts` — +8 | **awaiting seam** — `closingReportSchema` não existia (`Cannot read properties of undefined`) |
+| T-C01, T-C04, T-C05     | `test/db/titan-bet/closing-servico.db-spec.ts` — 6     | **awaiting seam** — `Cannot find module '…/closing.service'`                                  |
+| T-C03                   | `src/titan-bet/closing.guarda.spec.ts` — 2             | **guarda de regressão** (§5.4); rodada antes do módulo existir: `Cannot find module`          |
+| rotas                   | controller spec +5                                     | **awaiting seam** — `Cannot find module './titan-bet-results.controller'`                     |
+
+**Um ajuste na guarda T-C03, antes do GREEN, registrado.** A primeira versão proibia
+qualquer `battletag` no `closing.repository.ts`, mas a §16.7 exige gravar o officer que
+publica (`publishedByBattletag`). A guarda passou a proibir o que ela protege — a conta do
+**membro** (`ownerBattletag`, `ownerUserId`) — e continua proibindo `Bet`, escolhas, stake,
+`expectedTotal` e o depositante. Uma tentativa minha de disfarçar o nome da coluna para
+passar pela guarda foi descartada antes de rodar: guarda se corrige na definição, nunca se
+contorna.
+
+Implementação: `closingReportSchema` e `closingPublicadoSchema` em `published.ts` (ainda
+sem nenhum import de `betting`, T-Z05); `closing.repository.ts` — repository próprio que
+só lê resultado confirmado, ledger e o personagem de elegibilidade (nome e realm do
+snapshot de bettors); `closing.service.ts` — `publicar` (versão nova a cada vez, marca
+d'água no último lançamento, conteúdo validado antes de gravar) e `ultimo`; rotas `POST
+officer/rodadas/:roundId/closing` (`OfficerGuard`) e `GET rodadas/:roundId/closing` no
+`titan-bet-results.controller.ts` (`RosterGuard`); duas requests no `yaak/`.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **"Total devido" é o que a conta recebeu na rodada** (prêmio + restituições + ajuste),
+   independente de já ter sido pago — o documento não muda quando o officer paga.
+2. **VOID aparece com o motivo e sem linhas por membro**: a restituição por aposta é o
+   stake e não é publicada; entra só no total agregado da pessoa, como a D-48 pede.
+3. **Membro sem crédito não aparece** nos totais (quem só perdeu não é listado).

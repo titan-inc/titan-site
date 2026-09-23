@@ -33,6 +33,7 @@ import { OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuditoriaService } from './auditoria.service';
 import { CalculoService } from './calculo.service';
+import { ClosingService } from './closing.service';
 import { LedgerService, SettlementService } from './settlement.service';
 import { DepositoService } from './deposito.service';
 import { comoHttp, contaDe } from './http';
@@ -62,7 +63,20 @@ export class TitanBetOfficerController {
     private readonly calculo: CalculoService,
     private readonly settlement: SettlementService,
     private readonly ledger: LedgerService,
+    private readonly closing: ClosingService,
   ) {}
+
+  /**
+   * Publica o Round Closing Report da rodada confirmada (§16.7): uma versão
+   * nova a cada publicação, gerada do resultado e do ledger.
+   */
+  @Post('rodadas/:roundId/closing')
+  publicarClosing(
+    @Param('roundId') roundId: string,
+    @Req() req: Request,
+  ): Promise<{ version: number }> {
+    return comoHttp(() => this.closing.publicar(roundId, contaDe(req)));
+  }
 
   /**
    * Confirma a auditoria calculada — inclusive as propostas de VOID (D-16) — e

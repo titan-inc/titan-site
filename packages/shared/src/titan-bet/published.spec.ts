@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { oddsDaRodadaSchema } from './published.js';
+import { closingReportSchema, oddsDaRodadaSchema } from './published.js';
 
 /**
  * Contrato PUBLICADO do Titan Bet (spec §9.1, §16.10). T-O03: a resposta de
@@ -60,5 +60,84 @@ describe('T-Z05 — published não importa betting', () => {
     const fonte = readFileSync(new URL('./published.ts', import.meta.url), 'utf8');
     const imports = [...fonte.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
     expect(imports).toEqual(['zod']);
+  });
+});
+
+/**
+ * T-C01/T-C04 no contrato — o Round Closing Report publicado (D-21, D-48;
+ * §8.5, §16.7). O membro é o personagem de elegibilidade; nunca BattleTag,
+ * stake, aposta perdedora, escolha, slip ou depósito.
+ */
+describe('closingReportSchema', () => {
+  const quem = { name: 'Fulano', realm: 'Azralon' };
+  const doc = {
+    versao: 1,
+    roundId: 'r1',
+    period: 1050,
+    mercados: [
+      {
+        marketId: 'm1',
+        kind: 'top_dps',
+        encounterName: 'Boss Um',
+        desfecho: 'vencedores',
+        voidReason: null,
+        vencedores: [{ name: 'Candidato', realm: 'Azralon' }],
+        kills: [],
+        ganhos: [{ membro: quem, valor: 1440 }],
+      },
+      {
+        marketId: 'm2',
+        kind: 'first_death',
+        encounterName: 'Boss Um',
+        desfecho: 'anulado',
+        voidReason: 'sem_kill',
+        vencedores: [],
+        kills: [],
+        ganhos: [],
+      },
+      {
+        marketId: 'm3',
+        kind: 'weekly_progression',
+        encounterName: null,
+        desfecho: 'vencedores',
+        voidReason: null,
+        vencedores: [],
+        kills: ['Boss Um'],
+        ganhos: [],
+      },
+    ],
+    guildBank: { receita: 160, residuo: 1 },
+    totais: [{ membro: quem, devido: 1440 }],
+  };
+
+  it('aceita o documento com mercados, VOID, Weekly, Guild Bank e totais', () => {
+    expect(closingReportSchema.parse(doc)).toEqual(doc);
+  });
+
+  it.each(['stake', 'slipId', 'ownerBattletag', 'battletag', 'apostas', 'deposito'])(
+    'recusa %s em qualquer nível',
+    (campo) => {
+      expect(closingReportSchema.safeParse({ ...doc, [campo]: 'x' }).success).toBe(false);
+      const mercado = { ...doc.mercados[0], [campo]: 'x' };
+      expect(closingReportSchema.safeParse({ ...doc, mercados: [mercado] }).success).toBe(false);
+      const ganho = { membro: quem, valor: 1, [campo]: 'x' };
+      expect(
+        closingReportSchema.safeParse({
+          ...doc,
+          mercados: [{ ...doc.mercados[0], ganhos: [ganho] }],
+        }).success,
+      ).toBe(false);
+      const membro = { ...quem, [campo]: 'x' };
+      expect(
+        closingReportSchema.safeParse({ ...doc, totais: [{ membro, devido: 1 }] }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('membro é personagem: nome e realm, e só isso (D-48)', () => {
+    expect(
+      closingReportSchema.safeParse({ ...doc, totais: [{ membro: { name: 'X' }, devido: 1 }] })
+        .success,
+    ).toBe(false);
   });
 });

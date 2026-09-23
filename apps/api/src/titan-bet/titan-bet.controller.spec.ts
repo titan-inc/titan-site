@@ -8,6 +8,8 @@ import { OfficerGuard, RosterGuard } from '../auth/session.guard';
 import { ApostaRecusada, ApostasService, ContaNaoElegivel } from './apostas.service';
 import { AuditoriaRecusada, AuditoriaService } from './auditoria.service';
 import { CalculoService } from './calculo.service';
+import { ClosingRecusado, ClosingService } from './closing.service';
+import { TitanBetResultsController } from './titan-bet-results.controller';
 import { LedgerRecusado, LedgerService, SettlementService } from './settlement.service';
 import { DepositoRecusado, DepositoService } from './deposito.service';
 import { OddsService } from './odds.service';
@@ -41,6 +43,7 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ['post', '/internal/titan-bet/officer/auditorias/a1/confirmar'],
   ['get', '/internal/titan-bet/officer/rodadas/r1/saldos'],
   ['post', '/internal/titan-bet/officer/slips/s1/pagar'],
+  ['post', '/internal/titan-bet/officer/rodadas/r1/closing'],
   [
     'post',
     '/internal/titan-bet/officer/slips/s1/ajustes',
@@ -57,6 +60,7 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
 const MEMBRO_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/rodadas/r1/slip'],
   ['get', '/internal/titan-bet/rodadas/r1/odds'],
+  ['get', '/internal/titan-bet/rodadas/r1/closing'],
   ['put', '/internal/titan-bet/rodadas/r1/slip', { apostas: [] }],
   ['post', '/internal/titan-bet/rodadas/r1/slip/submeter', { depositCharacterId: 'c1' }],
 ];
@@ -79,6 +83,7 @@ describe('Titan Bet — autorização das rotas', () => {
   const preparacao = { criar: jest.fn(), catalogo: jest.fn(), ver: jest.fn(), salvar: jest.fn() };
   const calculo = { calcular: jest.fn(), resultados: jest.fn() };
   const settlement = { confirmar: jest.fn() };
+  const closing = { publicar: jest.fn(), ultimo: jest.fn() };
   const ledger = { saldos: jest.fn(), pagar: jest.fn(), ajustar: jest.fn() };
   const deposito = {
     pendentes: jest.fn(),
@@ -88,7 +93,7 @@ describe('Titan Bet — autorização das rotas', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      controllers: [TitanBetMemberController, TitanBetOfficerController],
+      controllers: [TitanBetMemberController, TitanBetOfficerController, TitanBetResultsController],
       providers: [
         RosterGuard,
         OfficerGuard,
@@ -102,6 +107,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: CalculoService, useValue: calculo },
         { provide: SettlementService, useValue: settlement },
         { provide: LedgerService, useValue: ledger },
+        { provide: ClosingService, useValue: closing },
       ],
     }).compile();
 
@@ -140,6 +146,8 @@ describe('Titan Bet — autorização das rotas', () => {
     ledger.saldos.mockResolvedValue({ saldos: [] });
     ledger.pagar.mockResolvedValue(undefined);
     ledger.ajustar.mockResolvedValue(undefined);
+    closing.publicar.mockResolvedValue({ version: 1 });
+    closing.ultimo.mockResolvedValue({ version: 1, publishedAt: '2026-09-25T00:00:00.000Z' });
     calculo.resultados.mockResolvedValue({ auditId: 'a1', status: 'calculada', mercados: [] });
     deposito.confirmar.mockResolvedValue(undefined);
     deposito.recusar.mockResolvedValue(undefined);
@@ -166,6 +174,7 @@ describe('Titan Bet — autorização das rotas', () => {
       calculo,
       settlement,
       ledger,
+      closing,
     ]) {
       for (const fn of Object.values(fake)) expect(fn).not.toHaveBeenCalled();
     }
@@ -318,6 +327,21 @@ describe('Titan Bet — autorização das rotas', () => {
         .expect(400);
     });
 
+    it('publicar o Closing Report, com o officer da sessão (§16.7)', async () => {
+      comSessao('officer');
+      const r = await request(server)
+        .post('/internal/titan-bet/officer/rodadas/r1/closing')
+        .expect(201);
+      expect(r.body).toEqual({ version: 1 });
+      expect(closing.publicar).toHaveBeenCalledWith('r1', {
+        userId: 'u1',
+        battletag: 'Conta#1234',
+      });
+
+      closing.publicar.mockRejectedValue(new ClosingRecusado('sem auditoria confirmada'));
+      await request(server).post('/internal/titan-bet/officer/rodadas/r1/closing').expect(409);
+    });
+
     it('Auditar recusado é 409, com o motivo', async () => {
       comSessao('officer');
       auditoria.auditar.mockRejectedValue(new AuditoriaRecusada('o cutoff não passou'));
@@ -424,6 +448,15 @@ describe('Titan Bet — autorização das rotas', () => {
 
       odds.daRodada.mockRejectedValue(new ContaNaoElegivel());
       await request(server).get('/internal/titan-bet/rodadas/r1/odds').expect(403);
+    });
+
+    it('o Closing Report publicado é de qualquer membro da guilda (RosterGuard, D-21)', async () => {
+      comSessao('social');
+      await request(server).get('/internal/titan-bet/rodadas/r1/closing').expect(200);
+      expect(closing.ultimo).toHaveBeenCalledWith('r1');
+
+      closing.ultimo.mockResolvedValue(null);
+      await request(server).get('/internal/titan-bet/rodadas/r1/closing').expect(404);
     });
 
     it('corpo fora do contrato é 400 antes do service', async () => {
