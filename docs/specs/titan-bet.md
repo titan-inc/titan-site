@@ -1116,19 +1116,27 @@ Nada de settlement automático baseado nessas leituras antes da comparação (D-
 Done e Healing de uma kill Mythic pública (report de outra guilda, fight 8, Belo'ren; as
 imagens ficam fora do repositório — têm nomes de jogadores), comparadas com a API:
 
-| Coluna da tela | Campo da API que reproduz                                                      | Resultado                                       |
-| -------------- | ------------------------------------------------------------------------------ | ----------------------------------------------- |
-| Amount (dano)  | `table(DamageDone).entries[].total` (pets somados)                             | **20 de 20** iguais                             |
-| DPS            | `total ÷ (fight.endTime − fight.startTime)` = `rankings(dps).amount`           | **20 de 20** iguais na 1ª casa decimal          |
-| Amount (cura)  | `table(Healing).entries[].total` — a tela com Healing + Absorbs + Pets ligados | **20 de 20** iguais                             |
-| HPS            | `total ÷ duração da luta` = `rankings(hps).amount`                             | **20 de 20** iguais na 1ª casa decimal          |
-| Parse %        | —                                                                              | **sem evidência**: as capturas não têm a coluna |
+| Coluna da tela | Campo da API que reproduz                                                                                       | Resultado                              |
+| -------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Amount (dano)  | `table(DamageDone).entries[].total` (pets somados)                                                              | **20 de 20** iguais                    |
+| DPS            | `total ÷ (fight.endTime − fight.startTime)` = `rankings(dps).amount`                                            | **20 de 20** iguais na 1ª casa decimal |
+| Amount (cura)  | `table(Healing).entries[].total` — a tela com Healing + Absorbs + Pets ligados                                  | **20 de 20** iguais                    |
+| HPS            | `total ÷ duração da luta` = `rankings(hps).amount`                                                              | **20 de 20** iguais na 1ª casa decimal |
+| Parse %        | `rankings(playerMetric: dps, compare: Rankings, timeframe: Today).rankPercent` — terceira captura, com a coluna | **20 de 20** iguais                    |
+| Ilvl %         | `bracketPercent` da mesma variante — **fora** pela D-43                                                         | 20 de 20 iguais                        |
 
-**Gate #1: DPS, HPS e cura validados.** A parte da OQ-25 sobre DPS/HPS está resolvida pela
-régua da D-47. **Parse % continua sem validação**: nessa kill, de junho, as variantes
-divergem muito (um jogador tem 96 em `Parses/Today`, 100 em `Parses/Historical` e 98 em
-`Rankings/Today`), e só a coluna da tela decide. Dispels: a amostra não tem ocorrência; o
+**Gate #1: DPS, HPS, cura e Parse % validados.** Parse % é a coluna da **esquerda** da
+tabela (decisão do produto; a da direita é o Ilvl %). Só `compare: Rankings` +
+`timeframe: Today` reproduz a coluna: numa kill de junho, `Parses/Today` erra em 16 de 20
+jogadores (um tem 98 na tela, 96 em `Parses/Today`, 100 em `Parses/Historical`). A hipótese
+anterior desta seção, `compare: Parses`, estava **errada** — registrado para ninguém
+repeti-la. `Today` é o valor de agora: lido no Auditar e congelado (D-43), ele é
+exatamente "o parse disponível quando o officer audita". Top HPS Parse usa a mesma
+variante com `playerMetric: hps` — a captura de Healing não tinha a coluna; a regra
+segue a mesma lógica, por indicação do produto. Dispels: a amostra não tem ocorrência; o
 mapeamento para a tabela é coberto por teste (D-47).
+
+**Gate #2 (First Death) continua pendente** da comparação com a aba Deaths.
 
 ### 15.1 Amostra
 
