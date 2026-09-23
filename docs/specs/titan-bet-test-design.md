@@ -965,3 +965,50 @@ officer/auditorias/:auditId/fontes/:session/escolher`. Contrato em
 `pnpm test:db` **198/198**; `pnpm test`: shared **341** (+4), api **781** (+38), web
 147; `api` lint, typecheck e build OK; `shared` typecheck OK; `format:check` OK; banco
 de dev com o mesmo hash.
+
+---
+
+## 18. Resultados — execução (23/09/2026)
+
+**Status: GREEN no domínio; T-F06 pendente.** Milestone "RED/GREEN Resultados" da §7.
+
+### 18.1 Testes e evidência
+
+| Testes                                                  | Onde                                    | Antes da implementação                                                       |
+| ------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------- |
+| T-F01–T-F05, T-P01–T-P05, T-W01–T-W04, e casos de borda | `src/titan-bet/resultados.spec.ts` — 29 | **`RED awaiting implementation seam`** — `Cannot find module './resultados'` |
+
+### 18.2 Implementação
+
+`src/titan-bet/resultados.ts`, domínio puro: `killDaSemana`, `resultadoTopMetrica`,
+`resultadoFirstDeathFarm`, `resultadoFirstDeathProgressao`, `killsDaSemana`,
+`weeklyVence`. Entradas já resolvidas (pulls com sessão do report, mortes por id do
+`Character`, métrica como número lido); saída `vencedores` ou **proposta** de `anulado`
+com `voidReason` (`sem_kill`, `sem_vencedor`, `sem_pull`) e a evidência de cada cálculo.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **Duas kills do mesmo boss na semana → `revisao`**, sem escolher (§7.2, anomalia). O
+   que o officer faz depois é a OQ-40 (T-A15, bloqueado).
+2. **Kill com candidatos, mas sem nenhum valor de candidato → `sem_vencedor`**, o mesmo
+   caminho de "sem vencedor → proposta de VOID" da §7.3.
+3. **A kill conta como try** no First Death de progressão — a §7.3 diz "todas as pulls
+   Mythic válidas do boss".
+
+### 18.3 T-F06 fica para quando o cálculo tiver fonte
+
+T-F06 ("valor de parse usado fica congelado") é de service + banco: precisa gravar
+`BetMarketResult*` com a evidência e de um passo de cálculo que lê as fights do WCL. Esse
+passo depende de decisões ainda abertas:
+
+- **OQ-25** — qual métrica e qual variante de parse; define o que o WCL é chamado para
+  ler e os campos da evidência da §15.10;
+- **OQ-34** (off-spec) e **OQ-47** (`K` ∩ encounters configurados);
+- **gates #1, #2 e #6 do M0**, manuais, antes de settlement automático.
+
+First Death e Weekly não dependem da OQ-25, mas gravar resultado de metade dos mercados
+com um modelo de evidência que a outra metade vai mudar é o retrabalho que a matriz evita.
+
+### 18.4 Resultado
+
+`pnpm test` api **810** (+29); `api` lint e typecheck OK.

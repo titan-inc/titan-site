@@ -1,0 +1,299 @@
+import {
+  killDaSemana,
+  killsDaSemana,
+  resultadoFirstDeathFarm,
+  resultadoFirstDeathProgressao,
+  resultadoTopMetrica,
+  weeklyVence,
+  type PullDaSemana,
+} from './resultados';
+
+/**
+ * Resultados semanais — domínio puro, logs fictícios (spec §7.3; D-05, D-06,
+ * D-13, D-14, D-15, D-16, D-19, D-23, D-24, D-29; R-20, R-27, R-28a).
+ * titan-bet-test-design.md §3.8.
+ *
+ * Os personagens chegam já resolvidos para o id do `Character`; quem não está
+ * no snapshot de candidatos é `outsider`. A métrica (DPS, HPS, dispels, parse)
+ * chega como número já lido — qual número é a OQ-25, não este módulo.
+ */
+
+const BOSS = 'boss-farm';
+const PROG = 'boss-prog';
+const CANDIDATOS = new Set(['A', 'B', 'C']);
+
+let relogio = 1_000_000;
+const pull = (over: Partial<PullDaSemana> = {}): PullDaSemana => ({
+  encounterId: BOSS,
+  session: 'terca',
+  difficulty: 5,
+  kill: false,
+  startTime: (relogio += 60_000),
+  deaths: [],
+  ...over,
+});
+
+describe('killDaSemana — a kill do boss farm, de terça ou de quinta', () => {
+  it('T-F01: kill só na quinta resolve o mercado pela quinta (D-29, R-22)', () => {
+    const quinta = pull({ session: 'quinta', kill: true });
+    const r = killDaSemana([pull(), pull(), quinta], BOSS);
+    expect(r).toEqual({ tipo: 'kill', pull: quinta });
+  });
+
+  it('kill na terça resolve pela terça', () => {
+    const terca = pull({ kill: true });
+    expect(killDaSemana([pull(), terca], BOSS)).toEqual({ tipo: 'kill', pull: terca });
+  });
+
+  it('kill em Heroic não é kill do Titan Bet: só Mythic (difficulty 5)', () => {
+    expect(killDaSemana([pull({ kill: true, difficulty: 4 })], BOSS)).toEqual({
+      tipo: 'sem_kill',
+    });
+  });
+
+  it('kill de report fora de terça/quinta não conta (D-19, D-23)', () => {
+    expect(killDaSemana([pull({ kill: true, session: null })], BOSS)).toEqual({
+      tipo: 'sem_kill',
+    });
+  });
+
+  it('kill de outro boss não é deste mercado', () => {
+    expect(killDaSemana([pull({ kill: true, encounterId: PROG })], BOSS)).toEqual({
+      tipo: 'sem_kill',
+    });
+  });
+
+  it('duas kills do mesmo boss contrariam o lockout: pede revisão, não escolhe (OQ-40)', () => {
+    const r = killDaSemana([pull({ kill: true }), pull({ kill: true, session: 'quinta' })], BOSS);
+    expect(r.tipo).toBe('revisao');
+  });
+});
+
+describe('resultadoTopMetrica — Top DPS / HPS / Dispels / Parse %', () => {
+  const kill = { tipo: 'kill' as const, pull: pull({ kill: true }) };
+
+  it('T-F02: só candidato vence — o maior DPS de outsider não conta (D-13)', () => {
+    const r = resultadoTopMetrica(
+      kill,
+      [
+        { characterId: 'outsider', valor: 999 },
+        { characterId: 'A', valor: 500 },
+        { characterId: 'B', valor: 700 },
+      ],
+      CANDIDATOS,
+    );
+    expect(r).toMatchObject({ outcome: 'vencedores', vencedores: ['B'] });
+  });
+
+  it('candidato ausente da luta não produz métrica e não vence', () => {
+    const r = resultadoTopMetrica(kill, [{ characterId: 'A', valor: 10 }], CANDIDATOS);
+    expect(r).toMatchObject({ outcome: 'vencedores', vencedores: ['A'] });
+  });
+
+  it('T-F03: parse ausente não é zero — o candidato fica fora, não em último', () => {
+    const r = resultadoTopMetrica(
+      kill,
+      [
+        { characterId: 'A', valor: null },
+        { characterId: 'B', valor: 0 },
+      ],
+      CANDIDATOS,
+    );
+    expect(r).toMatchObject({ outcome: 'vencedores', vencedores: ['B'] });
+    expect(r.evidencia.valores).toEqual([{ characterId: 'B', valor: 0 }]);
+  });
+
+  it('empate → todos vencem (R-20)', () => {
+    const r = resultadoTopMetrica(
+      kill,
+      [
+        { characterId: 'A', valor: 800 },
+        { characterId: 'B', valor: 800 },
+        { characterId: 'C', valor: 100 },
+      ],
+      CANDIDATOS,
+    );
+    expect(r).toMatchObject({ outcome: 'vencedores', vencedores: ['A', 'B'] });
+  });
+
+  it('T-F04: sem kill na semana → proposta de VOID, com motivo (D-06, D-16)', () => {
+    const r = resultadoTopMetrica({ tipo: 'sem_kill' }, [], CANDIDATOS);
+    expect(r).toMatchObject({ outcome: 'anulado', voidReason: 'sem_kill' });
+  });
+
+  it('kill sem nenhum candidato com valor → proposta de VOID: sem vencedor', () => {
+    const r = resultadoTopMetrica(kill, [{ characterId: 'outsider', valor: 1 }], CANDIDATOS);
+    expect(r).toMatchObject({ outcome: 'anulado', voidReason: 'sem_vencedor' });
+  });
+
+  it('a evidência guarda a pull usada e os valores dos candidatos (§15.10)', () => {
+    const r = resultadoTopMetrica(kill, [{ characterId: 'A', valor: 3 }], CANDIDATOS);
+    expect(r.evidencia).toEqual({
+      pull: { session: 'terca', startTime: kill.pull.startTime },
+      valores: [{ characterId: 'A', valor: 3 }],
+    });
+  });
+});
+
+describe('resultadoFirstDeathFarm — na luta da kill (D-13, D-14)', () => {
+  it('T-F05: pula outsider; empate na mesma ms conta todos', () => {
+    const kill = {
+      tipo: 'kill' as const,
+      pull: pull({
+        kill: true,
+        deaths: [
+          { characterId: 'outsider', timestamp: 100 },
+          { characterId: 'A', timestamp: 200 },
+          { characterId: 'B', timestamp: 200 },
+          { characterId: 'C', timestamp: 300 },
+        ],
+      }),
+    };
+    expect(resultadoFirstDeathFarm(kill, CANDIDATOS)).toMatchObject({
+      outcome: 'vencedores',
+      vencedores: ['A', 'B'],
+    });
+  });
+
+  it('a ordem é do timestamp, não da lista que o WCL devolveu', () => {
+    const kill = {
+      tipo: 'kill' as const,
+      pull: pull({
+        kill: true,
+        deaths: [
+          { characterId: 'C', timestamp: 900 },
+          { characterId: 'B', timestamp: 400 },
+        ],
+      }),
+    };
+    expect(resultadoFirstDeathFarm(kill, CANDIDATOS)).toMatchObject({ vencedores: ['B'] });
+  });
+
+  it('sem kill → proposta de VOID; kill sem morte de candidato → sem vencedor', () => {
+    expect(resultadoFirstDeathFarm({ tipo: 'sem_kill' }, CANDIDATOS)).toMatchObject({
+      outcome: 'anulado',
+      voidReason: 'sem_kill',
+    });
+    const limpa = { tipo: 'kill' as const, pull: pull({ kill: true }) };
+    expect(resultadoFirstDeathFarm(limpa, CANDIDATOS)).toMatchObject({
+      outcome: 'anulado',
+      voidReason: 'sem_vencedor',
+    });
+  });
+});
+
+describe('resultadoFirstDeathProgressao — todas as tries Mythic da semana (D-29)', () => {
+  const morreu = (...ids: string[]) => ids.map((characterId, i) => ({ characterId, timestamp: i }));
+  const tryDe = (session: 'terca' | 'quinta', primeiro: string) =>
+    pull({ encounterId: PROG, session, deaths: [{ characterId: primeiro, timestamp: 1 }] });
+
+  it('T-P01: soma terça + quinta — terça A 3 / B 2, quinta A 1 / B 3 → B vence com 5', () => {
+    const pulls = [
+      ...['A', 'A', 'A', 'B', 'B'].map((id) => tryDe('terca', id)),
+      ...['A', 'B', 'B', 'B'].map((id) => tryDe('quinta', id)),
+    ];
+    const r = resultadoFirstDeathProgressao(pulls, PROG, CANDIDATOS);
+    expect(r).toMatchObject({ outcome: 'vencedores', vencedores: ['B'] });
+    expect(r.evidencia.somas).toEqual({ A: 4, B: 5 });
+  });
+
+  it('T-P02: por try, pula outsider; empate exato conta todos — cada um ganha 1', () => {
+    const t = pull({
+      encounterId: PROG,
+      deaths: [
+        { characterId: 'outsider', timestamp: 5 },
+        { characterId: 'A', timestamp: 9 },
+        { characterId: 'B', timestamp: 9 },
+      ],
+    });
+    const r = resultadoFirstDeathProgressao([t], PROG, CANDIDATOS);
+    expect(r.evidencia.somas).toEqual({ A: 1, B: 1 });
+  });
+
+  it('T-P03: empate na soma → vários vencedores (R-27)', () => {
+    const pulls = [...['A', 'A', 'B', 'B'].map((id) => tryDe('terca', id))];
+    expect(resultadoFirstDeathProgressao(pulls, PROG, CANDIDATOS)).toMatchObject({
+      vencedores: ['A', 'B'],
+    });
+  });
+
+  it('T-P04: a evidência guarda cada try, a sessão e o(s) First Death (R-28a)', () => {
+    const t1 = tryDe('terca', 'A');
+    const t2 = pull({ encounterId: PROG, session: 'quinta', deaths: morreu('outsider') });
+    const r = resultadoFirstDeathProgressao([t1, t2], PROG, CANDIDATOS);
+    expect(r.evidencia.tries).toEqual([
+      { session: 'terca', startTime: t1.startTime, primeiraMorte: ['A'] },
+      { session: 'quinta', startTime: t2.startTime, primeiraMorte: [] },
+    ]);
+  });
+
+  it('só Mythic e só terça/quinta entram; a kill também é uma try', () => {
+    const pulls = [
+      tryDe('terca', 'A'),
+      pull({ encounterId: PROG, difficulty: 4, deaths: morreu('B') }),
+      pull({ encounterId: PROG, session: null, deaths: morreu('B') }),
+      pull({ encounterId: PROG, session: 'quinta', kill: true, deaths: morreu('C') }),
+    ];
+    const r = resultadoFirstDeathProgressao(pulls, PROG, CANDIDATOS);
+    expect(r.evidencia.somas).toEqual({ A: 1, C: 1 });
+  });
+
+  it('T-P05: nenhuma pull válida na semana → proposta de VOID', () => {
+    expect(resultadoFirstDeathProgressao([pull()], PROG, CANDIDATOS)).toMatchObject({
+      outcome: 'anulado',
+      voidReason: 'sem_pull',
+    });
+  });
+
+  it('pulls sem nenhuma morte de candidato → sem vencedor', () => {
+    const r = resultadoFirstDeathProgressao(
+      [pull({ encounterId: PROG, deaths: morreu('outsider') })],
+      PROG,
+      CANDIDATOS,
+    );
+    expect(r).toMatchObject({ outcome: 'anulado', voidReason: 'sem_vencedor' });
+  });
+});
+
+describe('Weekly Progression (D-05, D-15, D-24)', () => {
+  const RESOLVIDAS = { terca: true, quinta: true };
+
+  it('K = encounters Mythic mortos nos reports oficiais da semana', () => {
+    const pulls = [
+      pull({ encounterId: 'X', kill: true }),
+      pull({ encounterId: 'Y', session: 'quinta', kill: true }),
+      pull({ encounterId: 'Z' }),
+      pull({ encounterId: 'H', kill: true, difficulty: 4 }),
+    ];
+    expect(killsDaSemana(pulls, RESOLVIDAS)).toEqual({ tipo: 'K', encounterIds: ['X', 'Y'] });
+  });
+
+  it('T-W01: vence só com o conjunto igual', () => {
+    expect(weeklyVence(['A', 'B'], ['B', 'A'])).toBe(true);
+    expect(weeklyVence(['A'], ['A', 'B'])).toBe(false);
+    expect(weeklyVence(['A', 'B', 'C'], ['A', 'B'])).toBe(false);
+  });
+
+  it('T-W02: `{}` vence só sem kill', () => {
+    expect(weeklyVence([], [])).toBe(true);
+    expect(weeklyVence([], ['A'])).toBe(false);
+  });
+
+  it('T-W03: sessão sem fonte deixa K indeterminado — nunca `{}`', () => {
+    expect(killsDaSemana([], { terca: true, quinta: false })).toEqual({
+      tipo: 'indeterminado',
+    });
+    expect(killsDaSemana([pull({ kill: true })], { terca: false, quinta: true })).toEqual({
+      tipo: 'indeterminado',
+    });
+  });
+
+  it('com as duas resolvidas e nenhuma kill, K é `{}` — afirmado, não suposto', () => {
+    expect(killsDaSemana([pull()], RESOLVIDAS)).toEqual({ tipo: 'K', encounterIds: [] });
+  });
+
+  it('T-W04: kill fora de terça/quinta não entra em K (D-19, D-23)', () => {
+    const sabado = pull({ encounterId: 'X', kill: true, session: null });
+    expect(killsDaSemana([sabado], RESOLVIDAS)).toEqual({ tipo: 'K', encounterIds: [] });
+  });
+});
