@@ -329,6 +329,7 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | D-43 | OQ-25 (parte parse) | **Parse % é exatamente o valor da coluna "Parse %" da tabela do Warcraft Logs** — se a tela mostra `98`, o valor é `98`. Nunca o `ilvl %` (o `bracketPercent`). Qual campo/variante da API reproduz a coluna é verificação técnica (gate #1, §14). O valor que vale é o disponível **no momento em que o officer dispara Auditar**, e fica congelado na evidência: recálculo ou mudança posterior do WCL não altera resultado já auditado.                                                                                                                                             |
 | D-44 | OQ-57               | **Mercado com resultado válido e nenhuma aposta vencedora (`W = 0`) não é `VOID` e não restitui.** Os 10% (`G₀`) continuam do Guild Bank. Os 90% (`P`) desse mercado são **distribuídos igualmente entre os demais mercados premiáveis da mesma rodada**, somando ao prize pool deles; o resto indivisível em gold vai para o Guild Bank (regra geral do arredondamento, D-10). **Premiável** = mercado com resultado `vencedores` e `W > 0`; `VOID` não recebe. Se **não existir nenhum outro mercado premiável**, o caso **não tem regra**: o settlement para e pede decisão (§8.6). |
 | D-45 | —                   | **Preparar a semana é do Officer Panel.** Antes do Ready, o officer cria a `BetRound`, escolhe os encounters da semana (catálogo do WCL, D-22), classifica cada um como farm ou progressão, escolhe os mercados disponíveis e marca quais encounters participam da Weekly Progression. **Candidatos e bettors nunca são escolhidos à mão:** o Ready continua capturando e congelando sozinho o snapshot de bettors, o do Titan Roster com as roles e a configuração preparada (D-31, D-32, D-33, D-38).                                                                                |
+| D-47 | OQ-25 (métricas)    | **Toda métrica de farm é o valor que o WCL exibe na tabela** — a UI é a referência funcional. DPS = coluna DPS de Damage Done; HPS e cura = coluna HPS/Amount de Healing, **com** absorb e pets; Dispels = o valor da tabela de Dispels. O valor lido no Auditar é congelado como evidência e nunca recalculado (D-43).                                                                                                                                                                                                                                                                |
 | D-46 | —                   | **M0 #6 deixa de ser gate.** Não se espera o parse estabilizar: vale o do Auditar (D-43). #1 e #2 continuam gates, validados contra logs reais da Titan; divergência entre a leitura da API e a tela do WCL para a implementação do settlement automático baseado nela.                                                                                                                                                                                                                                                                                                                |
 
 ---
@@ -1110,6 +1111,24 @@ Parses` — **a confirmar na tela**, jogador a jogador, nos que distinguem as va
   morrendo duas vezes** (battle res) — a primeira morte é a que conta.
 
 Nada de settlement automático baseado nessas leituras antes da comparação (D-46).
+
+**Evidência manual da tela (23/09/2026).** Duas capturas da UI do WCL, das tabelas Damage
+Done e Healing de uma kill Mythic pública (report de outra guilda, fight 8, Belo'ren; as
+imagens ficam fora do repositório — têm nomes de jogadores), comparadas com a API:
+
+| Coluna da tela | Campo da API que reproduz                                                      | Resultado                                       |
+| -------------- | ------------------------------------------------------------------------------ | ----------------------------------------------- |
+| Amount (dano)  | `table(DamageDone).entries[].total` (pets somados)                             | **20 de 20** iguais                             |
+| DPS            | `total ÷ (fight.endTime − fight.startTime)` = `rankings(dps).amount`           | **20 de 20** iguais na 1ª casa decimal          |
+| Amount (cura)  | `table(Healing).entries[].total` — a tela com Healing + Absorbs + Pets ligados | **20 de 20** iguais                             |
+| HPS            | `total ÷ duração da luta` = `rankings(hps).amount`                             | **20 de 20** iguais na 1ª casa decimal          |
+| Parse %        | —                                                                              | **sem evidência**: as capturas não têm a coluna |
+
+**Gate #1: DPS, HPS e cura validados.** A parte da OQ-25 sobre DPS/HPS está resolvida pela
+régua da D-47. **Parse % continua sem validação**: nessa kill, de junho, as variantes
+divergem muito (um jogador tem 96 em `Parses/Today`, 100 em `Parses/Historical` e 98 em
+`Rankings/Today`), e só a coluna da tela decide. Dispels: a amostra não tem ocorrência; o
+mapeamento para a tabela é coberto por teste (D-47).
 
 ### 15.1 Amostra
 
