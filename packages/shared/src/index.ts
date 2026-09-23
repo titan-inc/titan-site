@@ -29,5 +29,6 @@ export * from './rc-export.js';
 export * from './roster.js';
 export * from './session-paste.js';
 export * from './titan-bet/betting.js';
+export * from './titan-bet/config.js';
 export * from './titan-bet/auditoria.js';
 export * from './titan-bet/published.js';

@@ -2228,6 +2228,10 @@ model GoldLedgerEntry {
 /// não deixa nenhum outro rastro.
 enum BetEventType {
   ready_falhou
+  /// Rodada criada pelo officer (D-45) — a rodada não tem coluna de autor.
+  rodada_criada
+  /// Preparação da semana salva (D-45): o que foi criado, alterado e removido.
+  configuracao_salva
 }
 
 /// Trilha de auditoria do Titan Bet (§16.8), no molde do LootSessionEvent.

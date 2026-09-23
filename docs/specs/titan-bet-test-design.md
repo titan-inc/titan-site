@@ -1099,3 +1099,57 @@ guilda e repartem o `P` igualmente entre os premiáveis; `VOID` restitui. Órfã
 parar e consultar. Órfão com `P = 0` não tem o que repartir e não trava.
 
 `pnpm test` api **830** (+9); lint e typecheck OK.
+
+---
+
+## 21. Preparação da semana — execução (23/09/2026)
+
+**Status: GREEN.** Milestone "RED/GREEN Preparação" (D-45), T-G01–T-G11.
+
+### 21.1 Testes e evidência
+
+| Testes                  | Onde                                               | Antes da implementação                                                                                  |
+| ----------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| T-G01 (calendário)      | `src/titan-bet/calendario.spec.ts` — 6             | **`RED awaiting implementation seam`** — `Cannot find module './calendario'`                            |
+| T-G04, T-G09 (contrato) | `packages/shared/src/titan-bet/config.spec.ts` — 8 | **awaiting seam** — `Cannot find module './config.js'`                                                  |
+| T-G01–T-G08, T-G10      | `test/db/titan-bet/preparacao.db-spec.ts` — 17     | **awaiting seam** — `Cannot find module '…/preparacao.service'`                                         |
+| T-G11                   | `src/titan-bet/titan-bet.controller.spec.ts` — +14 | **awaiting seam** — `Cannot find module './preparacao.service'`; as rotas nasceram com o `OfficerGuard` |
+
+Um ajuste de teste depois do RED, registrado: em T-G01 o formato do `Intl` em Node é
+`Tue 12:00`, sem a vírgula que o teste esperava. A leitura passou a ser por partes (dia
+da semana, hora, minuto, segundo) — a mesma asserção, sem afrouxar. Depois do GREEN,
+um teste a mais: quem cria a rodada fica no `BetEvent` `rodada_criada` (não conta como
+RED; o lint mostrou que o officer chegava ao `criar` e não era registrado).
+
+### 21.2 Implementação
+
+- `src/titan-bet/calendario.ts` — `proximaRodada`: cutoff na próxima terça 12:00 local,
+  abertura na sexta 00:00 antes dele; fuso medido no instante (horário de verão entra).
+- `packages/shared/src/titan-bet/config.ts` — `prepararRodadaSchema` (estrito, sem
+  pessoas; progressão só com First Death; boss na Weekly exige a Weekly),
+  `preparacaoDaRodadaSchema`, `catalogoDeRaidSchema`.
+- `src/titan-bet/preparacao.service.ts` — `criar` (period = corrente da Blizzard + 1),
+  `catalogo`, `ver`, `salvar` declarativo: compara com o que existe, aplica só a
+  diferença e grava um `BetEvent` `configuracao_salva` com encounters e mercados
+  criados, alterados e removidos; sem mudança, nada é escrito.
+- Migration `20260923270000_titan_bet_evento_configuracao` — `rodada_criada` e
+  `configuracao_salva` no `BetEventType`.
+- Rotas (`OfficerGuard`): `POST officer/rodadas`, `GET officer/catalogo`, `GET` e `PUT
+officer/rodadas/:roundId/preparacao`; quatro requests no `yaak/`.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **`period` = period corrente da Blizzard + 1**: o cutoff é o próximo reset, e é nele
+   que o period da rodada começa. Entre seasons (Blizzard sem season corrente) a criação
+   falha com o erro da Blizzard.
+2. **Troca de track apaga e recria os mercados do boss** — a FK composta propaga o track e
+   o CHECK recusaria um Top DPS num boss que virou progressão. O evento registra a
+   mudança lógica, não o apaga-e-recria.
+3. **Boss marcado na Weekly com a Weekly desligada é recusado** no contrato e no service —
+   estado sem sentido.
+4. **O job `bet-abre-rodada` da §9 não foi feito:** a D-45 pede o fluxo no Officer Panel.
+
+### 21.3 Resultado
+
+`pnpm test:db` **216/216**; `pnpm test`: shared **349** (+8), api **850** (+20), web
+147; `api` lint, typecheck e build OK; `format:check` OK; banco de dev com o mesmo hash.

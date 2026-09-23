@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetRodadaCriar1
+createdAt: 2026-09-23T20:00:00.000000
+updatedAt: 2026-09-23T20:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'OfficerGuard. Cria a rodada da próxima semana, vazia, em PREPARATION (D-45): period = o corrente da Blizzard + 1, cutoff na próxima terça 12:00 no fuso da guilda, abertura na sexta 00:00 antes dele. 201 com roundId; 409 se o period já tem rodada. Chama a Blizzard de verdade.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: POST
+name: 'Criar rodada da semana (officer)'
+sortPriority: 500
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

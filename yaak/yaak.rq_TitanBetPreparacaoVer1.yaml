@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetPreparacaoVer1
+createdAt: 2026-09-23T20:00:00.000000
+updatedAt: 2026-09-23T20:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'OfficerGuard. A rodada com a configuração preparada: encounters, track, mercados de cada boss e a Weekly. 404 se a rodada não existe.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Ver preparação (officer)'
+sortPriority: 700
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas/:roundId/preparacao
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

@@ -8,6 +8,7 @@ import type { UserWithCharacters } from '../auth/auth.repository';
 import { ApostaRecusada, ContaNaoElegivel } from './apostas.service';
 import { AuditoriaRecusada } from './auditoria.service';
 import { DepositoRecusado } from './deposito.service';
+import { PreparacaoInvalida, PreparacaoRecusada } from './preparacao.service';
 import { ReadyRecusado } from './ready.service';
 
 /**
@@ -25,20 +26,24 @@ export function contaDe(req: Request): { userId: string; battletag: string } {
  * Recusa de domínio vira status HTTP, com o motivo; o resto sobe como está.
  *
  * - conta fora do snapshot de bettors → 403: é permissão, não forma (D-38);
- * - aposta recusada → 422: o pedido é bem formado, a regra não deixa;
- * - Ready, depósito e Auditar recusados → 409: o estado da rodada, do slip ou
- *   da auditoria não permite.
+ * - aposta recusada e preparação inválida → 422: o pedido é bem formado, a
+ *   regra não deixa;
+ * - Ready, depósito, Auditar e preparação recusados → 409: o estado da rodada,
+ *   do slip ou da auditoria não permite.
  */
 export async function comoHttp<T>(operacao: () => Promise<T>): Promise<T> {
   try {
     return await operacao();
   } catch (erro: unknown) {
     if (erro instanceof ContaNaoElegivel) throw new ForbiddenException(erro.message);
-    if (erro instanceof ApostaRecusada) throw new UnprocessableEntityException(erro.message);
+    if (erro instanceof ApostaRecusada || erro instanceof PreparacaoInvalida) {
+      throw new UnprocessableEntityException(erro.message);
+    }
     if (
       erro instanceof ReadyRecusado ||
       erro instanceof DepositoRecusado ||
-      erro instanceof AuditoriaRecusada
+      erro instanceof AuditoriaRecusada ||
+      erro instanceof PreparacaoRecusada
     ) {
       throw new ConflictException(erro.message);
     }

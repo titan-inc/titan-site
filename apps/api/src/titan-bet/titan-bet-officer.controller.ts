@@ -6,16 +6,21 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   escolherFonteSchema,
+  prepararRodadaSchema,
   recusarDepositoSchema,
   sessaoDaAuditoriaSchema,
   type AuditoriaCorrente,
+  type CatalogoDeRaid,
   type DepositosPendentes,
   type EscolherFonte,
+  type PreparacaoDaRodada,
+  type PrepararRodada,
   type RecusarDeposito,
   type SessaoDaAuditoria,
 } from '@titan/shared';
@@ -25,10 +30,12 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuditoriaService } from './auditoria.service';
 import { DepositoService } from './deposito.service';
 import { comoHttp, contaDe } from './http';
+import { PreparacaoService } from './preparacao.service';
 import { ReadyService } from './ready.service';
 
 /**
- * O Officer Panel do Titan Bet (D-36; spec §16.9): Ready, depósitos e Auditar.
+ * O Officer Panel do Titan Bet (D-36; spec §16.9): preparação da semana,
+ * Ready, depósitos e Auditar.
  *
  * `OfficerGuard` no **controller**, não por rota: toda rota daqui é de officer,
  * e uma rota nova que esquecesse o decorator seria o Officer Panel aberto a
@@ -45,7 +52,40 @@ export class TitanBetOfficerController {
     private readonly ready: ReadyService,
     private readonly deposito: DepositoService,
     private readonly auditoria: AuditoriaService,
+    private readonly preparacao: PreparacaoService,
   ) {}
+
+  /** Cria a rodada da próxima semana, vazia, em PREPARATION (D-45). */
+  @Post('rodadas')
+  criarRodada(@Req() req: Request): Promise<{ roundId: string }> {
+    return comoHttp(() => this.preparacao.criar(contaDe(req)));
+  }
+
+  /** O catálogo de raid do WCL, de onde se escolhem os encounters (D-22). */
+  @Get('catalogo')
+  catalogo(): Promise<CatalogoDeRaid> {
+    return this.preparacao.catalogo();
+  }
+
+  @Get('rodadas/:roundId/preparacao')
+  async verPreparacao(@Param('roundId') roundId: string): Promise<PreparacaoDaRodada> {
+    const vista = await this.preparacao.ver(roundId);
+    if (!vista) throw new NotFoundException('A rodada não existe');
+    return vista;
+  }
+
+  /**
+   * A configuração inteira da semana, como está agora (D-45): encounters, track,
+   * mercados e Weekly. Pessoas não entram — são do Ready.
+   */
+  @Put('rodadas/:roundId/preparacao')
+  salvarPreparacao(
+    @Param('roundId') roundId: string,
+    @Body(new ZodValidationPipe(prepararRodadaSchema)) body: PrepararRodada,
+    @Req() req: Request,
+  ): Promise<PreparacaoDaRodada> {
+    return comoHttp(() => this.preparacao.salvar(roundId, body, contaDe(req)));
+  }
 
   /** Ready (D-31): congela a configuração e abre as apostas. */
   @Post('rodadas/:roundId/ready')

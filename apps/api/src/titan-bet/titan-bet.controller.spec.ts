@@ -9,6 +9,7 @@ import { ApostaRecusada, ApostasService, ContaNaoElegivel } from './apostas.serv
 import { AuditoriaRecusada, AuditoriaService } from './auditoria.service';
 import { DepositoRecusado, DepositoService } from './deposito.service';
 import { OddsService } from './odds.service';
+import { PreparacaoRecusada, PreparacaoService } from './preparacao.service';
 import { ReadyRecusado, ReadyService } from './ready.service';
 import { TitanBetMemberController } from './titan-bet-member.controller';
 import { TitanBetOfficerController } from './titan-bet-officer.controller';
@@ -28,6 +29,10 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/officer/rodadas/r1/depositos'],
   ['post', '/internal/titan-bet/officer/slips/s1/confirmar'],
   ['post', '/internal/titan-bet/officer/slips/s1/recusar', { motivo: 'valor diferente' }],
+  ['post', '/internal/titan-bet/officer/rodadas'],
+  ['get', '/internal/titan-bet/officer/catalogo'],
+  ['get', '/internal/titan-bet/officer/rodadas/r1/preparacao'],
+  ['put', '/internal/titan-bet/officer/rodadas/r1/preparacao', { weekly: false, encounters: [] }],
   ['post', '/internal/titan-bet/officer/rodadas/r1/auditar'],
   ['get', '/internal/titan-bet/officer/rodadas/r1/auditoria'],
   [
@@ -59,6 +64,7 @@ describe('Titan Bet — autorização das rotas', () => {
   const apostas = { meuSlip: jest.fn(), salvar: jest.fn(), submeter: jest.fn() };
   const odds = { daRodada: jest.fn() };
   const auditoria = { auditar: jest.fn(), corrente: jest.fn(), escolherFonte: jest.fn() };
+  const preparacao = { criar: jest.fn(), catalogo: jest.fn(), ver: jest.fn(), salvar: jest.fn() };
   const deposito = {
     pendentes: jest.fn(),
     confirmar: jest.fn(),
@@ -77,6 +83,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: DepositoService, useValue: deposito },
         { provide: OddsService, useValue: odds },
         { provide: AuditoriaService, useValue: auditoria },
+        { provide: PreparacaoService, useValue: preparacao },
       ],
     }).compile();
 
@@ -106,6 +113,10 @@ describe('Titan Bet — autorização das rotas', () => {
     auditoria.auditar.mockResolvedValue({ auditId: 'a1' });
     auditoria.corrente.mockResolvedValue(null);
     auditoria.escolherFonte.mockResolvedValue(undefined);
+    preparacao.criar.mockResolvedValue({ roundId: 'r1' });
+    preparacao.catalogo.mockResolvedValue({ zonas: [] });
+    preparacao.ver.mockResolvedValue(null);
+    preparacao.salvar.mockResolvedValue({ roundId: 'r1' });
     deposito.confirmar.mockResolvedValue(undefined);
     deposito.recusar.mockResolvedValue(undefined);
   });
@@ -121,7 +132,7 @@ describe('Titan Bet — autorização das rotas', () => {
   }
 
   function nenhumServiceChamado() {
-    for (const fake of [ready, apostas, deposito, odds, auditoria]) {
+    for (const fake of [ready, apostas, deposito, odds, auditoria, preparacao]) {
       for (const fn of Object.values(fake)) expect(fn).not.toHaveBeenCalled();
     }
   }
@@ -233,6 +244,43 @@ describe('Titan Bet — autorização das rotas', () => {
         .post('/internal/titan-bet/officer/rodadas/r1/auditar')
         .expect(409);
       expect(JSON.stringify(r.body)).toContain('o cutoff não passou');
+    });
+
+    it('T-G11 — criar, ver o catálogo, ver e salvar a preparação, com o officer da sessão', async () => {
+      comSessao('officer');
+      const officer = { userId: 'u1', battletag: 'Conta#1234' };
+
+      const criada = await request(server).post('/internal/titan-bet/officer/rodadas').expect(201);
+      expect(criada.body).toEqual({ roundId: 'r1' });
+      expect(preparacao.criar).toHaveBeenCalledWith(officer);
+
+      await request(server).get('/internal/titan-bet/officer/catalogo').expect(200);
+      await request(server).get('/internal/titan-bet/officer/rodadas/r1/preparacao').expect(404);
+      expect(preparacao.ver).toHaveBeenCalledWith('r1');
+
+      const corpo = {
+        weekly: false,
+        encounters: [
+          { encounterId: 7, track: 'farm', inWeeklyProgression: false, mercados: ['top_dps'] },
+        ],
+      };
+      await request(server)
+        .put('/internal/titan-bet/officer/rodadas/r1/preparacao')
+        .send(corpo)
+        .expect(200);
+      expect(preparacao.salvar).toHaveBeenCalledWith('r1', corpo, officer);
+    });
+
+    it('preparação fora do contrato é 400; recusada pelo estado da rodada é 409', async () => {
+      comSessao('officer');
+      await request(server)
+        .put('/internal/titan-bet/officer/rodadas/r1/preparacao')
+        .send({ weekly: false, encounters: [], candidatos: ['c1'] })
+        .expect(400);
+      expect(preparacao.salvar).not.toHaveBeenCalled();
+
+      preparacao.criar.mockRejectedValue(new PreparacaoRecusada('já existe'));
+      await request(server).post('/internal/titan-bet/officer/rodadas').expect(409);
     });
 
     it('recusar sem motivo é 400 antes do service (D-34)', async () => {

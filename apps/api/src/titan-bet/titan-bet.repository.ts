@@ -3,6 +3,7 @@ import type {
   BetAuditSession,
   BetAuditStatus,
   BetCandidateRole,
+  BetEncounterTrack,
   BetEventType,
   BetMarketKind,
   BetSlipStatus,
@@ -592,6 +593,138 @@ export class TitanBetRepository {
     });
   }
 
+  /**
+   * Cria a rodada em PREPARATION, sem encounter nem mercado (D-45). `null`
+   * quando o period já tem rodada — o unique `period` decide, não uma leitura
+   * antes.
+   */
+  async criarRodada(r: {
+    period: number;
+    seasonId: number | null;
+    opensAt: Date;
+    cutoffAt: Date;
+    officer: { userId: string; battletag: string };
+  }): Promise<{ roundId: string } | null> {
+    const { officer, ...dados } = r;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const rodada = await tx.betRound.create({ data: dados, select: { id: true } });
+        // A rodada não tem coluna de autor; quem criou fica no evento (D-11).
+        await tx.betEvent.create({
+          data: {
+            roundId: rodada.id,
+            type: 'rodada_criada',
+            actorUserId: officer.userId,
+            actorBattletag: officer.battletag,
+            payload: { period: dados.period },
+          },
+        });
+        return { roundId: rodada.id };
+      });
+    } catch (erro: unknown) {
+      if ((erro as { code?: string }).code === 'P2002') return null;
+      throw erro;
+    }
+  }
+
+  /** A rodada com a configuração preparada, para a preparação e para a vista do officer. */
+  rodadaEmPreparacao(roundId: string) {
+    return this.prisma.betRound.findUnique({
+      where: { id: roundId },
+      select: {
+        id: true,
+        period: true,
+        opensAt: true,
+        cutoffAt: true,
+        readyAt: true,
+        encounters: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            encounterId: true,
+            encounterName: true,
+            zoneName: true,
+            track: true,
+            inWeeklyProgression: true,
+            markets: { orderBy: { createdAt: 'asc' }, select: { id: true, kind: true } },
+          },
+        },
+        markets: {
+          where: { kind: 'weekly_progression' },
+          select: { id: true },
+        },
+      },
+    });
+  }
+
+  /**
+   * Aplica o plano de preparação numa transação (D-45), com o `BetEvent` do que
+   * mudou. A ordem importa: mercados saem antes de o encounter mudar de track —
+   * a FK composta propaga o track para eles, e o CHECK de progressão recusaria
+   * um Top DPS num boss que virou progressão.
+   */
+  async aplicarPreparacao(p: PlanoDePreparacao): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      if (p.removerMercados.length > 0) {
+        await tx.betMarket.deleteMany({ where: { id: { in: p.removerMercados } } });
+      }
+      if (p.removerEncounters.length > 0) {
+        await tx.betRoundEncounter.deleteMany({ where: { id: { in: p.removerEncounters } } });
+      }
+      for (const e of p.alterarEncounters) {
+        await tx.betRoundEncounter.update({
+          where: { id: e.id },
+          data: {
+            track: e.track,
+            inWeeklyProgression: e.inWeeklyProgression,
+            updatedByUserId: p.officer.userId,
+            updatedByBattletag: p.officer.battletag,
+          },
+        });
+      }
+      const idPorEncounter = new Map(p.encountersExistentes);
+      for (const e of p.criarEncounters) {
+        const criado = await tx.betRoundEncounter.create({
+          data: {
+            roundId: p.roundId,
+            encounterId: e.encounterId,
+            encounterName: e.encounterName,
+            zoneName: e.zoneName,
+            track: e.track,
+            inWeeklyProgression: e.inWeeklyProgression,
+            createdByUserId: p.officer.userId,
+            createdByBattletag: p.officer.battletag,
+          },
+          select: { id: true },
+        });
+        idPorEncounter.set(e.encounterId, criado.id);
+      }
+      for (const m of p.criarMercados) {
+        await tx.betMarket.create({
+          data: {
+            roundId: p.roundId,
+            kind: m.kind,
+            roundEncounterId: m.encounterId === null ? null : idPorEncounter.get(m.encounterId)!,
+            track: m.track,
+            createdByUserId: p.officer.userId,
+            createdByBattletag: p.officer.battletag,
+          },
+        });
+      }
+      if (p.evento) {
+        await tx.betEvent.create({
+          data: {
+            roundId: p.roundId,
+            type: 'configuracao_salva',
+            actorUserId: p.officer.userId,
+            actorBattletag: p.officer.battletag,
+            payload: p.evento,
+          },
+        });
+      }
+    });
+  }
+
   private async travarSlip(tx: Prisma.TransactionClient, slipId: string) {
     const [slip] = await tx.$queryRaw<
       Array<{ roundId: string; status: BetSlipStatus; expectedTotal: number | null }>
@@ -650,4 +783,34 @@ function referenciaDoReport(report: ReportGravado | null) {
     reportRevision: report?.revision ?? null,
     reportStartTime: report ? new Date(report.startTime) : null,
   };
+}
+
+/** O que a preparação da semana muda, já decidido pelo service (D-45). */
+export interface PlanoDePreparacao {
+  roundId: string;
+  officer: { userId: string; battletag: string };
+  removerMercados: string[];
+  removerEncounters: string[];
+  alterarEncounters: Array<{
+    id: string;
+    track: BetEncounterTrack;
+    inWeeklyProgression: boolean;
+  }>;
+  /** encounterId do WCL → id do `BetRoundEncounter`, dos que ficam. */
+  encountersExistentes: Array<[number, string]>;
+  criarEncounters: Array<{
+    encounterId: number;
+    encounterName: string;
+    zoneName: string;
+    track: BetEncounterTrack;
+    inWeeklyProgression: boolean;
+  }>;
+  /** `encounterId` nulo = a Weekly. */
+  criarMercados: Array<{
+    encounterId: number | null;
+    kind: BetMarketKind;
+    track: BetEncounterTrack | null;
+  }>;
+  /** O `BetEvent` do salvamento; nulo quando nada mudou. */
+  evento: Prisma.InputJsonObject | null;
 }
