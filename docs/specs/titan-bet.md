@@ -1090,6 +1090,27 @@ nova versão.
 > Registro do que o M0 encontrou, como estava na revisão 3. As OQs citadas aqui foram
 > em parte resolvidas depois (revisão 4, §2 e §13); a §13 é a lista vigente.
 
+### 15.0 Gates #1 e #2 — tentativa da revisão 9 (23/09/2026)
+
+**Status: lado da API pronto; comparação com a tela BLOCKED de novo.** A página do report
+no WCL respondeu com a verificação humana ("One Quick Check") ao navegador automatizado.
+Não foi contornada: resolver a verificação é de uma pessoa, não do agente.
+
+Lido pela API, numa kill Mythic farm e nas tries de um boss em progressão, ambas da raid de
+terça, 22/09/2026 (códigos e nomes ficam fora do repositório, com o probe):
+
+- **#1 — Parse %:** oito variantes por jogador — `dps`/`hps` × `compare: Parses`/`Rankings`
+  × `timeframe: Today`/`Historical`, cada uma com `rankPercent` e `bracketPercent`. Com a
+  kill de um dia, `Parses/Today` = `Parses/Historical` para os 20 jogadores; `Rankings`
+  difere de `Parses` em vários (até 6 pontos). `bracketPercent` é o **ilvl %** e está fora
+  pela D-43. Candidato a reproduzir a coluna "Parse %": `rankPercent` com `compare:
+Parses` — **a confirmar na tela**, jogador a jogador, nos que distinguem as variantes.
+- **#2 — First Death:** 11 tries com as mortes em ordem e o tempo desde o pull. Duas
+  observações para a comparação: uma try **sem nenhuma morte**, e uma com a **mesma pessoa
+  morrendo duas vezes** (battle res) — a primeira morte é a que conta.
+
+Nada de settlement automático baseado nessas leituras antes da comparação (D-46).
+
 ### 15.1 Amostra
 
 Tudo público no WCL, lido pela API v2 com client credentials. Nomes, códigos de report e
