@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { DepositosPendentes } from '@titan/shared';
 import { TitanBetRepository } from './titan-bet.repository';
 
 /** A ação do officer sobre o depósito foi recusada; nada mudou. */
@@ -25,6 +26,22 @@ interface Officer {
 @Injectable()
 export class DepositoService {
   constructor(private readonly repo: TitanBetRepository) {}
+
+  /** O que o officer confere no Guild Bank: dono, depositante e total (§16.9). */
+  async pendentes(roundId: string): Promise<DepositosPendentes> {
+    const slips = await this.repo.depositosPendentes(roundId);
+    return {
+      depositos: slips.map((s) => ({
+        slipId: s.id,
+        ownerBattletag: s.ownerBattletag,
+        // Pendente tem os três preenchidos — um CHECK do banco garante (§16.4).
+        depositCharacter: s.depositCharacter!,
+        expectedTotal: s.expectedTotal!,
+        status: 'aguardando_deposito' as const,
+        submittedAt: s.submittedAt!.toISOString(),
+      })),
+    };
+  }
 
   async confirmar(slipId: string, officer: Officer): Promise<void> {
     const r = await this.comoRecusa(() =>

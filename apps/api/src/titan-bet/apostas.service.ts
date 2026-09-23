@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { SalvarSlip, SubmeterSlip } from '@titan/shared';
+import type { ApostaDoSlip, MeuSlip, SalvarSlip, SubmeterSlip } from '@titan/shared';
 import { candidatosDoMercado } from './candidatos';
 import { ElegibilidadeService } from './elegibilidade.service';
 import {
@@ -14,6 +14,19 @@ export class ApostaRecusada extends Error {
   constructor(motivo: string) {
     super(motivo);
     this.name = 'ApostaRecusada';
+  }
+}
+
+/**
+ * A conta não tem personagem no snapshot de bettors da rodada (D-32, D-38).
+ *
+ * Classe própria porque é outra resposta: é falta de permissão para apostar
+ * nesta rodada (403), não aposta malformada (422).
+ */
+export class ContaNaoElegivel extends ApostaRecusada {
+  constructor() {
+    super('a conta não tem personagem no snapshot de bettors da rodada');
+    this.name = 'ContaNaoElegivel';
   }
 }
 
@@ -43,9 +56,7 @@ export class ApostasService {
       roundId,
       conta.userId,
     );
-    if (!eligibilityCharacterId) {
-      throw new ApostaRecusada('a conta não tem personagem no snapshot de bettors da rodada');
-    }
+    if (!eligibilityCharacterId) throw new ContaNaoElegivel();
 
     const apostas = this.validar(input, await this.repo.cardapio(roundId));
 
@@ -56,6 +67,33 @@ export class ApostasService {
       throw new ApostaRecusada(`o slip está ${resultado.status} e não pode mais ser editado`);
     }
     return { slipId: resultado.slipId };
+  }
+
+  /**
+   * O slip da própria conta na rodada (D-36): o ativo, se houver; senão o mais
+   * recente — um recusado continua visível para o dono, com o motivo (D-34).
+   * `null` quando a conta não tem slip nesta rodada.
+   */
+  async meuSlip(roundId: string, userId: string): Promise<MeuSlip | null> {
+    const slips = await this.repo.slipsDaConta(roundId, userId);
+    const slip = slips.find((s) => ATIVOS.has(s.status)) ?? slips[0];
+    if (!slip) return null;
+    return {
+      slipId: slip.id,
+      status: slip.status,
+      apostas: slip.bets.map((b): ApostaDoSlip =>
+        b.marketKind === 'weekly_progression'
+          ? {
+              marketId: b.marketId,
+              stake: b.stake,
+              encounterIds: b.weeklySelections.map((w) => w.roundEncounterId),
+            }
+          : { marketId: b.marketId, stake: b.stake, targetCharacterId: b.targetCharacterId! },
+      ),
+      depositCharacterId: slip.depositCharacterId,
+      expectedTotal: slip.expectedTotal,
+      rejectionReason: slip.rejectionReason,
+    };
   }
 
   async submeter(roundId: string, conta: Conta, input: SubmeterSlip): Promise<{ total: number }> {
@@ -134,6 +172,9 @@ export class ApostasService {
     }
   }
 }
+
+/** Os status do slip ativo — os do índice parcial `BetSlip_um_ativo_por_conta`. */
+const ATIVOS = new Set<string>(['rascunho', 'aguardando_deposito', 'valido']);
 
 /**
  * O que pode ser submetido, e o total a depositar.

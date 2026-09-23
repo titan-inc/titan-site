@@ -358,6 +358,55 @@ export class TitanBetRepository {
     return count;
   }
 
+  /**
+   * Os slips da conta na rodada, do mais novo para o mais antigo (D-21, D-36).
+   *
+   * O filtro por dono vive aqui, e não no controller (§9.1): não existe leitura
+   * de slip por id no lado do membro, então não há id de outra pessoa a pedir.
+   */
+  async slipsDaConta(roundId: string, ownerUserId: string) {
+    return this.prisma.betSlip.findMany({
+      where: { roundId, ownerUserId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        depositCharacterId: true,
+        expectedTotal: true,
+        rejectionReason: true,
+        bets: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            marketId: true,
+            marketKind: true,
+            stake: true,
+            targetCharacterId: true,
+            weeklySelections: { select: { roundEncounterId: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Depósitos pendentes da rodada, para o Officer Panel (§16.9): só `BetSlip` e
+   * o nome do depositante — nenhum join em `Bet`. A escolha não é necessária
+   * para conferir o Guild Bank, e o que não é lido não vaza.
+   */
+  async depositosPendentes(roundId: string) {
+    return this.prisma.betSlip.findMany({
+      where: { roundId, status: 'aguardando_deposito' },
+      orderBy: { submittedAt: 'asc' },
+      select: {
+        id: true,
+        ownerBattletag: true,
+        expectedTotal: true,
+        submittedAt: true,
+        depositCharacter: { select: { name: true, realm: true } },
+      },
+    });
+  }
+
   private async travarSlip(tx: Prisma.TransactionClient, slipId: string) {
     const [slip] = await tx.$queryRaw<
       Array<{ roundId: string; status: BetSlipStatus; expectedTotal: number | null }>

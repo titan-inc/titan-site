@@ -790,3 +790,62 @@ ausência do módulo.
 
 `pnpm test:db` **157/157**; `pnpm test`: shared **318** (+19), api 708, web 147; `api`
 lint, typecheck e build OK; `format:check` OK; banco de dev com o mesmo hash.
+
+---
+
+## 15. Autorização — execução (23/09/2026)
+
+**Status: GREEN.** Milestone "RED/GREEN Autorização" da §7 (Officer Panel e dado
+privado). Primeiras rotas do Titan Bet.
+
+### 15.1 Testes e evidência
+
+| Testes                                                                                                   | Onde                                                         | Antes da implementação                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| T-D01 (contrato), leitura do próprio slip                                                                | `packages/shared/src/titan-bet/betting-leitura.spec.ts` — 10 | **`RED awaiting implementation seam`** — 10 falhas, `Cannot read properties of undefined` (os schemas não existiam no `betting.ts`)       |
+| T-Z01, T-R02, T-D05, T-Z07; T-Z02 e T-Z03 no lado HTTP; 400 antes do service; recusa de domínio → status | `apps/api/src/titan-bet/titan-bet.controller.spec.ts` — 28   | **awaiting seam** — `Cannot find module './titan-bet-member.controller'`: o teste foi escrito antes da primeira rota (§5.3)               |
+| T-Z02, T-Z03 e T-D01 no banco                                                                            | `apps/api/test/db/titan-bet/autorizacao.db-spec.ts` — 5      | **awaiting seam** — 5 falhas: `apostas.meuSlip is not a function`, `deposito.pendentes is not a function`, `ContaNaoElegivel` inexistente |
+
+Nenhum controller foi criado sem guard para produzir falha, e nenhum 404 de rota
+inexistente foi contado como RED (§5.3): as rotas nasceram com o guard, depois dos
+testes.
+
+### 15.2 Implementação
+
+| Rota                                                         | Guard          | Faz                                          |
+| ------------------------------------------------------------ | -------------- | -------------------------------------------- |
+| `GET /internal/titan-bet/rodadas/:roundId/slip`              | `RosterGuard`  | o slip da própria conta; 404 se não houver   |
+| `PUT /internal/titan-bet/rodadas/:roundId/slip`              | `RosterGuard`  | Salvar (D-27)                                |
+| `POST /internal/titan-bet/rodadas/:roundId/slip/submeter`    | `RosterGuard`  | Submeter pagamento (D-27)                    |
+| `POST /internal/titan-bet/officer/rodadas/:roundId/ready`    | `OfficerGuard` | Ready (D-31)                                 |
+| `GET /internal/titan-bet/officer/rodadas/:roundId/depositos` | `OfficerGuard` | depósitos pendentes, só de `BetSlip` (§16.9) |
+| `POST /internal/titan-bet/officer/slips/:slipId/confirmar`   | `OfficerGuard` | confirmar depósito                           |
+| `POST /internal/titan-bet/officer/slips/:slipId/recusar`     | `OfficerGuard` | recusar depósito, com motivo (D-34)          |
+
+- `titan-bet-member.controller.ts` e `titan-bet-officer.controller.ts`, cada um com o
+  guard **no controller**, não por rota — rota nova que esquecesse o decorator seria o
+  Officer Panel aberto.
+- `packages/shared/src/titan-bet/betting.ts` — `meuSlipSchema`, `depositoPendenteSchema`
+  (estrito, só `aguardando_deposito`), `depositosPendentesSchema`.
+- `ApostasService.meuSlip` e `ContaNaoElegivel`; `DepositoService.pendentes`;
+  `TitanBetRepository.slipsDaConta` (filtro por dono no repository, §9.1) e
+  `depositosPendentes` (sem join em `Bet`).
+- `http.ts` — recusa de domínio vira status: conta fora do snapshot **403**, aposta
+  recusada **422**, Ready e depósito recusados **409**.
+- `yaak/` — pasta `titan-bet` com as sete requests.
+
+**Escolhas de implementação, registradas para revisão:**
+
+1. **Não existe leitura de slip por id no lado do membro.** O slip é "o da conta da
+   sessão nesta rodada"; T-Z02 vira "B não recebe o slip de A", em vez de "A pede o id
+   de B e leva 403/404" — não há id a pedir.
+2. **Qual slip o `GET` devolve:** o ativo; sem ativo, o mais recente — um recusado
+   continua visível para o dono, com o motivo.
+3. **Os controllers ainda não cobrem configuração da rodada** (encounters e mercados em
+   PREPARATION) nem a criação da rodada (`bet-abre-rodada`): não estão na matriz, e
+   ficam para quando forem especificados.
+
+### 15.3 Resultado
+
+`pnpm test:db` **162/162**; `pnpm test`: shared **328** (+10), api **736** (+28), web
+147; `api` lint, typecheck e build OK; `format:check` OK; banco de dev com o mesmo hash.

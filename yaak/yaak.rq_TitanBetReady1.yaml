@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetReady1
+createdAt: 2026-09-23T16:45:00.000000
+updatedAt: 2026-09-23T16:45:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'OfficerGuard. Ready (D-31): lê roster da Blizzard e Titan Roster do WoWAudit, grava os snapshots de bettors e candidatos e abre as apostas, tudo ou nada. 204. 409 com o motivo quando recusado — a falha fica no BetEvent. Chama as APIs externas de verdade.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: POST
+name: 'Ready (officer)'
+sortPriority: 4000
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas/:roundId/ready
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

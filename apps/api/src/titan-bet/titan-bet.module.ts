@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { BlizzardModule } from '../blizzard/blizzard.module';
 import { CharactersModule } from '../characters/characters.module';
 import { WowAuditModule } from '../wowaudit/wowaudit.module';
@@ -7,16 +8,19 @@ import { CutoffService } from './cutoff.service';
 import { DepositoService } from './deposito.service';
 import { ElegibilidadeService } from './elegibilidade.service';
 import { ReadyService } from './ready.service';
+import { TitanBetMemberController } from './titan-bet-member.controller';
+import { TitanBetOfficerController } from './titan-bet-officer.controller';
 import { TitanBetRepository } from './titan-bet.repository';
 
 /**
  * Titan Bet — ver docs/specs/titan-bet.md.
  *
- * Ainda sem controller: as rotas (superfície do membro e Officer Panel) entram
- * no milestone de autorização, com os testes de 401/403 antes.
+ * Duas superfícies (D-36): a do membro (`RosterGuard`) e o Officer Panel
+ * (`OfficerGuard`), em controllers separados.
  */
 @Module({
-  imports: [BlizzardModule, CharactersModule, WowAuditModule],
+  imports: [AuthModule, BlizzardModule, CharactersModule, WowAuditModule],
+  controllers: [TitanBetMemberController, TitanBetOfficerController],
   providers: [
     TitanBetRepository,
     ReadyService,

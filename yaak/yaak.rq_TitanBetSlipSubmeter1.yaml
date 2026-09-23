@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_TitanBetSlipSubmeter1
+createdAt: 2026-09-23T16:45:00.000000
+updatedAt: 2026-09-23T16:45:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"depositCharacterId": ""}'
+bodyType: application/json
+description: 'RosterGuard. "Submeter pagamento" (D-27): congela o rascunho e devolve o total a depositar. depositCharacterId é um personagem da própria conta (D-02). Depois disso o slip não edita mais; 422 com o motivo quando recusado.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Submeter pagamento (membro)'
+sortPriority: 3000
+url: ${[ base_url ]}/internal/titan-bet/rodadas/:roundId/slip/submeter
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
