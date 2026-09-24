@@ -1,5 +1,6 @@
 import type { BetAuditStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../src/prisma/prisma.service';
+import { congelarReport } from '../../../src/titan-bet/snapshot';
 import { escrita } from './escrita';
 import { Fabrica } from './fabrica';
 
@@ -57,14 +58,29 @@ describe('Titan Bet — auditoria e fontes (banco)', () => {
     });
   }
 
-  /** Um `titanbet*` usado pela fonte, com a referência congelada (D-63). */
+  /**
+   * Um `titanbet*` usado pela fonte, com a referência congelada (D-63) e o
+   * snapshot dela (D-76) — o do report e da revisão da própria referência.
+   */
   function relatorio(
     sourceId: string,
     data: Partial<Prisma.BetAuditSourceReportUncheckedCreateInput> = {},
   ) {
-    return db.betAuditSourceReport.create({
-      data: { sourceId, reportCode: 'AbC123', ...REFERENCIA, ...data },
-    });
+    const ref = { sourceId, reportCode: 'AbC123', ...REFERENCIA, ...data };
+    const snapshot = congelarReport(
+      {
+        code: ref.reportCode,
+        startTime: 0,
+        revision: ref.reportRevision,
+        fights: [],
+        actors: [],
+        deaths: [],
+        kills: {},
+      },
+      ref.reportTitle,
+      [],
+    ) as unknown as Prisma.InputJsonValue;
+    return db.betAuditSourceReport.create({ data: { snapshot, ...ref } });
   }
 
   /** Auditoria confirmada, gravada na ordem real: fontes, depois a confirmação. */

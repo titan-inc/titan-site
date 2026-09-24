@@ -5,7 +5,12 @@ import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { classificarReports, resolverSessao, type ReportDaGuilda, type Sessao } from './auditoria';
 import { motivoDaJanelaFechada, podeAuditar } from './fases';
 import { RELOGIO, relogioDoSistema, type Relogio } from './relogio';
-import { TitanBetRepository, type FonteParaGravar } from './titan-bet.repository';
+import { congelarReport } from './snapshot';
+import {
+  TitanBetRepository,
+  type FonteParaGravar,
+  type ReportGravado,
+} from './titan-bet.repository';
 
 /** O Auditar foi recusado; nada foi gravado. */
 export class AuditoriaRecusada extends Error {
@@ -15,8 +20,12 @@ export class AuditoriaRecusada extends Error {
   }
 }
 
-/** O pedaço do WCL que o Auditar usa. */
-export type ReportsDaGuilda = Pick<WarcraftLogsService, 'listGuildReports'>;
+/**
+ * O pedaço do WCL que o Auditar usa: a descoberta dos reports e a leitura de
+ * cada um, que o Auditar congela (D-76). É o único lugar do Titan Bet que lê o
+ * WCL para resultado.
+ */
+export type ReportsDaGuilda = Pick<WarcraftLogsService, 'listGuildReports' | 'getTitanBetReport'>;
 
 interface Officer {
   userId: string;
@@ -74,11 +83,21 @@ export class AuditoriaService {
 
     const porSessao = classificarReports(reports, janela);
     // Todos os `titanbet*` da sessão são fonte (D-63); nenhum → ausente, e só a
-    // declaração do officer resolve (D-60).
-    const fontes: FonteParaGravar[] = (['terca', 'quinta'] as const).map((session) => ({
-      session,
-      ...resolverSessao(porSessao[session].map(gravavel)),
-    }));
+    // declaração do officer resolve (D-60). Cada um é lido e congelado agora
+    // (D-76) — antes de qualquer gravação: falhou um, não se grava nada.
+    const fontes: FonteParaGravar[] = [];
+    for (const session of ['terca', 'quinta'] as const) {
+      const resolvida = resolverSessao(porSessao[session].map(gravavel));
+      const congelados: ReportGravado[] = [];
+      for (const r of resolvida.reports) {
+        congelados.push(await this.congelar(r, rodada.encounterIds));
+      }
+      fontes.push({
+        session,
+        resolution: resolvida.resolution,
+        reports: congelados,
+      });
+    }
     const status = fontes.every((f) => f.resolution === 'automatica')
       ? 'pronta'
       : 'aguardando_revisao';
@@ -91,6 +110,29 @@ export class AuditoriaService {
       const motivo = erro instanceof Error ? erro.message : String(erro);
       throw new AuditoriaRecusada(`a auditoria não foi gravada: ${motivo}`);
     }
+  }
+
+  /**
+   * Lê o report e congela o que o Calcular vai usar (D-76). A revisão lida tem
+   * de ser a descoberta: se o report mudou no meio do Auditar, o snapshot não
+   * corresponderia à referência — recusa, e o officer audita de novo.
+   */
+  private async congelar(r: ReportDaGuilda, encounterIds: number[]): Promise<ReportGravado> {
+    let leitura;
+    try {
+      leitura = await this.wcl.getTitanBetReport(r.code, encounterIds);
+    } catch (erro: unknown) {
+      const motivo = erro instanceof Error ? erro.message : String(erro);
+      throw new AuditoriaRecusada(
+        `não foi possível congelar o report ${r.code} — o Warcraft Logs não respondeu: ${motivo}`,
+      );
+    }
+    if (leitura.revision !== r.revision) {
+      throw new AuditoriaRecusada(
+        `o report ${r.code} mudou de revisão durante o Auditar (${r.revision} → ${leitura.revision}); audite de novo`,
+      );
+    }
+    return { ...r, snapshot: congelarReport(leitura, r.title, encounterIds) };
   }
 
   /** A tentativa corrente, para o Officer Panel; `null` antes do primeiro Auditar. */

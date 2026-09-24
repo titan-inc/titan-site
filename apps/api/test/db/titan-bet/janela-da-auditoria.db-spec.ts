@@ -3,6 +3,7 @@ import type { ReportDaGuilda } from '../../../src/titan-bet/auditoria';
 import { AuditoriaRecusada, AuditoriaService } from '../../../src/titan-bet/auditoria.service';
 import { CalculoService } from '../../../src/titan-bet/calculo.service';
 import { LedgerRecusado, SettlementService } from '../../../src/titan-bet/settlement.service';
+import { congelarReport } from '../../../src/titan-bet/snapshot';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
 import { Fabrica } from './fabrica';
 
@@ -28,6 +29,21 @@ const report = (code: string, startTime: number): ReportDaGuilda => ({
   title: 'titanbet',
   revision: 1,
   startTime,
+});
+
+/** O report como o Auditar o leria e congelaria (D-76): vazio, na revisão 1. */
+const lido = (code: string) => ({
+  code,
+  startTime: 0,
+  revision: 1,
+  fights: [],
+  actors: [],
+  deaths: [],
+  kills: {},
+});
+const congelado = (code: string, startTime: number) => ({
+  ...report(code, startTime),
+  snapshot: congelarReport(lido(code), 'titanbet', []),
 });
 
 describe('Titan Bet — janela da auditoria (D-73, serviço + banco)', () => {
@@ -63,6 +79,7 @@ describe('Titan Bet — janela da auditoria (D-73, serviço + banco)', () => {
           report('Terca1', brt('2026-09-22', '21:00').getTime()),
           report('Quinta1', brt('2026-09-24', '20:30').getTime()),
         ]),
+      getTitanBetReport: jest.fn((code: string) => Promise.resolve(lido(code))),
     };
   }
 
@@ -117,13 +134,13 @@ describe('Titan Bet — janela da auditoria (D-73, serviço + banco)', () => {
         {
           session: 'terca',
           resolution: 'automatica',
-          reports: [report('Terca1', brt('2026-09-22', '21:00').getTime())],
+          reports: [congelado('Terca1', brt('2026-09-22', '21:00').getTime())],
         },
         quinta === 'automatica'
           ? {
               session: 'quinta',
               resolution: 'automatica',
-              reports: [report('Quinta1', brt('2026-09-24', '20:30').getTime())],
+              reports: [congelado('Quinta1', brt('2026-09-24', '20:30').getTime())],
             }
           : { session: 'quinta', resolution: 'ausente', reports: [] },
       ],
@@ -146,11 +163,9 @@ describe('Titan Bet — janela da auditoria (D-73, serviço + banco)', () => {
 
   it('Calcular chamado direto antes de quinta 23:30 → recusado, sem ler o WCL', async () => {
     const { auditId } = await auditoriaGravada('automatica');
-    const leitor = { getTitanBetReport: jest.fn() };
-    const servico = new CalculoService(repo, leitor, () => QUINTA_2329);
+    const servico = new CalculoService(repo, () => QUINTA_2329);
 
     await expect(servico.calcular(auditId)).rejects.toBeInstanceOf(AuditoriaRecusada);
-    expect(leitor.getTitanBetReport).not.toHaveBeenCalled();
     expect((await db.betAudit.findUniqueOrThrow({ where: { id: auditId } })).status).toBe('pronta');
   });
 

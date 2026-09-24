@@ -72,7 +72,7 @@ function leitura(): LeituraDoReport {
         rankingsHps: [],
       },
     },
-  } as unknown as LeituraDoReport;
+  };
 }
 
 describe('congelarReport (D-76)', () => {
@@ -148,7 +148,8 @@ describe('leituraDoSnapshot (D-76)', () => {
     >;
     expect(() => leituraDoSnapshot({ ...s, versao: 2 })).toThrow();
     expect(() => leituraDoSnapshot({ ...s, bruto: {} })).toThrow();
-    const { revision: _r, ...semRevisao } = s;
+    const semRevisao = { ...s };
+    delete semRevisao.revision;
     expect(() => leituraDoSnapshot(semRevisao)).toThrow();
     expect(() => leituraDoSnapshot(null)).toThrow();
   });

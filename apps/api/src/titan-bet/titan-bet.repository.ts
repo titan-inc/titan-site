@@ -10,6 +10,7 @@ import type {
   GoldLedgerKind,
   Prisma,
 } from '@prisma/client';
+import type { SnapshotDoReport } from './snapshot';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Uma linha do snapshot de bettors (D-32, D-38). */
@@ -623,6 +624,8 @@ export class TitanBetRepository {
       select: {
         cutoffAt: true,
         readyAt: true,
+        // Os encounters da rodada: o recorte do snapshot (D-76).
+        encounters: { select: { encounterId: true } },
         audits: {
           where: { status: { not: 'substituida' } },
           orderBy: { attempt: 'desc' },
@@ -636,6 +639,7 @@ export class TitanBetRepository {
     return {
       cutoffAt: rodada.cutoffAt,
       readyAt: rodada.readyAt,
+      encounterIds: rodada.encounters.map((e) => e.encounterId),
       auditoria: (corrente?.status ?? null) as Exclude<BetAuditStatus, 'substituida'> | null,
     };
   }
@@ -671,7 +675,8 @@ export class TitanBetRepository {
           data: { auditId: nova.id, session: f.session, resolution: f.resolution },
           select: { id: true },
         });
-        // Todos os `titanbet*` da sessão, com a referência como foi lida (D-63).
+        // Todos os `titanbet*` da sessão, com a referência como foi lida (D-63) e
+        // os dados externos congelados junto (D-76) — na mesma transação.
         if (f.reports.length > 0) {
           await tx.betAuditSourceReport.createMany({
             data: f.reports.map((r) => ({
@@ -680,6 +685,7 @@ export class TitanBetRepository {
               reportTitle: r.title,
               reportRevision: r.revision,
               reportStartTime: new Date(r.startTime),
+              snapshot: r.snapshot,
             })),
           });
         }
@@ -945,6 +951,7 @@ export class TitanBetRepository {
                 reportTitle: true,
                 reportRevision: true,
                 reportStartTime: true,
+                snapshot: true,
               },
             },
           },
@@ -1247,6 +1254,8 @@ export interface ReportGravado {
   title: string;
   revision: number;
   startTime: number;
+  /** Os dados externos do report, congelados no Auditar (D-76). */
+  snapshot: SnapshotDoReport;
 }
 
 /** A fonte de uma sessão, pronta para gravar: todos os `titanbet*` achados (D-63). */

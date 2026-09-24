@@ -2353,6 +2353,12 @@ model BetAuditSourceReport {
   reportRevision  Int
   reportStartTime DateTime
 
+  /// Os dados externos do report, congelados no Auditar (D-76): o que o
+  /// Calcular lê, no lugar do WCL. JSON versionado (`snapshot.ts`), imutável e
+  /// amarrado a `reportCode`/`reportRevision` no banco. Nulo só em auditorias
+  /// anteriores à revisão 15 — histórico, nunca fabricado.
+  snapshot Json?
+
   /// Cada `titanbet*` uma vez por fonte (T-A16).
   @@unique([sourceId, reportCode])
 }

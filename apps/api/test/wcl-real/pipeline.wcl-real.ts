@@ -6,6 +6,7 @@ import { CharactersRepository } from '../../src/characters/characters.repository
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { ApostasService } from '../../src/titan-bet/apostas.service';
 import { AuditoriaRecusada, AuditoriaService } from '../../src/titan-bet/auditoria.service';
+import { congelarReport } from '../../src/titan-bet/snapshot';
 import { CalculoService } from '../../src/titan-bet/calculo.service';
 import { candidatosDoMercado } from '../../src/titan-bet/candidatos';
 import { ClosingRepository } from '../../src/titan-bet/closing.repository';
@@ -192,17 +193,36 @@ describe('Titan Bet — pipeline com o WCL real (§40)', () => {
       new Date('2026-09-15T00:00:00Z'),
       new Date('2026-09-19T00:00:00Z'),
     );
-    const referencia = (code: string) => {
+    // O Auditar congela cada report (D-76); a injeção congela igual, com o WCL real.
+    const daRodada = (await db.betRoundEncounter.findMany({ where: { roundId: rodada.id } })).map(
+      (e) => e.encounterId,
+    );
+    const referencia = async (code: string) => {
       const r = lidos.find((x) => x.code === code)!;
-      return { code: r.code, title: r.title, revision: r.revision, startTime: r.startTime };
+      const leitura = await wcl.getTitanBetReport(code, daRodada);
+      return {
+        code: r.code,
+        title: r.title,
+        revision: leitura.revision,
+        startTime: r.startTime,
+        snapshot: congelarReport(leitura, r.title, daRodada),
+      };
     };
     const { auditId } = await repo.gravarAuditoria({
       roundId: rodada.id,
       officer: OFFICER,
       status: 'pronta',
       fontes: [
-        { session: 'terca', resolution: 'automatica', reports: TERCA.map(referencia) },
-        { session: 'quinta', resolution: 'automatica', reports: QUINTA.map(referencia) },
+        {
+          session: 'terca',
+          resolution: 'automatica',
+          reports: await Promise.all(TERCA.map(referencia)),
+        },
+        {
+          session: 'quinta',
+          resolution: 'automatica',
+          reports: await Promise.all(QUINTA.map(referencia)),
+        },
       ],
     });
     evidencia.injecao = {
@@ -215,8 +235,8 @@ describe('Titan Bet — pipeline com o WCL real (§40)', () => {
         })),
     };
 
-    // 6. Do cálculo em diante, só código de produção, com o WCL real.
-    const calculo = new CalculoService(repo, wcl);
+    // 6. Do cálculo em diante, só código de produção, sobre os snapshots (D-76).
+    const calculo = new CalculoService(repo);
     await calculo.calcular(auditId);
     const resultados = await calculo.resultados(auditId);
     if (!resultados) throw new Error('a auditoria calculada não devolveu resultados');
@@ -438,7 +458,7 @@ describe('Titan Bet — pipeline com o WCL real (§40)', () => {
     expect(fontes.flatMap((x) => x.reports)).toEqual([]);
     expect(audit.status).toBe('aguardando_revisao');
     // Sem fonte e sem "sem raid" declarado, o cálculo é recusado.
-    await expect(new CalculoService(repo, wcl).calcular(auditId)).rejects.toBeInstanceOf(
+    await expect(new CalculoService(repo).calcular(auditId)).rejects.toBeInstanceOf(
       AuditoriaRecusada,
     );
   });

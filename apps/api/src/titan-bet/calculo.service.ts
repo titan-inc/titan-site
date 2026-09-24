@@ -2,7 +2,6 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { BetMarketKind, Prisma } from '@prisma/client';
 import type { ResultadosDaAuditoria } from '@titan/shared';
 import { loadGuildTimezone } from '../config/guild.config';
-import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { AuditoriaRecusada } from './auditoria.service';
 import { candidatosDoMercado } from './candidatos';
 import {
@@ -29,12 +28,8 @@ import {
 } from './resultados';
 import { motivoDaJanelaFechada } from './fases';
 import { RELOGIO, relogioDoSistema, type Relogio } from './relogio';
+import { leituraDoSnapshot } from './snapshot';
 import { TitanBetRepository, type ResultadoParaGravar } from './titan-bet.repository';
-
-/** O pedaço do WCL que o cálculo usa: o report oficial. */
-export interface ReportsParaCalculo {
-  getTitanBetReport(code: string, encounterIds: number[]): Promise<LeituraDoReport>;
-}
 
 /**
  * Versão do algoritmo gravada com cada resultado (§15.10). `titanbet-2`: Weekly
@@ -55,9 +50,10 @@ interface Origem {
  * O cálculo do Auditar (§7.3): da auditoria `pronta`, com as fontes congeladas,
  * aos resultados de todos os mercados e a auditoria `calculada`.
  *
- * Lê do WCL **só** os reports que o Auditar congelou (T-A12), na sessão de
- * cada um (D-26). Os valores são os da tabela do WCL no momento do cálculo
- * (D-43, D-47) e ficam na evidência; o banco não deixa mudar depois.
+ * Lê **só** os snapshots que o Auditar congelou (D-76, T-A12), na sessão de
+ * cada report (D-26): nenhuma leitura do WCL. Os valores são os da tabela do
+ * WCL no instante do Auditar (D-43, D-47) e ficam na evidência; o banco não
+ * deixa mudar depois.
  *
  * Nada aqui confirma resultado nem mexe em dinheiro: VOID é proposta (D-16), e
  * `W = 0` é resultado — a redistribuição é do settlement (D-44).
@@ -66,9 +62,10 @@ interface Origem {
 export class CalculoService {
   private readonly timezone = loadGuildTimezone();
 
+  // Sem porta para o WCL (D-76): o cálculo é determinístico sobre os snapshots
+  // que o Auditar congelou.
   constructor(
     private readonly repo: TitanBetRepository,
-    @Inject(WarcraftLogsService) private readonly wcl: ReportsParaCalculo,
     @Optional() @Inject(RELOGIO) private readonly agora: Relogio = relogioDoSistema,
   ) {}
 
@@ -101,13 +98,14 @@ export class CalculoService {
       }
       // Todos os `titanbet*` da sessão, lidos como foram congelados (D-63, §15.10).
       for (const r of f.reports) {
-        let report: LeituraDoReport;
-        try {
-          report = await this.wcl.getTitanBetReport(r.reportCode, [...encounters.keys()]);
-        } catch (erro: unknown) {
-          const motivo = erro instanceof Error ? erro.message : String(erro);
-          throw new AuditoriaRecusada(`o Warcraft Logs não respondeu: ${motivo}`);
+        // O snapshot congelado no Auditar (D-76) — nunca o WCL de agora.
+        if (r.snapshot === null) {
+          throw new AuditoriaRecusada(
+            `a tentativa ${a.attempt} é anterior ao congelamento dos dados (D-76): o report ` +
+              `${r.reportCode} não tem snapshot — audite de novo para calcular`,
+          );
         }
+        const report: LeituraDoReport = leituraDoSnapshot(r.snapshot);
         const doReport = pullsDoReport(report, f.session, encounters, candidatos);
         const fights = report.fights.filter((x) => encounters.has(x.encounterID));
         doReport.forEach((p, i) => origem.set(p, { report, fight: fights[i]! }));

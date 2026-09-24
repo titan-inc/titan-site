@@ -3,6 +3,8 @@ import { PrismaService } from '../../../src/prisma/prisma.service';
 import type { ReportDaGuilda } from '../../../src/titan-bet/auditoria';
 import { AuditoriaRecusada, AuditoriaService } from '../../../src/titan-bet/auditoria.service';
 import { CalculoService } from '../../../src/titan-bet/calculo.service';
+import type { LeituraDoReport } from '../../../src/titan-bet/leitura-wcl';
+import { congelarReport } from '../../../src/titan-bet/snapshot';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
 import { Fabrica } from './fabrica';
 import { depoisDaQuinta } from './ciclo';
@@ -36,7 +38,10 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
   let db: PrismaService;
   let f: Fabrica;
   let repo: TitanBetRepository;
-  let wcl: { listGuildReports: jest.Mock<Promise<ReportDaGuilda[]>, [Date, Date]> };
+  let wcl: {
+    listGuildReports: jest.Mock<Promise<ReportDaGuilda[]>, [Date, Date]>;
+    getTitanBetReport: jest.Mock<Promise<LeituraDoReport>, [string, number[]]>;
+  };
   let auditoria: AuditoriaService;
 
   beforeAll(async () => {
@@ -46,8 +51,29 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
     repo = new TitanBetRepository(db);
   });
 
+  /** O report como o WCL o leria: vazio, na revisão que a descoberta listou. */
+  const leituraVazia = (code: string, revision: number): LeituraDoReport => ({
+    code,
+    startTime: TERCA,
+    revision,
+    fights: [],
+    actors: [],
+    deaths: [],
+    kills: {},
+  });
+
   beforeEach(() => {
-    wcl = { listGuildReports: jest.fn<Promise<ReportDaGuilda[]>, [Date, Date]>() };
+    const listGuildReports = jest.fn<Promise<ReportDaGuilda[]>, [Date, Date]>();
+    wcl = {
+      listGuildReports,
+      // A leitura do Auditar (D-76): o mesmo report, na revisão listada.
+      getTitanBetReport: jest.fn<Promise<LeituraDoReport>, [string, number[]]>(async (code) => {
+        const listados = await (listGuildReports.mock.results.at(-1)!.value as Promise<
+          ReportDaGuilda[]
+        >);
+        return leituraVazia(code, listados.find((r) => r.code === code)!.revision);
+      }),
+    };
     auditoria = new AuditoriaService(repo, wcl, depoisDaQuinta);
   });
 
@@ -256,11 +282,11 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
       expect(fontes.map((x) => x.resolution)).toEqual(['ausente', 'ausente']);
       expect(fontes.flatMap((x) => x.reports)).toEqual([]);
 
-      const leitor = { getTitanBetReport: jest.fn() };
+      // O Calcular não tem WCL (D-76); e sem fonte, recusa.
       await expect(
-        new CalculoService(repo, leitor, depoisDaQuinta).calcular(auditId),
+        new CalculoService(repo, depoisDaQuinta).calcular(auditId),
       ).rejects.toBeInstanceOf(AuditoriaRecusada);
-      expect(leitor.getTitanBetReport).not.toHaveBeenCalled();
+      expect(wcl.getTitanBetReport).not.toHaveBeenCalled();
     });
 
     it('`titanbet*` da semana anterior ao cutoff não entra na rodada', async () => {
@@ -273,6 +299,146 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
       const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
       const codes = (await fontesDe(auditId)).flatMap((x) => x.reports.map((r) => r.reportCode));
       expect(codes).toEqual(['Terca1']);
+    });
+  });
+
+  describe('T-A30 — o Auditar congela os dados externos de cada report (D-76)', () => {
+    const BOSS = 501;
+
+    /** Rodada com um boss (501) no Ready, já fechada. */
+    async function rodadaComBoss() {
+      const rodada = await f.rodada({ cutoffAt: CUTOFF });
+      await f.encounter(rodada.id, { encounterId: BOSS });
+      return db.betRound.update({
+        where: { id: rodada.id },
+        data: {
+          readyAt: new Date(CUTOFF.getTime() - 60 * 60 * 1000),
+          readyByUserId: OFFICER.userId,
+          readyByBattletag: OFFICER.battletag,
+        },
+      });
+    }
+
+    /** Uma leitura com uma fight do boss da rodada e uma de outro boss. */
+    const leitura = (code: string, revision: number): LeituraDoReport => ({
+      code,
+      startTime: TERCA,
+      revision,
+      fights: [
+        { id: 1, encounterID: BOSS, difficulty: 5, kill: true, startTime: 0, endTime: 300_000 },
+        { id: 2, encounterID: 777, difficulty: 5, kill: true, startTime: 400_000, endTime: 1 },
+      ],
+      actors: [{ id: 10, name: 'Morto', server: 'Azralon' }],
+      deaths: [
+        { fight: 1, targetID: 10, timestamp: 5_000 },
+        { fight: 2, targetID: 10, timestamp: 401_000 },
+      ],
+      kills: {},
+    });
+
+    const referencias = (roundId: string) =>
+      db.betAuditSourceReport.findMany({
+        where: { source: { audit: { roundId } } },
+        orderBy: { reportStartTime: 'asc' },
+      });
+
+    it('terça e quinta: cada report com o seu snapshot — proveniência e só o que a rodada usa', async () => {
+      const rodada = await rodadaComBoss();
+      wcl.listGuildReports.mockResolvedValue([
+        report('Terca1', TERCA, { revision: 7 }),
+        report('Quinta1', QUINTA, { title: 'TitanBet quinta', revision: 12 }),
+      ]);
+      wcl.getTitanBetReport.mockImplementation((code) =>
+        Promise.resolve(leitura(code, code === 'Terca1' ? 7 : 12)),
+      );
+
+      const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
+
+      expect(wcl.getTitanBetReport.mock.calls).toEqual([
+        ['Terca1', [BOSS]],
+        ['Quinta1', [BOSS]],
+      ]);
+      const refs = await referencias(rodada.id);
+      expect(refs.map((r) => r.snapshot)).toEqual([
+        congelarReport(leitura('Terca1', 7), 'titanbet', [BOSS]),
+        congelarReport(leitura('Quinta1', 12), 'TitanBet quinta', [BOSS]),
+      ]);
+      // O boss fora da rodada, e a morte nele, não entram.
+      expect(refs[0]!.snapshot).toMatchObject({
+        versao: 1,
+        code: 'Terca1',
+        revision: 7,
+        fights: [{ id: 1, encounterID: BOSS }],
+        deaths: [{ fight: 1, targetID: 10, timestamp: 5_000 }],
+      });
+      expect((await db.betAudit.findUniqueOrThrow({ where: { id: auditId } })).status).toBe(
+        'pronta',
+      );
+    });
+
+    it('vários reports na mesma sessão: um snapshot por report', async () => {
+      const rodada = await rodadaComBoss();
+      wcl.listGuildReports.mockResolvedValue([
+        report('TercaA', TERCA, { revision: 3 }),
+        report('TercaB', TERCA + 2_000, { revision: 5 }),
+      ]);
+      wcl.getTitanBetReport.mockImplementation((code) =>
+        Promise.resolve(leitura(code, code === 'TercaA' ? 3 : 5)),
+      );
+      await auditoria.auditar(rodada.id, OFFICER);
+      expect(
+        (await referencias(rodada.id)).map((r) => {
+          const s = r.snapshot as { code: string; revision: number };
+          return [r.reportCode, s.code, s.revision];
+        }),
+      ).toEqual([
+        ['TercaA', 'TercaA', 3],
+        ['TercaB', 'TercaB', 5],
+      ]);
+    });
+
+    it('report sem fight relevante: congelado vazio, com a proveniência', async () => {
+      const rodada = await rodadaComBoss();
+      wcl.listGuildReports.mockResolvedValue([report('Terca1', TERCA), report('Quinta1', QUINTA)]);
+      await auditoria.auditar(rodada.id, OFFICER);
+      const [terca] = await referencias(rodada.id);
+      expect(terca!.snapshot).toMatchObject({ code: 'Terca1', revision: 7, fights: [], kills: {} });
+    });
+
+    it('o WCL falha no segundo report: Auditar recusado, nenhuma tentativa, nenhuma fonte', async () => {
+      const rodada = await rodadaComBoss();
+      wcl.listGuildReports.mockResolvedValue([report('Terca1', TERCA), report('Quinta1', QUINTA)]);
+      wcl.getTitanBetReport.mockImplementation((code) =>
+        code === 'Quinta1'
+          ? Promise.reject(new Error('WCL 503'))
+          : Promise.resolve(leitura(code, 7)),
+      );
+
+      await expect(auditoria.auditar(rodada.id, OFFICER)).rejects.toThrow(/Quinta1/);
+      expect(await db.betAudit.count({ where: { roundId: rodada.id } })).toBe(0);
+      expect(await referencias(rodada.id)).toEqual([]);
+    });
+
+    it('a revisão lida difere da descoberta: recusado, nada congelado', async () => {
+      const rodada = await rodadaComBoss();
+      wcl.listGuildReports.mockResolvedValue([report('Terca1', TERCA, { revision: 7 })]);
+      wcl.getTitanBetReport.mockImplementation((code) => Promise.resolve(leitura(code, 8)));
+
+      await expect(auditoria.auditar(rodada.id, OFFICER)).rejects.toThrow(/revisão/);
+      expect(await db.betAudit.count({ where: { roundId: rodada.id } })).toBe(0);
+    });
+
+    it('refazer com falha não mexe na tentativa anterior, que continua utilizável', async () => {
+      const rodada = await rodadaComBoss();
+      wcl.listGuildReports.mockResolvedValue([report('Terca1', TERCA), report('Quinta1', QUINTA)]);
+      const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
+
+      wcl.getTitanBetReport.mockRejectedValue(new Error('WCL 503'));
+      await expect(auditoria.auditar(rodada.id, OUTRO_OFFICER)).rejects.toBeInstanceOf(
+        AuditoriaRecusada,
+      );
+      const todas = await db.betAudit.findMany({ where: { roundId: rodada.id } });
+      expect(todas).toEqual([expect.objectContaining({ id: auditId, status: 'pronta' })]);
     });
   });
 

@@ -165,20 +165,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
     await esperarPassar(db, rodada.cutoffAt);
     const terca = rodada.cutoffAt.getTime() + 1_000;
     const quinta = terca + 2 * 24 * 60 * 60 * 1000;
-    const auditoria = new AuditoriaService(
-      repo,
-      {
-        listGuildReports: () =>
-          Promise.resolve([
-            { code: 'E2ETerca', title: 'titanbet', revision: 4, startTime: terca },
-            { code: 'E2EQuinta', title: 'TitanBet quinta', revision: 2, startTime: quinta },
-          ]),
-      },
-      depoisDaQuinta,
-    );
-    const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
-
-    // 5. Calcular: a kill na terça — A com mais dano; a quinta sem o boss.
+    // O que o WCL responde: a kill na terça — A com mais dano; a quinta sem o boss.
     const reports: Record<string, LeituraDoReport> = {
       E2ETerca: {
         code: 'E2ETerca',
@@ -230,13 +217,23 @@ describe('Titan Bet — E2E (T-E01)', () => {
         kills: {},
       },
     };
-    await new CalculoService(
+    const auditoria = new AuditoriaService(
       repo,
       {
+        listGuildReports: () =>
+          Promise.resolve([
+            { code: 'E2ETerca', title: 'titanbet', revision: 4, startTime: terca },
+            { code: 'E2EQuinta', title: 'TitanBet quinta', revision: 2, startTime: quinta },
+          ]),
+        // O Auditar lê e congela cada report (D-76).
         getTitanBetReport: (code: string) => Promise.resolve(reports[code]!),
       },
       depoisDaQuinta,
-    ).calcular(auditId);
+    );
+    const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
+
+    // 5. Calcular, sobre os snapshots do Auditar — sem WCL (D-76).
+    await new CalculoService(repo, depoisDaQuinta).calcular(auditId);
 
     // 6. Confirmar e liquidar; pagar a Ana.
     await new SettlementService(repo, depoisDaQuinta).confirmar(auditId, OFFICER);
