@@ -8,6 +8,9 @@
 > correção pós-pagamento, self-bet e odds. As OQs resolvidas saíram da lista de
 > pendências e estão registradas na §2. O M0 foi reescopado (§14).
 >
+> **Revisão 15 (24/09/2026):** o Auditar congela os dados externos de cada report num
+> snapshot imutável, e o Calcular lê só dele (D-76, achado 5).
+>
 > **Revisão 14 (24/09/2026):** achados da auditoria independente do PR #114 (D-71 a D-75):
 > expirado sem submissão, Salvar antes do Submeter, auditoria só depois de quinta 23:30,
 > restituição de 90% quando a rodada não tem mercado premiável, odds só depois do Ready, e
@@ -339,6 +342,24 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
 
+### Revisão 15 (24/09/2026) — o Auditar congela os dados externos (achado 5)
+
+| D    | Resolve  | Decisão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-76 | achado 5 | **Discovery identifica os reports → Auditar congela os dados externos → Calcular é determinístico sobre os snapshots persistidos.** No Auditar, cada `titanbet*` da rodada é lido por inteiro e gravado como **snapshot** JSONB versionado na própria referência congelada (`BetAuditSourceReport.snapshot`): só o que os cálculos usam — as fights Mythic dos encounters da rodada, os atores que elas citam, as mortes dessas fights e, de cada kill, as tabelas de dano, cura e dispels e os rankings de DPS e HPS —, com `code`, `title`, `revision` e `startTime` como proveniência. Nunca o payload bruto. O Calcular lê **só** os snapshots: não chama o WCL. Parse %, métricas, fights e mortes são, portanto, os do instante do Auditar — o que a D-43 sempre disse. Falhou a leitura de qualquer report, ou a revisão lida difere da descoberta, o Auditar é recusado inteiro: nenhuma fonte parcialmente congelada. O snapshot é imutável no banco (trigger), obrigatório em referência nova e amarrado à referência por CHECK (`versao`, `code`, `revision`). |
+
+**Auditorias anteriores à revisão 15:** referência sem snapshot é histórico legítimo e
+continua legível — resultados calculados, confirmações, ledger e Closing Reports não
+dependem dela. Uma tentativa antiga ainda **não calculada** não tem o que o Calcular
+precisa: ele recusa e pede um novo Auditar, que abre outra tentativa com os snapshots.
+Nenhum snapshot é fabricado para o passado.
+
+**Consequência aceita:** um upload ao report depois do Auditar não entra no resultado;
+para incluí-lo, o officer audita de novo (outra tentativa), antes de confirmar.
+
+Substitui a nota "Achado 5 — pendente de decisão" da revisão 14 e fecha a alternativa A
+de `titan-bet-test-design.md` §42.7.
+
 ### Revisão 14 (24/09/2026) — achados da auditoria independente do PR #114
 
 | D    | Resolve  | Decisão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -350,7 +371,7 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | D-75 | achado 7 | **As odds seguem a publicação da rodada.** Antes do Ready, o `/odds` do membro responde como a leitura da rodada — 404 —, e não um 200 com estrutura parcial. As rotas de preparação do officer não mudam.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | —    | N1       | **A evidência gravada cobre a §15.10**, sem guardar o payload do WCL: por pull, report, `fight.id`, `encounterID`, dificuldade, kill, início e fim (a duração); no First Death, a sequência de mortes até a primeira elegível, com os de fora pulados e os timestamps; os pares deduplicados e a regra; o vínculo com a rodada, a tentativa e o snapshot de candidatos; `computedAt` e a versão do algoritmo. Documento de evidência versão 2.                                                                                                                                                                                                                                                                                                                                                                                                                |
 
-**Achado 5 — divergência de revisão do WCL: pendente de decisão.** Hoje o Auditar congela
+**Achado 5 — divergência de revisão do WCL: ~~pendente de decisão~~ resolvido pela D-76 (revisão 15).** Hoje o Auditar congela
 `code`/`title`/`revision`, e o Calcular relê o report ao vivo. Se o report mudar de revisão
 entre os dois, o cálculo usa a revisão nova e a evidência cita a antiga. Guardar um
 snapshot mínimo dos dados externos no Auditar exige coluna ou tabela nova (migration) e
@@ -642,8 +663,11 @@ Officer clica Auditar
   → associa cada um à sua sessão, pelo início do report (D-26)
   → sessão com titanbet*: automática, com todos eles
   → sessão sem nenhum: ausente — só a declaração do officer resolve (D-60)
-  → congela a referência aos reports usados (code, title, revision)
-  → lê as fights (Mythic + catálogo de raid) de todos, numa timeline só
+  → DISCOVERY: identifica os reports (code, title, revision)
+  → AUDITAR: lê cada um e congela o snapshot dos dados externos (D-76) — falhou
+    um, nada é gravado
+  → CALCULAR, só sobre os snapshots persistidos, sem o WCL:
+  → as fights (Mythic + catálogo de raid) de todos, numa timeline só
   → a mesma try em dois reports conta uma vez (mesmo boss, início < 10 s, reports diferentes)
   → calcula os resultados semanais (a primeira kill cronológica vale — D-62)
   → apresenta a auditoria calculada
@@ -705,6 +729,11 @@ O M0 confirmou os dois motivos para congelar: **Parse % muda** — até 16 ponto
 semana da kill e hoje (§15.6) — e o report **muda de revisão** enquanto recebe upload
 (§15.3). O resultado confirmado é o que foi gravado, e a evidência mínima para auditar e
 reproduzir está na §15.10.
+
+**Vigente (D-76):** o congelamento acontece no **Auditar**, não no Calcular. Os dados
+externos de cada report ficam num snapshot imutável (`BetAuditSourceReport.snapshot`), e o
+Calcular é determinístico sobre eles — rodar de novo sobre a mesma tentativa dá o mesmo
+resultado, qualquer que seja o estado do WCL.
 
 ---
 
