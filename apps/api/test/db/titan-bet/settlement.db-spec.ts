@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { BetCandidateRole, BetMarketKind } from '@prisma/client';
+import { lancamentosDoSlipSchema } from '@titan/shared';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { DepositoService } from '../../../src/titan-bet/deposito.service';
 import {
@@ -14,7 +15,7 @@ import { Fabrica } from './fabrica';
 /**
  * Settlement e pagamento no banco (D-06, D-10, D-11, D-12, D-16, D-44; §8,
  * §16.6). titan-bet-test-design.md §3.5, §3.6, §3.14: T-M07, T-M08, T-M13,
- * T-M14 (integrados), T-L05, T-L06, T-L07.
+ * T-M14 (integrados), T-L05, T-L06, T-L07, T-C06.
  *
  * Ciclo de vida real: depósitos confirmados pelo serviço (com o lançamento
  * `deposito_validado`), cutoff, auditoria calculada com os resultados gravados
@@ -440,6 +441,49 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
           OFFICER,
         ),
       ).rejects.toBeInstanceOf(LedgerRecusado);
+    });
+  });
+
+  describe('T-C06 — os lançamentos do slip, para o officer ajustar (D-11)', () => {
+    it('em ordem, com o id que o ajuste usa, no contrato estrito', async () => {
+      const c = await cenario();
+      const x = await c.apostar(c.topDps.id, 'top_dps', 500, c.A);
+      const a = await calculada(c, {
+        [c.topDps.id]: { outcome: 'vencedores', vencedores: [c.A] },
+      });
+      await settlement.confirmar(a.id, OFFICER);
+
+      const vista = await ledger.lancamentos(x.slipId);
+      expect(lancamentosDoSlipSchema.parse(vista)).toEqual(vista);
+      expect(vista.lancamentos.map((l) => l.kind)).toEqual(['deposito_validado', 'premio']);
+      expect(vista.lancamentos[0]).toMatchObject({
+        amount: 500,
+        actorBattletag: OFFICER.battletag,
+      });
+
+      // O id devolvido é o que o ajuste aceita.
+      const premio = vista.lancamentos[1]!;
+      await ledger.ajustar(
+        {
+          slipId: x.slipId,
+          amount: -50,
+          reason: 'conferido',
+          correctsEntryId: BigInt(premio.entryId),
+        },
+        OFFICER,
+      );
+      const depois = await ledger.lancamentos(x.slipId);
+      expect(depois.lancamentos.at(-1)).toMatchObject({
+        kind: 'ajuste',
+        amount: -50,
+        reason: 'conferido',
+      });
+    });
+
+    it('slip sem lançamento → lista vazia', async () => {
+      const c = await cenario();
+      const x = await c.apostar(c.topDps.id, 'top_dps', 500, c.A, 'aguardando_deposito');
+      expect(await ledger.lancamentos(x.slipId)).toEqual({ lancamentos: [] });
     });
   });
 });

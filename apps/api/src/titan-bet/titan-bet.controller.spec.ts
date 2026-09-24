@@ -56,6 +56,7 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/officer/slips/s1'],
   ['get', '/internal/titan-bet/officer/rodadas'],
   ['get', '/internal/titan-bet/officer/rodadas/r1/slips'],
+  ['get', '/internal/titan-bet/officer/slips/s1/lancamentos'],
   [
     'post',
     '/internal/titan-bet/officer/auditorias/a1/fontes/terca/sem-raid',
@@ -95,7 +96,12 @@ describe('Titan Bet — autorização das rotas', () => {
   const calculo = { calcular: jest.fn(), resultados: jest.fn() };
   const settlement = { confirmar: jest.fn() };
   const closing = { publicar: jest.fn(), ultimo: jest.fn() };
-  const ledger = { saldos: jest.fn(), pagar: jest.fn(), ajustar: jest.fn() };
+  const ledger = {
+    saldos: jest.fn(),
+    pagar: jest.fn(),
+    ajustar: jest.fn(),
+    lancamentos: jest.fn(),
+  };
   const deposito = {
     pendentes: jest.fn(),
     confirmar: jest.fn(),
@@ -167,6 +173,7 @@ describe('Titan Bet — autorização das rotas', () => {
     calculo.calcular.mockResolvedValue(undefined);
     settlement.confirmar.mockResolvedValue(undefined);
     ledger.saldos.mockResolvedValue({ saldos: [] });
+    ledger.lancamentos.mockResolvedValue({ lancamentos: [] });
     ledger.pagar.mockResolvedValue(undefined);
     ledger.ajustar.mockResolvedValue(undefined);
     closing.publicar.mockResolvedValue({ version: 1 });
@@ -625,6 +632,10 @@ describe('Titan Bet — autorização das rotas', () => {
 
       await request(server).get('/internal/titan-bet/officer/rodadas/r1/slips').expect(200);
       expect(deposito.submetidos).toHaveBeenCalledWith('r1');
+
+      // T-C06: os lançamentos do slip, para o ajuste (D-11).
+      await request(server).get('/internal/titan-bet/officer/slips/s1/lancamentos').expect(200);
+      expect(ledger.lancamentos).toHaveBeenCalledWith('s1');
     });
   });
 });

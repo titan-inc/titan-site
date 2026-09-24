@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { SaldosDaRodada } from '@titan/shared';
+import type { LancamentosDoSlip, SaldosDaRodada } from '@titan/shared';
 import { liquidarRodada, type MercadoParaLiquidar } from './liquidacao';
 import { saldoDevido } from './rateio';
 import {
@@ -175,6 +175,24 @@ export class LedgerService {
         ownerBattletag: c.ownerBattletag,
         devido: saldoDevido(c.ledger),
         pago: c.ledger.filter((l) => l.kind === 'pagamento').reduce((s, l) => s + l.amount, 0),
+      })),
+    };
+  }
+
+  /**
+   * Os lançamentos de um slip, em ordem (T-C06): é daqui que o officer tira o
+   * lançamento que um ajuste corrige (D-11). Nenhuma aposta ou mercado.
+   */
+  async lancamentos(slipId: string): Promise<LancamentosDoSlip> {
+    const lista = await this.repo.lancamentosDoSlip(slipId);
+    return {
+      lancamentos: lista.map((l) => ({
+        entryId: l.id.toString(),
+        kind: l.kind,
+        amount: l.amount,
+        reason: l.reason,
+        actorBattletag: l.actorBattletag,
+        createdAt: l.createdAt.toISOString(),
       })),
     };
   }

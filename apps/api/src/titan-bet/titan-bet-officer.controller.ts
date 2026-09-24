@@ -27,6 +27,7 @@ import {
   type PrepararRodada,
   type RecusarDeposito,
   type SessaoDaAuditoria,
+  type LancamentosDoSlip,
   type RodadasDoOfficer,
   type SlipDoOfficer,
   type SlipsSubmetidos,
@@ -257,5 +258,11 @@ export class TitanBetOfficerController {
   @Get('rodadas/:roundId/slips')
   slipsSubmetidos(@Param('roundId') roundId: string): Promise<SlipsSubmetidos> {
     return this.deposito.submetidos(roundId);
+  }
+
+  /** Os lançamentos do slip — o que um ajuste pode corrigir (T-C06, D-11). */
+  @Get('slips/:slipId/lancamentos')
+  lancamentos(@Param('slipId') slipId: string): Promise<LancamentosDoSlip> {
+    return this.ledger.lancamentos(slipId);
   }
 }

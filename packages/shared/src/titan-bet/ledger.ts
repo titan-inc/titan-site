@@ -40,3 +40,35 @@ export const saldosDaRodadaSchema = z
   })
   .strict();
 export type SaldosDaRodada = z.infer<typeof saldosDaRodadaSchema>;
+
+/**
+ * T-C06: os lançamentos de um slip, para o officer escolher o que o ajuste
+ * corrige (D-11). O ledger como registrou — sem aposta, mercado ou escolha.
+ */
+export const lancamentosDoSlipSchema = z
+  .object({
+    lancamentos: z.array(
+      z
+        .object({
+          /** BigInt no banco: trafega como texto, e é o `correctsEntryId` do ajuste. */
+          entryId: z.string().regex(/^\d+$/),
+          kind: z.enum([
+            'deposito_validado',
+            'premio',
+            'restituicao_anulado',
+            'receita_guilda',
+            'residuo_guilda',
+            'restituicao_expirado',
+            'ajuste',
+            'pagamento',
+          ]),
+          amount: z.number().int(),
+          reason: z.string().nullable(),
+          actorBattletag: z.string().nullable(),
+          createdAt: z.string().datetime(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type LancamentosDoSlip = z.infer<typeof lancamentosDoSlipSchema>;

@@ -1138,7 +1138,14 @@ export class TitanBetRepository {
     return this.prisma.goldLedgerEntry.findMany({
       where: { slipId },
       orderBy: { id: 'asc' },
-      select: { id: true, kind: true, amount: true },
+      select: {
+        id: true,
+        kind: true,
+        amount: true,
+        reason: true,
+        actorBattletag: true,
+        createdAt: true,
+      },
     });
   }
 

@@ -1824,3 +1824,20 @@ a de componente + contrato; o smoke manual fica para quando o dev receber
 
 `pnpm test`: shared 392, api 932, web **176** (eram 147); `pnpm test:db` 314; format,
 lint, typecheck e build OK; banco de dev com o mesmo hash.
+
+## 38. F2 — Officer Panel (24/09/2026)
+
+### 38.1 F2.0 — T-C06, o contrato que faltava para o ajuste
+
+Montando o T-UI27 apareceu uma lacuna de **contrato**, não de produto: o ajuste exige
+`correctsEntryId` (D-11), e nenhuma leitura entregava id de lançamento ao officer — os
+saldos só trazem devido e pago. Entrou pelo mesmo TDD do F0:
+
+| ID    | Rota                                                        | Guard          | Contrato                  |
+| ----- | ----------------------------------------------------------- | -------------- | ------------------------- |
+| T-C06 | `GET /internal/titan-bet/officer/slips/:slipId/lancamentos` | `OfficerGuard` | `lancamentosDoSlipSchema` |
+
+**RED real:** shared 3 falhas (schema inexistente), HTTP 4 (rota inexistente: 401/403 ×3 e
+a chamada), banco 2 (`ledger.lancamentos is not a function`). **GREEN:** o lançamento sai
+com `entryId` em texto (BigInt), tipo, valor, motivo, quem e quando — sem aposta nem
+mercado; o id devolvido é aceito pelo ajuste (testado ponta a ponta). Yaak incluído.
