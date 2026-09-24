@@ -2278,6 +2278,12 @@ resultado muda):
 Nada do payload do WCL é guardado além disso. A mesma evidência sai inteira pelo contrato
 de resultados (`resultadosDaAuditoriaSchema`, depois de ida e volta em JSON).
 
+**Parse % (§15.10, corrigida na revisão 15):** a evidência de Top DPS/HPS Parse já cobre o
+exigido — `rankPercent`, `spec`, `metric`, `compare: Rankings`, `timeframe: Today`, nome e
+servidor —, mais o `bracketPercent` como auxiliar. `partition` e `bracket` **não** são
+requisitos da evidência: não participam do cálculo nem da validação do Gate #1. A
+ausência deles não é lacuna.
+
 Teste existente com asserção ampliada: `leitura-wcl.spec.ts`, "morte de quem não é
 candidato…" — a morte passou a carregar `ator`, e o esperado inclui o id (mais forte, não
 mais fraco).

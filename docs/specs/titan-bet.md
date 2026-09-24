@@ -1473,27 +1473,35 @@ com dois loggers as pulls e kills da noite **aparecem em dobro** na tela de prog
 O que é **necessário** para responder "qual report, qual fight, qual encounter, quando,
 com quais dados, e dá para reproduzir":
 
-| Item                                                                                                                         | Necessário? | Por quê                                                                      |
-| ---------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------- |
-| `report.code`                                                                                                                | **sim**     | identificador estável; é por ele que se reconsulta                           |
-| `report.title` como lido                                                                                                     | **sim**     | prova de que o report casava com `titanbet*` no momento; o título é editável |
-| `report.revision` como lida                                                                                                  | **sim**     | diz se o report mudou depois da apuração                                     |
-| `report.startTime`                                                                                                           | **sim**     | converte timestamps relativos em absolutos                                   |
-| `report.endTime`, `owner`                                                                                                    | não         | `endTime` não delimita a raid; `owner` só se OQ-42 exigir                    |
-| `fight.id`, `encounterID`, `difficulty`, `kill`                                                                              | **sim**     | identificam a luta e provam que é a kill Mythic                              |
-| `fight.startTime`/`endTime`                                                                                                  | **sim**     | a duração é o denominador de DPS/HPS; o início absoluto é o que deduplica    |
-| `fightPercentage`                                                                                                            | útil        | segunda confirmação de que duas cópias são a mesma pull                      |
-| por candidato: `name` + `server` como vieram, e o `Character` resolvido                                                      | **sim**     | auditar o casamento de identidade                                            |
-| valor bruto (`total`) **e** o valor usado (DPS/HPS/contagem)                                                                 | **sim**     | o total é reproduzível; a taxa depende da duração                            |
-| parse: `rankPercent`, `bracketPercent`, `spec`, `metric`, `timeframe`, `compare`, `partition`, `bracket`                     | **sim**     | o valor **não** é reproduzível depois; o que foi lido é a única prova        |
-| First Death: por try, as mortes em ordem **até** a primeira elegível (outsiders pulados, empates na mesma ms), com timestamp | **sim**     | R-28a e D-13/D-14                                                            |
-| pares deduplicados e a regra usada                                                                                           | **sim**     | quando houver deduplicação                                                   |
-| snapshot do Titan Roster congelado (referência)                                                                              | **sim**     | elegibilidade é do cutoff, não de hoje                                       |
-| `computedAt` e versão do algoritmo                                                                                           | **sim**     | o mesmo report pode dar outro resultado com outro algoritmo                  |
-| talentos, gear, eventos completos, token                                                                                     | **não**     | nenhum resultado depende disso; token nunca                                  |
+| Item                                                                                                                         | Necessário? | Por quê                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `report.code`                                                                                                                | **sim**     | identificador estável; é por ele que se reconsulta                                                                                 |
+| `report.title` como lido                                                                                                     | **sim**     | prova de que o report casava com `titanbet*` no momento; o título é editável                                                       |
+| `report.revision` como lida                                                                                                  | **sim**     | diz se o report mudou depois da apuração                                                                                           |
+| `report.startTime`                                                                                                           | **sim**     | converte timestamps relativos em absolutos                                                                                         |
+| `report.endTime`, `owner`                                                                                                    | não         | `endTime` não delimita a raid; `owner` só se OQ-42 exigir                                                                          |
+| `fight.id`, `encounterID`, `difficulty`, `kill`                                                                              | **sim**     | identificam a luta e provam que é a kill Mythic                                                                                    |
+| `fight.startTime`/`endTime`                                                                                                  | **sim**     | a duração é o denominador de DPS/HPS; o início absoluto é o que deduplica                                                          |
+| `fightPercentage`                                                                                                            | útil        | segunda confirmação de que duas cópias são a mesma pull                                                                            |
+| por candidato: `name` + `server` como vieram, e o `Character` resolvido                                                      | **sim**     | auditar o casamento de identidade                                                                                                  |
+| valor bruto (`total`) **e** o valor usado (DPS/HPS/contagem)                                                                 | **sim**     | o total é reproduzível; a taxa depende da duração                                                                                  |
+| parse: `rankPercent`, `spec`, `metric` (dps/hps), `compare: Rankings`, `timeframe: Today`, nome e servidor como vieram       | **sim**     | é a variante validada no Gate #1 e usada pela D-43; o valor não é reproduzível depois, e o que foi lido no Auditar é a única prova |
+| parse: `bracketPercent`                                                                                                      | auxiliar    | já preservado na evidência e no snapshot; é o Ilvl %, e não participa da determinação do vencedor (D-43)                           |
+| parse: `partition`, `bracket`                                                                                                | **não**     | não participam do cálculo nem da validação que definiu o Parse % usado pelo Titan Bet                                              |
+| First Death: por try, as mortes em ordem **até** a primeira elegível (outsiders pulados, empates na mesma ms), com timestamp | **sim**     | R-28a e D-13/D-14                                                                                                                  |
+| pares deduplicados e a regra usada                                                                                           | **sim**     | quando houver deduplicação                                                                                                         |
+| snapshot do Titan Roster congelado (referência)                                                                              | **sim**     | elegibilidade é do cutoff, não de hoje                                                                                             |
+| `computedAt` e versão do algoritmo                                                                                           | **sim**     | o mesmo report pode dar outro resultado com outro algoritmo                                                                        |
+| talentos, gear, eventos completos, token                                                                                     | **não**     | nenhum resultado depende disso; token nunca                                                                                        |
 
 **Reprodutível depois:** dano, cura, dispels, mortes, kill e duração — enquanto a
 `revision` não mudar. **Não reprodutível:** parse.
+
+> **Histórico (revisão 15).** `partition` e `bracket` constavam da linha de parse desta
+> tabela, uma lista conservadora criada no M0 a partir do formato bruto do `rankings`
+> (§15.6), antes do Gate #1. O requisito foi refinado depois da validação empírica do WCL
+> (§15.0): só a variante `compare: Rankings`, `timeframe: Today` com o `rankPercent`
+> reproduz a coluna Parse %, e nenhum dos dois campos entra nela.
 
 ### 15.11 Custo
 
