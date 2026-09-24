@@ -1777,3 +1777,50 @@ contratos novos.
 
 `pnpm test:db` **314/314**; `pnpm test`: shared **392**, api **932**, web 147; format,
 lint, typecheck e build OK; banco de dev com o mesmo hash.
+
+## 37. F1 — superfície do membro, `/interno/bet` (24/09/2026)
+
+**Status: GREEN.** T-UI01–T-UI11 da §34.2, sem decisão de produto nova.
+
+### 37.1 RED
+
+| Onde                                            | RED                                                            |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| `bet/_components/acesso.spec.ts`                | **awaiting seam** — `Cannot find module './acesso'`            |
+| `bet/_components/apostas-da-rodada.spec.tsx`    | **awaiting seam** — `./apostas-da-rodada` inexistente          |
+| `bet/_components/resultados-da-rodada.spec.tsx` | **awaiting seam** — `./resultados-da-rodada` inexistente       |
+| `interno/_components/sidebar-nav.spec.tsx`      | **RED real**, 2 falhas: o link "Titan Bet" não existia no menu |
+
+Uma asserção do T-UI07 foi precisada antes do primeiro GREEN: `getByText(/Outropersonagem/)`
+casava em dois mercados (a mesma pessoa é opção no Top DPS e no First Death). Passou a
+conferir a marcação "sua aposta · 300 gold" dentro do mercado apostado — mede a mesma coisa,
+sem ambiguidade.
+
+### 37.2 O que entrou
+
+- **Páginas:** `/interno/bet` (as rodadas visíveis, T-C01) e `/interno/bet/[roundId]` (a
+  rodada: cardápio, odds, o próprio slip e o Closing publicado). Leitura no servidor, por
+  `lib/api.ts` com parse estrito; a página distingue proibido (→ `/interno`), inexistente e
+  indisponível. **Não** redireciona por `membership` (T-UI01, D-53a).
+- **`ApostasDaRodada`** (client): escreve direto no Nest com `credentials: 'include'`
+  (Regra 1), valida com `salvarSlipSchema`/`submeterSlipSchema` antes (Regra 2) e mostra
+  a recusa do backend como veio. As opções vêm das odds — a tela não redeclara a regra
+  de role (D-04); First Death esconde `personagensDoApostador` (D-56); Weekly por boss
+  (D-54); depositante por nome + realm, sem região (D-55); slip submetido só leitura,
+  recusado permite começar outro (D-34); fechado sem controles (R-06); "—" e o aviso de
+  projeção (§16.10); o slip relido pelo contrato estrito (T-UI11).
+- **`ResultadosDaRodada`**: o Closing publicado — vencedores, bosses mortos da Weekly,
+  `sem_vencedor` com motivo e redistribuição (D-61), anulado com restituição, totais e
+  Guild Bank.
+- **Menu:** "Titan Bet" para qualquer um na guilda, como o M+ (D-01).
+- `Acao` ganhou `onClick` (botão "Começar outro slip").
+
+**Não verificado no navegador:** as migrations da revisão 11–12 não estão no banco de dev
+(que os testes não tocam), então não há rodada real para abrir localmente. A cobertura é
+a de componente + contrato; o smoke manual fica para quando o dev receber
+`prisma migrate deploy`.
+
+### 37.3 Resultado
+
+`pnpm test`: shared 392, api 932, web **176** (eram 147); `pnpm test:db` 314; format,
+lint, typecheck e build OK; banco de dev com o mesmo hash.

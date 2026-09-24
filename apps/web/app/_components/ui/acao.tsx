@@ -6,6 +6,7 @@ interface AcaoProps {
   href?: string;
   type?: 'button' | 'submit';
   disabled?: boolean;
+  onClick?: () => void;
   'aria-describedby'?: string;
   className?: string;
 }
@@ -16,6 +17,7 @@ export function Acao({
   href,
   type = 'button',
   disabled,
+  onClick,
   className = '',
   ...aria
 }: AcaoProps) {
@@ -32,7 +34,7 @@ export function Acao({
       </a>
     );
   return (
-    <button type={type} disabled={disabled} className={classes} {...aria}>
+    <button type={type} disabled={disabled} onClick={onClick} className={classes} {...aria}>
       {children}
     </button>
   );

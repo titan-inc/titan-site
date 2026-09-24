@@ -34,6 +34,12 @@ const ITENS_SEM_ACESSO = [{ segment: null, href: '/interno', label: 'Home' }] as
 const ITEM_MPLUS = { segment: 'mplus', href: '/interno/mplus', label: 'M+' } as const;
 
 /**
+ * Titan Bet também é de qualquer um na guilda (D-01): o corte de rank é da
+ * ferramenta do time de raid, não das apostas.
+ */
+const ITEM_BET = { segment: 'bet', href: '/interno/bet', label: 'Titan Bet' } as const;
+
+/**
  * Seção de liderança. Fora de ITENS porque não é para todo mundo.
  *
  * Esconder o link é cortesia, não proteção: quem digitar a URL é barrado pela
@@ -54,7 +60,7 @@ export function SidebarNav({
   // Hook de client component: o layout é server component e importa este.
   const atual = useSelectedLayoutSegment();
   const base = acessoInterno ? ITENS : ITENS_SEM_ACESSO;
-  const itens = [...base, ITEM_MPLUS, ...(oficial ? ITENS_OFICIAL : [])];
+  const itens = [...base, ITEM_MPLUS, ITEM_BET, ...(oficial ? ITENS_OFICIAL : [])];
 
   return (
     <nav aria-label="Área interna" className="flex gap-1 md:flex-col">
