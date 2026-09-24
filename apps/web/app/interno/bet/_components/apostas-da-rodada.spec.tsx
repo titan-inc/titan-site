@@ -195,6 +195,122 @@ describe('ApostasDaRodada', () => {
     });
   });
 
+  describe('T-UI26 — Submeter congela o que a tela mostra (D-72)', () => {
+    // Alpha/300 salvo; a tela passa a mostrar Beta/900, sem salvar.
+    const BETA: MeuSlip = {
+      ...RASCUNHO,
+      apostas: [{ marketId: 'm-dps', stake: 900, targetCharacterId: 'c-meu' }],
+    };
+    const CONGELADO: MeuSlip = {
+      ...BETA,
+      status: 'aguardando_deposito',
+      depositCharacter: { name: 'Qualquer', realm: 'Azralon' },
+      expectedTotal: 900,
+    };
+
+    async function mudarParaBeta() {
+      const dps = grupo('Top DPS · Boss Farm');
+      await userEvent.click(within(dps).getByRole('radio', { name: /Meupersonagem/ }));
+      await userEvent.clear(within(dps).getByLabelText('Stake (gold)'));
+      await userEvent.type(within(dps).getByLabelText('Stake (gold)'), '900');
+      await userEvent.type(screen.getByLabelText('Personagem que deposita'), 'Qualquer');
+      await userEvent.type(screen.getByLabelText('Realm'), 'Azralon');
+    }
+
+    it('Alpha/300 → Beta/900 → Submeter: salva Beta/900 primeiro, e só então submete', async () => {
+      fetchMock
+        .mockResolvedValueOnce(resposta({ slipId: 's1' }))
+        .mockResolvedValueOnce(resposta(BETA))
+        .mockResolvedValueOnce(resposta({ total: 900 }))
+        .mockResolvedValueOnce(resposta(CONGELADO));
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+
+      await mudarParaBeta();
+      await userEvent.click(screen.getByRole('button', { name: 'Submeter pagamento' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+      expect(chamada(0).url).toBe(`${API}/slip`);
+      expect(chamada(0).init.method).toBe('PUT');
+      expect(chamada(0).corpo).toEqual({
+        apostas: [{ marketId: 'm-dps', stake: 900, targetCharacterId: 'c-meu' }],
+      });
+      expect(chamada(2).url).toBe(`${API}/slip/submeter`);
+      expect(chamada(2).init.method).toBe('POST');
+      // O que ficou congelado é o que a tela mostrava.
+      expect(await screen.findByText(/deposite 900 gold/i)).toBeTruthy();
+      expect(within(grupo('Top DPS · Boss Farm')).getByText(/sua aposta · 900 gold/)).toBeTruthy();
+    });
+
+    it('Salvar falhou: nenhum Submeter é enviado, e o motivo aparece', async () => {
+      fetchMock.mockResolvedValueOnce(
+        resposta({ message: 'o stake de cada aposta vai até 1.000 gold' }, 422),
+      );
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+
+      await mudarParaBeta();
+      await userEvent.click(screen.getByRole('button', { name: 'Submeter pagamento' }));
+
+      expect(await screen.findByText('o stake de cada aposta vai até 1.000 gold')).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/submeter'))).toBe(false);
+    });
+
+    it('alteração inválida pendente: nada vai para a API — nem o estado antigo', async () => {
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+      const dps = grupo('Top DPS · Boss Farm');
+      await userEvent.clear(within(dps).getByLabelText('Stake (gold)'));
+      await userEvent.type(within(dps).getByLabelText('Stake (gold)'), '5000');
+      await userEvent.type(screen.getByLabelText('Personagem que deposita'), 'Qualquer');
+      await userEvent.type(screen.getByLabelText('Realm'), 'Azralon');
+      await userEvent.click(screen.getByRole('button', { name: 'Submeter pagamento' }));
+
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('duplo clique: um Salvar e um Submeter, não dois', async () => {
+      let liberar: () => void = () => {};
+      fetchMock
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              liberar = () => resolve(resposta({ slipId: 's1' }));
+            }),
+        )
+        .mockResolvedValueOnce(resposta(BETA))
+        .mockResolvedValueOnce(resposta({ total: 900 }))
+        .mockResolvedValueOnce(resposta(CONGELADO));
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+
+      await mudarParaBeta();
+      const botao = screen.getByRole('button', { name: 'Submeter pagamento' });
+      await userEvent.dblClick(botao);
+      liberar();
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+      const metodos = fetchMock.mock.calls.map(
+        ([, init]) => (init as RequestInit | undefined)?.method ?? 'GET',
+      );
+      expect(metodos.filter((m) => m === 'PUT')).toHaveLength(1);
+      expect(metodos.filter((m) => m === 'POST')).toHaveLength(1);
+    });
+
+    it('sem alteração pendente, o Submeter vai direto — nenhum Salvar a mais', async () => {
+      fetchMock
+        .mockResolvedValueOnce(resposta({ total: 300 }))
+        .mockResolvedValueOnce(
+          resposta({ ...CONGELADO, apostas: RASCUNHO.apostas, expectedTotal: 300 }),
+        );
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+      await userEvent.type(screen.getByLabelText('Personagem que deposita'), 'Qualquer');
+      await userEvent.type(screen.getByLabelText('Realm'), 'Azralon');
+      await userEvent.click(screen.getByRole('button', { name: 'Submeter pagamento' }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      expect(chamada(0).url).toBe(`${API}/slip/submeter`);
+    });
+  });
+
   describe('T-UI07 — slip submetido é só leitura (D-27, D-34)', () => {
     it('aguardando depósito: estado, depositante como informado e total; sem edição', () => {
       render(

@@ -2138,3 +2138,22 @@ GREEN: `camposDaSubmissao` + `submissaoCoerente` (`packages/shared/src/titan-bet
 — nulos só em `expirado`, e os três juntos; o serviço serializa o que está gravado, sem
 data inventada; a tela diz "nunca submetido" e, no "ver slip", "o último rascunho salvo".
 O submetido que expirou pendente continua com data e total (T-S28).
+
+### 42.2 Achado 2 — Submeter congelava o rascunho antigo (D-72)
+
+Reproduzido: com Alpha/300 salvo e a tela mostrando Beta/900, "Submeter pagamento" mandava
+só o `POST /slip/submeter` — o servidor congelava Alpha/300.
+
+| `web apostas-da-rodada.spec.tsx` — T-UI26                                                 | RED                                              |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Alpha/300 → Beta/900 → Submeter: PUT Beta/900, releitura, POST, e a tela congelada em 900 | **RED real**: 1 chamada (só o POST), esperadas 4 |
+| Salvar falhou (422): nenhum POST de Submeter, o motivo aparece                            | **RED real**: o POST saía direto                 |
+| alteração inválida pendente (stake 5000): nada vai para a API                             | **RED real**: submetia o estado antigo           |
+| duplo clique com o Salvar em curso: um PUT e um POST                                      | **RED real**                                     |
+| sem alteração pendente: o Submeter vai direto, sem Salvar a mais                          | guarda — passava antes, e continua               |
+
+GREEN: `alteradoDesdeSalvo` compara o corpo do Salvar da tela com o do rascunho salvo;
+havendo diferença, o Submeter grava primeiro e só submete depois do sucesso. Uma escrita
+por vez (`useRef`), porque o `pendente` do `useTransition` só desabilita os botões no
+render seguinte. O servidor continua congelando o que está gravado (T-S03) — a tela é que
+passou a garantir que o gravado é o exibido.

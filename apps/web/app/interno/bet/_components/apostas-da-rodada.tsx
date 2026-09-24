@@ -9,7 +9,7 @@ import {
   type RodadaDoMembro,
   type SalvarSlip,
 } from '@titan/shared';
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { z } from 'zod';
 import { API_URL } from '../../../../lib/config';
 import { Acao } from '../../../_components/ui/acao';
@@ -44,6 +44,21 @@ function escolhasDoSlip(slip: MeuSlip | null): Partial<Record<string, Escolha>> 
       },
     ]),
   );
+}
+
+/** As apostas de um conjunto de escolhas, na ordem do cardápio — o corpo do Salvar. */
+function apostasDasEscolhas(
+  cardapio: RodadaDoMembro,
+  escolhas: Partial<Record<string, Escolha>>,
+): SalvarSlip['apostas'] {
+  return cardapio.mercados.flatMap((m): SalvarSlip['apostas'] => {
+    const e = escolhas[m.marketId];
+    if (!e?.opcao) return [];
+    const stake = Number(e.stake);
+    return m.kind === 'weekly_progression'
+      ? [{ marketId: m.marketId, stake, encounterId: e.opcao }]
+      : [{ marketId: m.marketId, stake, targetCharacterId: e.opcao }];
+  });
 }
 
 /** A mensagem que o Nest mandou, como veio (T-UI04): a API escreve para esta tela. */
@@ -85,6 +100,9 @@ export function ApostasDaRodada({
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [pendente, startTransition] = useTransition();
+  // Uma escrita por vez: o `pendente` só desabilita os botões no render
+  // seguinte, e um duplo clique chega antes dele (D-72).
+  const ocupado = useRef(false);
 
   const aberta = cardapio.fase === 'OPEN';
   const podeApostar = aberta && cardapio.podeApostar && odds !== null;
@@ -150,48 +168,73 @@ export function ApostasDaRodada({
     return lido.data;
   }
 
-  function salvar(evento: React.FormEvent) {
-    evento.preventDefault();
-    setErro(null);
-    setAviso(null);
+  /** A tela difere do rascunho salvo? Então o que ela mostra ainda não está no servidor. */
+  const alteradoDesdeSalvo =
+    JSON.stringify(apostasDasEscolhas(cardapio, escolhas)) !==
+    JSON.stringify(apostasDasEscolhas(cardapio, escolhasDoSlip(novo ? null : slip)));
 
-    const apostas = cardapio.mercados.flatMap((m): SalvarSlip['apostas'] => {
-      const e = escolhas[m.marketId];
-      if (!e?.opcao) return [];
-      const stake = Number(e.stake);
-      return m.kind === 'weekly_progression'
-        ? [{ marketId: m.marketId, stake, encounterId: e.opcao }]
-        : [{ marketId: m.marketId, stake, targetCharacterId: e.opcao }];
+  /** O rascunho da tela, pelo contrato — ou a mensagem de por que não passa. */
+  function rascunhoDaTela(): { ok: true; dados: SalvarSlip } | { ok: false; motivo: string } {
+    const r = salvarSlipSchema.safeParse({ apostas: apostasDasEscolhas(cardapio, escolhas) });
+    return r.success
+      ? { ok: true, dados: r.data }
+      : { ok: false, motivo: mensagemDoContrato(r.error) };
+  }
+
+  /** PUT do rascunho e releitura; lança com o motivo do backend. */
+  async function gravarRascunho(dados: SalvarSlip): Promise<MeuSlip | null> {
+    const res = await fetch(`${base}/slip`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dados),
     });
-    const rascunho = salvarSlipSchema.safeParse({ apostas });
-    if (!rascunho.success) {
-      setErro(mensagemDoContrato(rascunho.error));
-      return;
-    }
+    if (!res.ok) throw new Error(await motivoDaRecusa(res));
+    const atual = await relerSlip();
+    setSlip(atual);
+    setNovo(false);
+    setEscolhas(escolhasDoSlip(atual));
+    return atual;
+  }
 
+  /** Roda uma escrita, uma por vez; a segunda chamada, com a primeira em curso, é ignorada. */
+  function escrever(operacao: () => Promise<void>, falha: string) {
+    if (ocupado.current) return;
+    ocupado.current = true;
     startTransition(async () => {
       try {
-        const res = await fetch(`${base}/slip`, {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(rascunho.data),
-        });
-        if (!res.ok) throw new Error(await motivoDaRecusa(res));
-
-        const atual = await relerSlip();
-        setSlip(atual);
-        setNovo(false);
-        setEscolhas(escolhasDoSlip(atual));
-        setAviso('Rascunho salvo. Ele só vale depois de submeter e o depósito ser confirmado.');
+        await operacao();
       } catch (err) {
-        setErro(err instanceof Error ? err.message : 'Não foi possível salvar.');
+        setErro(err instanceof Error ? err.message : falha);
+      } finally {
+        ocupado.current = false;
       }
     });
   }
 
+  function salvar(evento: React.FormEvent) {
+    evento.preventDefault();
+    if (ocupado.current) return;
+    setErro(null);
+    setAviso(null);
+
+    const rascunho = rascunhoDaTela();
+    if (!rascunho.ok) return setErro(rascunho.motivo);
+
+    escrever(async () => {
+      await gravarRascunho(rascunho.dados);
+      setAviso('Rascunho salvo. Ele só vale depois de submeter e o depósito ser confirmado.');
+    }, 'Não foi possível salvar.');
+  }
+
+  /**
+   * Submeter congela o que a tela mostra (D-72): com alteração pendente, salva
+   * primeiro, e só submete se o Salvar deu certo. Nunca otimista — congelar o
+   * rascunho antigo seria apostar algo que a pessoa não vê.
+   */
   function submeter(evento: React.FormEvent) {
     evento.preventDefault();
+    if (ocupado.current) return;
     setErro(null);
     setAviso(null);
 
@@ -202,24 +245,24 @@ export function ApostasDaRodada({
       setErro('Informe o personagem que vai depositar e o realm dele.');
       return;
     }
+    const rascunho = alteradoDesdeSalvo ? rascunhoDaTela() : null;
+    if (rascunho && !rascunho.ok) return setErro(rascunho.motivo);
 
-    startTransition(async () => {
-      try {
-        const res = await fetch(`${base}/slip/submeter`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pedido.data),
-        });
-        if (!res.ok) throw new Error(await motivoDaRecusa(res));
-        const total = z.object({ total: z.number().int() }).safeParse(await res.json());
-        if (!total.success) throw new Error('Resposta inesperada da API.');
+    escrever(async () => {
+      if (rascunho) await gravarRascunho(rascunho.dados);
 
-        setSlip(await relerSlip());
-      } catch (err) {
-        setErro(err instanceof Error ? err.message : 'Não foi possível submeter.');
-      }
-    });
+      const res = await fetch(`${base}/slip/submeter`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pedido.data),
+      });
+      if (!res.ok) throw new Error(await motivoDaRecusa(res));
+      const total = z.object({ total: z.number().int() }).safeParse(await res.json());
+      if (!total.success) throw new Error('Resposta inesperada da API.');
+
+      setSlip(await relerSlip());
+    }, 'Não foi possível submeter.');
   }
 
   function comecarOutro() {
