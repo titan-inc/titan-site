@@ -673,7 +673,7 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
       // O submetido que expirou pendente continua com a data e o total.
       expect(lista.slips.find((s) => s.slipId === pendente.id)).toMatchObject({
         status: 'expirado',
-        submittedAt: expect.any(String),
+        submittedAt: expect.any(String) as unknown,
         expectedTotal: 500,
       });
 
@@ -684,7 +684,7 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
         submittedAt: null,
         depositCharacter: null,
         expectedTotal: null,
-        expiredAt: expect.any(String),
+        expiredAt: expect.any(String) as unknown,
       });
       expect(visto!.apostas).toHaveLength(1);
 

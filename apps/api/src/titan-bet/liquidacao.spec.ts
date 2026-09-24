@@ -27,9 +27,8 @@ const anulado = (marketId: string, apostas: number[]) => ({
 });
 
 function liquidada(mercados: MercadoParaLiquidar[]) {
-  const r = liquidarRodada(mercados);
-  if (r.tipo !== 'liquidada') throw new Error(`esperado liquidada, veio ${r.tipo}`);
-  return Object.fromEntries(r.mercados.map((m) => [m.marketId, m]));
+  // Desde a D-74 a liquidação sempre liquida: não existe mais "sem premiável".
+  return Object.fromEntries(liquidarRodada(mercados).mercados.map((m) => [m.marketId, m]));
 }
 
 describe('T-M10 — órfão não é VOID: sem restituição, G₀ da guilda', () => {
