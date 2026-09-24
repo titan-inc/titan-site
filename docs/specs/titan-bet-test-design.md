@@ -2310,3 +2310,37 @@ para o Auditar. Pela regra da revisão, o item para aqui. Alternativas para a de
 **Recomendação:** B agora (fecha a incoerência sem migration nem payload, em TDD pequeno),
 e A como melhoria se a liderança quiser o Parse % do instante do Auditar, como a D-43
 escreve. Até a decisão, nada foi implementado neste item e o comportamento é o anterior.
+
+### 42.8 Validação final (24/09/2026)
+
+**Suítes:** `format:check`, `build`, `lint` e `typecheck` ok; shared **406**, api **977**,
+web **227**; `test:db` contra o `titan_test` **348** (25 suítes). O banco de dev não foi
+tocado pelas suítes (impressão digital igual antes e depois).
+
+**Banco de dev:** `prisma migrate deploy` aplicou as duas migrations da D-74 (sem reset). Para
+o navegador foram **criadas** três rodadas só locais, sem alterar nenhuma existente:
+`teste-local-9001` (aberta, com a configuração e os snapshots da 1083), `teste-local-9002`
+(cutoff na terça 22/09, Ready antes) e `teste-local-9003` (cutoff 1 min depois de criada,
+com um rascunho de uma conta fictícia).
+
+**Navegador** (Chrome DevTools, login real, `pnpm dev`):
+
+- **D-73** — `/interno/bet-officer/teste-local-9002` na quinta às 12:40 BRT: sem botão, "O
+  Auditar abre depois da raid de quinta: qui., 24/09, 23:30 BRT"; `POST …/auditar` direto →
+  409 "a auditoria só abre depois da raid de quinta, às 23:30 (24/09, 23:30,
+  America/Sao_Paulo)".
+- **D-72** — `/interno/bet/teste-local-9001`: rascunho Alpha salvo (300); a tela mudou para
+  Beta (900) sem salvar; **duplo clique** em "Submeter pagamento". Rede: `PUT slip`, `GET
+slip`, **um** `POST submeter`, `GET slip`. Banco: `aguardando_deposito`, total 900, aposta
+  em Beta. Tela: "Deposite 900 gold".
+- **D-71** — o job de cutoff real expirou o rascunho da 9003 às 12:50 (`submittedAt` nulo);
+  o Officer Panel lista "Teste#0001 · Expirado · nunca submetido", e o "ver slip" abre com
+  "nunca submetido — o último rascunho salvo" (antes: 500).
+- **D-75** — `GET /rodadas/teste-local-1084/odds` (preparação) → 404; da 9001 (Ready) →
+  200; sem cookie → 401; `GET /officer/rodadas/teste-local-1084/preparacao` → 200.
+- **Resultados e Closing** — o Closing da 1081, publicado antes da revisão 14 (sem
+  `destinoDoPool`), abre na superfície do membro; o painel da 1080 mostra auditoria
+  confirmada, resultados e saldos. Console sem erro nem aviso.
+
+A D-74 e a N1 não têm caso no banco de dev (exigiriam liquidar uma rodada com o WCL real);
+estão cobertas pelo `test:db` (§42.5, §42.6).
