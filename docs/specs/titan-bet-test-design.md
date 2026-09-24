@@ -1657,3 +1657,67 @@ odds" (serviço e HTTP).
 
 `pnpm test:db` **302/302**; `pnpm test`: shared **374**, api **913**, web 147; format,
 lint, typecheck e build OK; banco de dev com o mesmo hash.
+
+## 34. Matriz TDD do frontend — preparação (24/09/2026)
+
+**Status: PREPARADA, não iniciada.** Nenhuma decisão de produto nova apareceu nos
+milestones 1–4. O que falta para o front são **contratos de leitura** que decorrem de
+decisões já tomadas (D-21, D-36, D-45, D-53, D-57), e por isso entram antes, pelo mesmo
+protocolo de TDD do backend. Pendência de produto que **não** bloqueia: D-07 × D-59
+(restituição de expirado), que só afetaria uma ação do Officer Panel que hoje nem existe
+na API.
+
+### 34.1 F0 — contratos que faltam (API, antes de qualquer tela)
+
+Hoje toda rota do membro exige `:roundId`, e as odds só trazem ids. Sem isto a tela não
+sabe qual rodada abrir nem o nome de nada.
+
+| ID    | Rota (proposta)                                          | Guard                               | O que responde                                                                                                                                                                                                                | RED esperado       |
+| ----- | -------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| T-C01 | `GET /internal/titan-bet/rodadas`                        | sessão (membro **ou** dono de slip) | rodadas visíveis à conta: `{ roundId, cutoffAt, fase }` — membro vê todas (o Closing é da guilda, D-21); ex-membro, só as com slip dele (D-53a)                                                                               | rota inexistente   |
+| T-C02 | `GET /internal/titan-bet/rodadas/:roundId`               | `ApostadorDaRodadaGuard`            | o cardápio legível: `cutoffAt`, fase, mercados `{ marketId, kind, boss: { roundEncounterId, nome, track } \| null }`, candidatos `{ characterId, name, realm, role }`, bosses de progressão, e `podeApostar` da conta (D-53b) | rota inexistente   |
+| T-C03 | contrato `rodadaDoMembroSchema` (shared)                 | —                                   | estrito: nenhum stake, slip ou conta (§16.10)                                                                                                                                                                                 | schema inexistente |
+| T-C04 | `GET /internal/titan-bet/officer/rodadas`                | `OfficerGuard`                      | todas as rodadas com fase, para o officer chegar à preparação, ao Auditar e ao Closing                                                                                                                                        | rota inexistente   |
+| T-C05 | `GET /internal/titan-bet/officer/rodadas/:roundId/slips` | `OfficerGuard`                      | slips **submetidos** da rodada sem as escolhas (molde do `depositoPendenteSchema`): é a porta para o "ver slip" (D-57), que só então registra `BetEvent`                                                                      | rota inexistente   |
+
+`fase` é derivada, não coluna nova: preparação → aberta → após o cutoff → auditada →
+liquidada → Closing publicado. Isso sai dos estados que já existem.
+
+### 34.2 F1 — superfície do membro (`/interno/bet`)
+
+Componentes com vitest + Testing Library, como `loot/` e `mplus/`; o fetch é falso, e o
+contrato é o do shared.
+
+| ID     | Comportamento                                                                                                                   | Decisão       |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| T-UI01 | a página deixa entrar o ex-membro com slip na rodada (não redireciona por `membership`, como `mplus/`); 403 da API → `/interno` | D-53a         |
+| T-UI02 | membro fora do snapshot vê mercados e odds, sem os controles de aposta (`podeApostar = false`)                                  | D-53b         |
+| T-UI03 | Weekly: um boss de progressão por aposta, cada boss com a própria odd                                                           | D-54          |
+| T-UI04 | Salvar manda o rascunho inteiro; o 422 aparece com o motivo do backend, sem tradução                                            | D-27, D-28    |
+| T-UI05 | First Death não oferece personagem do próprio apostador; se o backend recusar mesmo assim, o motivo aparece                     | D-56          |
+| T-UI06 | Submeter pede o depositante por nome + realm, **sem região**, e mostra o total a depositar                                      | D-55, Regra 6 |
+| T-UI07 | slip submetido fica só leitura: estado, depositante como informado, total; recusado mostra o motivo e permite começar outro     | D-27, D-34    |
+| T-UI08 | depois do cutoff não há controle de edição; o horário vem de `cutoffAt`                                                         | R-06          |
+| T-UI09 | odds: `null` aparece como "—"; o multiplicador é projeção, não promessa                                                         | §16.10        |
+| T-UI10 | resultados: o Closing publicado, `sem_vencedor` com o motivo e os bosses vencedores da Weekly                                   | D-48, D-61    |
+| T-UI11 | nenhuma tela do membro renderiza aposta de outra pessoa (o contrato estrito já impede; o teste confirma o que a tela mostra)    | D-36          |
+
+### 34.3 F2 — Officer Panel
+
+| ID     | Comportamento                                                                                                    | Decisão    |
+| ------ | ---------------------------------------------------------------------------------------------------------------- | ---------- |
+| T-UI20 | a navegação do Officer Panel some para quem não é officer — UX; o 403 da API continua sendo a regra (Regra 5)    | D-36       |
+| T-UI21 | preparar a semana: encounters do catálogo, farm/progressão, mercados — sem marcação de Weekly                    | D-45, D-54 |
+| T-UI22 | Ready com as recusas do backend (sem boss de progressão para a Weekly etc.)                                      | D-31       |
+| T-UI23 | depósitos pendentes: confirmar; recusar exige motivo. O officer confirma o próprio depósito                      | D-34, D-58 |
+| T-UI24 | "ver slip": abrir é uma ação explícita (cada abertura vira `BetEvent`), a tela é só leitura; rascunho → 409      | D-57       |
+| T-UI25 | Auditar: fontes por sessão com todos os `titanbet*`; sessão ausente pede "não houve raid oficial" com motivo     | D-60, D-63 |
+| T-UI26 | resultados calculados, `sem_vencedor` com motivo; confirmar liquida (ação que mexe em dinheiro, com confirmação) | D-61       |
+| T-UI27 | saldos, pagar e ajustar, com as recusas do ledger                                                                | D-44       |
+| T-UI28 | publicar o Closing Report                                                                                        | D-48       |
+
+### 34.4 Ordem
+
+F0 (T-C01–T-C05, API, com Yaak) → F1 → F2. Cada item F1/F2 é uma leitura dos contratos
+F0 e dos existentes; nenhum inventa campo que o shared não tenha (Regra 2). Antes de
+escrever a primeira tela: ler `node_modules/next/dist/docs/` (CLAUDE.md, aviso do Next 16).

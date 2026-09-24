@@ -1828,10 +1828,10 @@ Rascunho (Salvar) não é auditado: é privado e anterior a qualquer compromisso
 
 ### 16.9 Autorização: duas superfícies
 
-| Superfície           | Backend                                                                                                                                                    | Front                                                                            |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| **Apostas** (membro) | `RosterGuard` (acesso ao site) **+** checagem de domínio: a conta tem personagem associado em `BetRoundBettor` da rodada (e a FK do slip garante no banco) | `/interno/bet`                                                                   |
-| **Officer Panel**    | controller próprio com `OfficerGuard` em todas as rotas                                                                                                    | rota de officer, escondida para quem não é officer (UX, não segurança — Regra 5) |
+| Superfície           | Backend                                                                                                                                                                                                                                               | Front                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Apostas** (membro) | `ApostadorDaRodadaGuard` — o `RosterGuard` mais quem tem slip nesta rodada (D-53a) — **+** checagem de domínio: apostar exige personagem em `BetRoundBettor` da rodada (e a FK do slip garante no banco); odds, qualquer um que passe a porta (D-53b) | `/interno/bet`                                                                   |
+| **Officer Panel**    | controller próprio com `OfficerGuard` em todas as rotas                                                                                                                                                                                               | rota de officer, escondida para quem não é officer (UX, não segurança — Regra 5) |
 
 - **O próprio dado, e só ele:** métodos de repository do lado privado recebem o
   `ownerUserId` da sessão; nenhuma rota de membro aceita id de slip de outra pessoa.
