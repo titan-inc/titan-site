@@ -2157,3 +2157,36 @@ havendo diferença, o Submeter grava primeiro e só submete depois do sucesso. U
 por vez (`useRef`), porque o `pendente` do `useTransition` só desabilita os botões no
 render seguinte. O servidor continua congelando o que está gravado (T-S03) — a tela é que
 passou a garantir que o gravado é o exibido.
+
+### 42.3 Achado 3 — auditoria prematura (D-73)
+
+Reproduzido: `podeAuditar` só olhava a fase, e a fase `BETTING_CLOSED` começa no cutoff.
+Auditar na terça à noite era aceito; com a quinta `ausente`, "sem raid" fechava a sessão
+antes de ela acontecer, e Calcular e Confirmar não conferiam hora nenhuma.
+
+A regra mora em `auditoriaAberta()` (`fases.ts`), sobre `inicioDaAuditoria()`
+(`calendario.ts`: data local do cutoff + 2 dias, 23:30, no `GUILD_TIMEZONE`). Auditar,
+"sem raid", Calcular, Confirmar e o `podeAuditar` do Officer Panel passam por ela. O
+relógio dos serviços é injetável (`relogio.ts`, `RELOGIO`, opcional — produção usa o do
+sistema); o banco não ganhou relógio.
+
+| Onde                                                                                                                                                                                                | RED                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fases.spec.ts` — `auditoriaAberta`, 15 (terça 11:59, depois do cutoff, terça à noite, quarta, quinta 23:29, 23:29:59.999, 23:30, sexta, semana seguinte; quatro `TZ` de máquina; fuso configurado) | **RED real**: a função não existia                                                                                                                                                                               |
+| `janela-da-auditoria.db-spec.ts` — 11, rodado contra `fases.ts`/`calendario.ts` da branch                                                                                                           | **RED real**: 9 falhas — Auditar aceito nos 5 instantes antes de 23:30, sem motivo de janela, "sem raid" antecipado aceito, Calcular e Confirmar diretos aceitos; os 2 "aceito" (23:30, sexta) passavam — guarda |
+| `shared rodada.spec.ts` — T-C04                                                                                                                                                                     | **RED real**: o contrato não tinha `podeAuditar`/`auditavelDesde`                                                                                                                                                |
+| `rodadas.db-spec.ts` — D-73                                                                                                                                                                         | **RED real**: campos ausentes                                                                                                                                                                                    |
+| `web painel.spec.tsx` — T-UI27                                                                                                                                                                      | **RED real**: sem aviso nem hora; "janela aberta mostra o botão" passava — guarda                                                                                                                                |
+
+**Testes existentes com pré-condição nova (não enfraquecidos):** 45 testes de
+`auditar-fluxo`, `calculo`, `settlement`, `closing-servico` e `e2e` auditavam segundos
+depois do cutoff e passaram a ser recusados pela D-73 — todas as falhas com a mensagem da
+janela. Eles recebem o relógio `depoisDaQuinta` (`ciclo.ts`: agora + 8 dias, depois da
+janela de qualquer rodada dos testes); nenhuma asserção mudou. Duas exceções, explícitas:
+
+- `fases.spec.ts`, `podeAuditar`: o instante "pode auditar" era quinta 20:00 BRT, que a
+  D-73 recusa de propósito; passou a sexta 00:00 BRT.
+- `auditar-fluxo`, "antes do cutoff → recusado": constrói o próprio serviço com o relógio
+  do sistema (o cutoff é daqui a 1 h) e agora confere também o motivo.
+
+O harness do WCL real (`test/wcl-real`) não muda: as rodadas dele são de semanas passadas.

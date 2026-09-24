@@ -172,6 +172,32 @@ describe('Titan Bet — rodadas para o front (serviço + banco)', () => {
   });
 
   describe('T-C04 — as rodadas do Officer Panel', () => {
+    it('D-73: podeAuditar e auditavelDesde vêm da mesma regra dos serviços', async () => {
+      // Cutoff terça 22/09 12:00 BRT → a auditoria abre quinta 24/09 23:30 BRT.
+      const cutoffAt = new Date('2026-09-22T15:00:00Z');
+      const rodada = await f.rodada({
+        cutoffAt,
+        readyAt: new Date(cutoffAt.getTime() - 60 * 60 * 1000),
+        readyByUserId: 'officer-teste',
+        readyByBattletag: 'Officer#0001',
+      });
+      const naHora = (iso: string) =>
+        new RodadasService(repo, new ElegibilidadeService(repo), () => new Date(iso));
+
+      const antes = (await naHora('2026-09-25T02:29:00Z').doOfficer()).rodadas.find(
+        (r) => r.roundId === rodada.id,
+      );
+      expect(antes).toMatchObject({
+        fase: 'BETTING_CLOSED',
+        podeAuditar: false,
+        auditavelDesde: '2026-09-25T02:30:00.000Z',
+      });
+      const depois = (await naHora('2026-09-25T02:30:00Z').doOfficer()).rodadas.find(
+        (r) => r.roundId === rodada.id,
+      );
+      expect(depois).toMatchObject({ fase: 'BETTING_CLOSED', podeAuditar: true });
+    });
+
     it('todas, inclusive em preparação, com a fase e o Ready', async () => {
       const aberta = await ciclo.aberta();
       const preparando = await ciclo.preparacao();

@@ -17,7 +17,7 @@ import { LedgerService, SettlementService } from '../../../src/titan-bet/settlem
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
 import type { RaidCatalog } from '../../../src/warcraftlogs/warcraftlogs.service';
 import type { TeamCharacter, WowAuditService } from '../../../src/wowaudit/wowaudit.service';
-import { esperarPassar } from './ciclo';
+import { esperarPassar, depoisDaQuinta } from './ciclo';
 import { depositante, Fabrica } from './fabrica';
 
 /**
@@ -165,13 +165,17 @@ describe('Titan Bet — E2E (T-E01)', () => {
     await esperarPassar(db, rodada.cutoffAt);
     const terca = rodada.cutoffAt.getTime() + 1_000;
     const quinta = terca + 2 * 24 * 60 * 60 * 1000;
-    const auditoria = new AuditoriaService(repo, {
-      listGuildReports: () =>
-        Promise.resolve([
-          { code: 'E2ETerca', title: 'titanbet', revision: 4, startTime: terca },
-          { code: 'E2EQuinta', title: 'TitanBet quinta', revision: 2, startTime: quinta },
-        ]),
-    });
+    const auditoria = new AuditoriaService(
+      repo,
+      {
+        listGuildReports: () =>
+          Promise.resolve([
+            { code: 'E2ETerca', title: 'titanbet', revision: 4, startTime: terca },
+            { code: 'E2EQuinta', title: 'TitanBet quinta', revision: 2, startTime: quinta },
+          ]),
+      },
+      depoisDaQuinta,
+    );
     const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
 
     // 5. Calcular: a kill na terça — A com mais dano; a quinta sem o boss.
@@ -224,12 +228,16 @@ describe('Titan Bet — E2E (T-E01)', () => {
         kills: {},
       },
     };
-    await new CalculoService(repo, {
-      getTitanBetReport: (code: string) => Promise.resolve(reports[code]!),
-    }).calcular(auditId);
+    await new CalculoService(
+      repo,
+      {
+        getTitanBetReport: (code: string) => Promise.resolve(reports[code]!),
+      },
+      depoisDaQuinta,
+    ).calcular(auditId);
 
     // 6. Confirmar e liquidar; pagar a Ana.
-    await new SettlementService(repo).confirmar(auditId, OFFICER);
+    await new SettlementService(repo, depoisDaQuinta).confirmar(auditId, OFFICER);
     const ledger = new LedgerService(repo);
     // Top DPS: V 1.000 → P 900, só a Ana em A → 900. Weekly: V 300 → P 270, o prog morreu → 270.
     expect(await ledger.saldo(slipAna.slipId)).toBe(1170);

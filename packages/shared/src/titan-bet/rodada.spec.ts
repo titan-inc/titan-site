@@ -98,11 +98,25 @@ describe('T-C03 — o cardápio da rodada para o membro (T-C02)', () => {
 });
 
 describe('T-C04 — as rodadas do Officer Panel', () => {
+  const doOfficer = {
+    ...resumo,
+    fase: 'PREPARATION',
+    readyAt: null,
+    readyByBattletag: null,
+    podeAuditar: false,
+    auditavelDesde: '2026-10-02T02:30:00.000Z',
+  };
+
   it('o resumo, com o Ready', () => {
-    const lista = {
-      rodadas: [{ ...resumo, fase: 'PREPARATION', readyAt: null, readyByBattletag: null }],
-    };
+    const lista = { rodadas: [doOfficer] };
     expect(rodadasDoOfficerSchema.parse(lista)).toEqual(lista);
+  });
+
+  it('D-73: a janela da auditoria vem pronta da API — o painel não compara relógio', () => {
+    const { podeAuditar: _p, ...semDecisao } = doOfficer;
+    expect(rodadasDoOfficerSchema.safeParse({ rodadas: [semDecisao] }).success).toBe(false);
+    const { auditavelDesde: _a, ...semInstante } = doOfficer;
+    expect(rodadasDoOfficerSchema.safeParse({ rodadas: [semInstante] }).success).toBe(false);
   });
 });
 

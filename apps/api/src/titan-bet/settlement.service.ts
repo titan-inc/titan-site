@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { LancamentosDoSlip, SaldosDaRodada } from '@titan/shared';
+import { loadGuildTimezone } from '../config/guild.config';
+import { motivoDaJanelaFechada } from './fases';
 import { liquidarRodada, type MercadoParaLiquidar } from './liquidacao';
 import { saldoDevido } from './rateio';
+import { RELOGIO, relogioDoSistema, type Relogio } from './relogio';
 import {
   TitanBetRepository,
   type DadosDaConfirmacao,
@@ -33,9 +36,20 @@ interface Officer {
  */
 @Injectable()
 export class SettlementService {
-  constructor(private readonly repo: TitanBetRepository) {}
+  private readonly timezone = loadGuildTimezone();
+
+  constructor(
+    private readonly repo: TitanBetRepository,
+    @Optional() @Inject(RELOGIO) private readonly agora: Relogio = relogioDoSistema,
+  ) {}
 
   async confirmar(auditId: string, officer: Officer): Promise<void> {
+    // Confirmar não é caminho em volta do Auditar (D-73).
+    const cutoffAt = await this.repo.cutoffDaAuditoria(auditId);
+    if (!cutoffAt) throw new LedgerRecusado('a auditoria não existe');
+    const fechada = motivoDaJanelaFechada(cutoffAt, this.agora(), this.timezone);
+    if (fechada) throw new LedgerRecusado(fechada);
+
     let r: Awaited<ReturnType<TitanBetRepository['confirmarAuditoria']>>;
     try {
       r = await this.repo.confirmarAuditoria({

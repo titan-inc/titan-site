@@ -281,9 +281,38 @@ describe('T-UI24 — "ver slip": ação explícita, só leitura (D-57)', () => {
   });
 });
 
+describe('T-UI27 — o Auditar abre na hora que a API diz (D-73)', () => {
+  it('antes de quinta 23:30: sem botão, e a hora em que abre', () => {
+    render(
+      <Auditoria
+        roundId="r1"
+        auditoria={null}
+        podeAuditar={false}
+        auditavelDesde="2026-10-02T02:30:00.000Z"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /Auditar/ })).toBeNull();
+    expect(screen.getByText(/abre depois da raid de quinta/i)).toBeTruthy();
+    expect(document.querySelector('time[datetime="2026-10-02T02:30:00.000Z"]')).not.toBeNull();
+  });
+
+  it('com a janela aberta: o botão, sem aviso', () => {
+    render(
+      <Auditoria
+        roundId="r1"
+        auditoria={null}
+        podeAuditar
+        auditavelDesde="2026-10-02T02:30:00.000Z"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Auditar' })).toBeTruthy();
+    expect(screen.queryByText(/abre depois da raid de quinta/i)).toBeNull();
+  });
+});
+
 describe('T-UI25 — Auditar e "não houve raid oficial" (D-60, D-63)', () => {
   it('fontes por sessão com todos os `titanbet*`; ausente pede a declaração', () => {
-    render(<Auditoria roundId="r1" auditoria={AUDITORIA} podeAuditar />);
+    render(<Auditoria roundId="r1" auditoria={AUDITORIA} podeAuditar auditavelDesde={null} />);
     const terca = screen.getByRole('region', { name: /Terça/ });
     expect(within(terca).getByText(/AbC123/)).toBeTruthy();
     expect(within(terca).getByText(/XyZ789/)).toBeTruthy();
@@ -296,7 +325,7 @@ describe('T-UI25 — Auditar e "não houve raid oficial" (D-60, D-63)', () => {
 
   it('a declaração exige motivo, e vai para a sessão certa', async () => {
     fetchMock.mockResolvedValueOnce(resposta(null, 204));
-    render(<Auditoria roundId="r1" auditoria={AUDITORIA} podeAuditar />);
+    render(<Auditoria roundId="r1" auditoria={AUDITORIA} podeAuditar auditavelDesde={null} />);
     const quinta = screen.getByRole('region', { name: /Quinta/ });
     const declarar = within(quinta).getByRole('button', {
       name: 'Declarar que não houve raid oficial',
@@ -316,7 +345,7 @@ describe('T-UI25 — Auditar e "não houve raid oficial" (D-60, D-63)', () => {
 
   it('Auditar abre uma tentativa e recarrega', async () => {
     fetchMock.mockResolvedValueOnce(resposta({ auditId: 'a2' }, 201));
-    render(<Auditoria roundId="r1" auditoria={null} podeAuditar />);
+    render(<Auditoria roundId="r1" auditoria={null} podeAuditar auditavelDesde={null} />);
     await userEvent.click(screen.getByRole('button', { name: 'Auditar' }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(chamada(0)).toMatchObject({ url: `${OFFICER_API}/rodadas/r1/auditar`, metodo: 'POST' });
@@ -450,7 +479,7 @@ describe('T-UI28 — publicar o Closing Report (D-48)', () => {
 /** Achados da validação no navegador (titan-bet-test-design.md §39). */
 describe('achados do navegador — Officer Panel', () => {
   it('B7: o texto da sessão ausente não mostra crase de markdown', () => {
-    render(<Auditoria roundId="r1" auditoria={AUDITORIA} podeAuditar />);
+    render(<Auditoria roundId="r1" auditoria={AUDITORIA} podeAuditar auditavelDesde={null} />);
     const quinta = screen.getByRole('region', { name: /Quinta/ });
     expect(within(quinta).getByText(/nenhum report titanbet\*/i)).toBeTruthy();
     expect(quinta.textContent).not.toContain('`');

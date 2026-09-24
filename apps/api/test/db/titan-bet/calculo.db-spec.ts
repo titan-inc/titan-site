@@ -5,7 +5,7 @@ import { AuditoriaRecusada } from '../../../src/titan-bet/auditoria.service';
 import { CalculoService, type ReportsParaCalculo } from '../../../src/titan-bet/calculo.service';
 import type { LeituraDaKill, LeituraDoReport } from '../../../src/titan-bet/leitura-wcl';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
-import { esperarPassar } from './ciclo';
+import { esperarPassar, depoisDaQuinta } from './ciclo';
 import { Fabrica } from './fabrica';
 
 /**
@@ -318,7 +318,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       await c.apostar(c.m.topDps!.id, 'top_dps', 400, c.pessoas.B);
       const a = await auditoriaPronta(c);
 
-      await new CalculoService(repo, wcl(semanaPadrao(c)).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id);
 
       const auditoria = await db.betAudit.findUniqueOrThrow({ where: { id: a.id } });
       expect(auditoria.status).toBe('calculada');
@@ -348,7 +348,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const semana = semanaPadrao(c);
       // H, Heal no snapshot, jogou de DPS e fez o maior dano da luta.
       semana.Terca1.kills[3]!.damage.push({ id: 12, name: c.pessoas.H.name, total: 80_000_000 });
-      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semana).porta, depoisDaQuinta).calcular(a.id);
 
       const top = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.topDps!.id)!;
       expect(top.winners.map((w) => w.characterId)).toEqual([c.pessoas.A.characterId]);
@@ -361,7 +361,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
     it('farm: na kill, H morre primeiro; progressão: B 2 (terça) × A 1 (quinta) → B', async () => {
       const c = await cenario();
       const a = await auditoriaPronta(c);
-      await new CalculoService(repo, wcl(semanaPadrao(c)).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id);
       const rs = await resultadosDe(a.id);
 
       const farm = rs.find((r) => r.marketId === c.m.fdFarm!.id)!;
@@ -387,7 +387,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       await c.apostar(c.m.weekly!.id, 'weekly_progression', 500, null, c.prog.id);
       await c.apostar(c.m.weekly!.id, 'weekly_progression', 300, null, c.prog2.id);
       const a = await auditoriaPronta(c);
-      await new CalculoService(repo, wcl(semanaPadrao(c)).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id);
 
       const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
       expect(w).toMatchObject({ outcome: 'vencedores', validPool: 800, winningStake: 500 });
@@ -402,7 +402,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const a = await auditoriaPronta(c);
       const semana = semanaPadrao(c);
       semana.Quinta1.fights = semana.Quinta1.fights.map((x) => ({ ...x, kill: false }));
-      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semana).porta, depoisDaQuinta).calcular(a.id);
 
       const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
       expect(w).toMatchObject({
@@ -421,7 +421,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const c = await cenario();
       const a = await auditoriaPronta(c);
       const semana = semanaPadrao(c, 95);
-      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semana).porta, depoisDaQuinta).calcular(a.id);
 
       const antes = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.parse!.id)!;
       expect(antes.winners.map((w) => w.characterId)).toEqual([c.pessoas.A.characterId]);
@@ -435,9 +435,9 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
 
       // O parse "de hoje" mudou: calcular de novo não é permitido — é outra tentativa.
       const depois = wcl(semanaPadrao(c, 40)).porta;
-      await expect(new CalculoService(repo, depois).calcular(a.id)).rejects.toBeInstanceOf(
-        AuditoriaRecusada,
-      );
+      await expect(
+        new CalculoService(repo, depois, depoisDaQuinta).calcular(a.id),
+      ).rejects.toBeInstanceOf(AuditoriaRecusada);
       const agora = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.parse!.id)!;
       expect(agora.evidence).toEqual(antes.evidence);
     });
@@ -452,7 +452,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const a = await auditoriaPronta(c);
       const semana = semanaPadrao(c);
       semana.Terca1.fights = semana.Terca1.fights.filter((x) => x.encounterID !== FARM);
-      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semana).porta, depoisDaQuinta).calcular(a.id);
 
       const top = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.topDps!.id)!;
       expect(top).toMatchObject({
@@ -469,7 +469,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const c = await cenario();
       await c.apostar(c.m.topDps!.id, 'top_dps', 700, c.pessoas.B);
       const a = await auditoriaPronta(c);
-      await new CalculoService(repo, wcl(semanaPadrao(c)).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id);
 
       const top = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.topDps!.id)!;
       expect(top).toMatchObject({
@@ -487,7 +487,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const a = await auditoriaPronta(c);
       await db.betAudit.update({ where: { id: a.id }, data: { status: 'aguardando_revisao' } });
       await expect(
-        new CalculoService(repo, wcl(semanaPadrao(c)).porta).calcular(a.id),
+        new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id),
       ).rejects.toBeInstanceOf(AuditoriaRecusada);
       expect(await db.betMarketResult.count({ where: { auditId: a.id } })).toBe(0);
     });
@@ -511,7 +511,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
         ...semKill(),
         damage: [{ id: 11, name: c.pessoas.B.name, total: 99_000_000 }],
       };
-      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semana).porta, depoisDaQuinta).calcular(a.id);
 
       const top = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.topDps!.id)!;
       expect(top.winners.map((w) => w.characterId)).toEqual([c.pessoas.A.characterId]);
@@ -538,7 +538,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
         });
         semana.Quinta1.kills[id] = semKill();
       }
-      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+      await new CalculoService(repo, wcl(semana).porta, depoisDaQuinta).calcular(a.id);
 
       const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
       expect(w.kills.map((k) => k.roundEncounterId)).toEqual([c.prog.id]);
@@ -554,7 +554,11 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
         code: 'Terca2',
         startTime: semana.Terca1.startTime + 2_000,
       };
-      await new CalculoService(repo, wcl({ ...semana, Terca2: copia }).porta).calcular(a.id);
+      await new CalculoService(
+        repo,
+        wcl({ ...semana, Terca2: copia }).porta,
+        depoisDaQuinta,
+      ).calcular(a.id);
 
       const prog = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.fdProg!.id)!;
       const ev = prog.evidence as { resultado: { somas: Record<string, number> } };
@@ -569,7 +573,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const c = await cenario();
       const a = await auditoriaPronta(c);
       const { porta, lidos } = wcl(semanaPadrao(c));
-      await new CalculoService(repo, porta).calcular(a.id);
+      await new CalculoService(repo, porta, depoisDaQuinta).calcular(a.id);
       expect(lidos.sort()).toEqual(['Quinta1', 'Terca1']);
     });
   });

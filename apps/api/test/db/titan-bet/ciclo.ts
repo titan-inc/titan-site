@@ -1,5 +1,6 @@
 import type { BetCandidateRole, BetMarket, BetRound, BetSlip, Character } from '@prisma/client';
 import type { PrismaService } from '../../../src/prisma/prisma.service';
+import type { Relogio } from '../../../src/titan-bet/relogio';
 import type { Fabrica } from './fabrica';
 
 /**
@@ -151,3 +152,12 @@ export async function esperarPassar(db: PrismaService, instante: Date): Promise<
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
 }
+
+/**
+ * Um instante depois da janela da auditoria (D-73) de qualquer rodada destes
+ * testes: a janela abre na quinta 23:30 depois do cutoff, e o cutoff mais
+ * distante aqui é de horas. Os serviços que auditam recebem este relógio — a
+ * pré-condição "a raid de quinta já passou" do cenário; o banco segue no
+ * `now()` dele.
+ */
+export const depoisDaQuinta: Relogio = () => new Date(Date.now() + 8 * 24 * 60 * 60 * 1000);

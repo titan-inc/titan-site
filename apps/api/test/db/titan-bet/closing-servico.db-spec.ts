@@ -7,7 +7,7 @@ import { ClosingRepository } from '../../../src/titan-bet/closing.repository';
 import { DepositoService } from '../../../src/titan-bet/deposito.service';
 import { LedgerService, SettlementService } from '../../../src/titan-bet/settlement.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
-import { esperarPassar } from './ciclo';
+import { esperarPassar, depoisDaQuinta } from './ciclo';
 import { Fabrica } from './fabrica';
 
 /**
@@ -36,7 +36,7 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
     f = new Fabrica(db);
     repo = new TitanBetRepository(db);
     deposito = new DepositoService(repo);
-    settlement = new SettlementService(repo);
+    settlement = new SettlementService(repo, depoisDaQuinta);
     ledger = new LedgerService(repo);
     closing = new ClosingService(new ClosingRepository(db));
   });

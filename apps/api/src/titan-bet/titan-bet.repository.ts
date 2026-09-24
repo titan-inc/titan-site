@@ -741,6 +741,15 @@ export class TitanBetRepository {
     });
   }
 
+  /** O cutoff da rodada de uma auditoria — a janela da D-73 sai dele. */
+  async cutoffDaAuditoria(auditId: string): Promise<Date | null> {
+    const a = await this.prisma.betAudit.findUnique({
+      where: { id: auditId },
+      select: { round: { select: { cutoffAt: true } } },
+    });
+    return a?.round.cutoffAt ?? null;
+  }
+
   /** A tentativa corrente da rodada, com as fontes — o que o Officer Panel mostra. */
   auditoriaCorrente(roundId: string) {
     return this.prisma.betAudit.findFirst({
@@ -932,6 +941,7 @@ export class TitanBetRepository {
         },
         round: {
           select: {
+            cutoffAt: true,
             encounters: {
               select: { id: true, encounterId: true, track: true },
             },

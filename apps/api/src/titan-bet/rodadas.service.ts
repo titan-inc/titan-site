@@ -1,12 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type {
   FaseDaRodada,
   RodadaDoMembro,
   RodadasDoMembro,
   RodadasDoOfficer,
 } from '@titan/shared';
+import { loadGuildTimezone } from '../config/guild.config';
+import { inicioDaAuditoria } from './calendario';
 import { ElegibilidadeService } from './elegibilidade.service';
-import { faseDaRodada, type StatusDaAuditoria } from './fases';
+import { faseDaRodada, podeAuditar, type EstadoDaRodada, type StatusDaAuditoria } from './fases';
+import { RELOGIO, relogioDoSistema, type Relogio } from './relogio';
 import { TitanBetRepository } from './titan-bet.repository';
 
 type RodadaComEstado = Awaited<ReturnType<TitanBetRepository['rodadasComEstado']>>[number];
@@ -17,9 +20,12 @@ type RodadaComEstado = Awaited<ReturnType<TitanBetRepository['rodadasComEstado']
  */
 @Injectable()
 export class RodadasService {
+  private readonly timezone = loadGuildTimezone();
+
   constructor(
     private readonly repo: TitanBetRepository,
     private readonly elegibilidade: ElegibilidadeService,
+    @Optional() @Inject(RELOGIO) private readonly agora: Relogio = relogioDoSistema,
   ) {}
 
   /**
@@ -85,12 +91,15 @@ export class RodadasService {
   /** T-C04: todas as rodadas, inclusive em preparação, para o Officer Panel. */
   async doOfficer(): Promise<RodadasDoOfficer> {
     const rodadas = await this.repo.rodadasComEstado();
-    const agora = new Date();
+    const agora = this.agora();
     return {
       rodadas: rodadas.map((r) => ({
         ...resumo(r, agora),
         readyAt: r.readyAt?.toISOString() ?? null,
         readyByBattletag: r.readyByBattletag,
+        // A mesma regra que o Auditar aplica (D-73) — o painel só mostra.
+        podeAuditar: podeAuditar(estado(r), agora, this.timezone),
+        auditavelDesde: inicioDaAuditoria(r.cutoffAt, this.timezone).toISOString(),
       })),
     };
   }
@@ -107,13 +116,14 @@ function resumo(r: RodadaComEstado, agora: Date) {
 }
 
 function fase(r: RodadaComEstado, agora: Date): FaseDaRodada {
-  return faseDaRodada(
-    {
-      readyAt: r.readyAt,
-      cutoffAt: r.cutoffAt,
-      auditoria: (r.audits[0]?.status as StatusDaAuditoria | undefined) ?? null,
-      temClosingReport: r._count.closingReports > 0,
-    },
-    agora,
-  );
+  return faseDaRodada(estado(r), agora);
+}
+
+function estado(r: RodadaComEstado): EstadoDaRodada {
+  return {
+    readyAt: r.readyAt,
+    cutoffAt: r.cutoffAt,
+    auditoria: (r.audits[0]?.status as StatusDaAuditoria | undefined) ?? null,
+    temClosingReport: r._count.closingReports > 0,
+  };
 }

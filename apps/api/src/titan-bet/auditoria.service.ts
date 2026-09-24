@@ -1,9 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { AuditoriaCorrente } from '@titan/shared';
 import { loadGuildTimezone } from '../config/guild.config';
 import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { classificarReports, resolverSessao, type ReportDaGuilda, type Sessao } from './auditoria';
-import { podeAuditar } from './fases';
+import { motivoDaJanelaFechada, podeAuditar } from './fases';
+import { RELOGIO, relogioDoSistema, type Relogio } from './relogio';
 import { TitanBetRepository, type FonteParaGravar } from './titan-bet.repository';
 
 /** O Auditar foi recusado; nada foi gravado. */
@@ -45,6 +46,7 @@ export class AuditoriaService {
     private readonly repo: TitanBetRepository,
     // Tipado pelo pedaço que usa: o teste passa um WCL falso só com ele.
     @Inject(WarcraftLogsService) private readonly wcl: ReportsDaGuilda,
+    @Optional() @Inject(RELOGIO) private readonly agora: Relogio = relogioDoSistema,
   ) {}
 
   async auditar(roundId: string, officer: Officer): Promise<{ auditId: string }> {
@@ -52,8 +54,9 @@ export class AuditoriaService {
     if (!rodada) throw new AuditoriaRecusada(`a rodada ${roundId} não existe`);
 
     const estado = { ...rodada, temClosingReport: false };
-    if (!podeAuditar(estado, new Date())) {
-      throw new AuditoriaRecusada(motivoParaNaoAuditar(estado, new Date()));
+    const agora = this.agora();
+    if (!podeAuditar(estado, agora, this.timezone)) {
+      throw new AuditoriaRecusada(motivoParaNaoAuditar(estado, agora, this.timezone));
     }
 
     const janela = { cutoffAt: rodada.cutoffAt, timezone: this.timezone };
@@ -128,6 +131,11 @@ export class AuditoriaService {
   ): Promise<void> {
     const texto = motivo.trim();
     if (!texto) throw new AuditoriaRecusada('declarar sem raid exige motivo (D-60)');
+    // "Sem raid" antes da hora fecharia a quinta antes de ela acontecer (D-73).
+    const cutoffAt = await this.repo.cutoffDaAuditoria(auditId);
+    if (!cutoffAt) throw new AuditoriaRecusada('a auditoria não existe');
+    const fechada = motivoDaJanelaFechada(cutoffAt, this.agora(), this.timezone);
+    if (fechada) throw new AuditoriaRecusada(fechada);
     const r = await this.repo.declararSemRaid({
       auditId,
       session,
@@ -147,8 +155,12 @@ function gravavel(r: ReportDaGuilda): ReportDaGuilda {
 function motivoParaNaoAuditar(
   estado: { readyAt: Date | null; cutoffAt: Date; auditoria: string | null },
   agora: Date,
+  timezone: string,
 ): string {
   if (estado.readyAt === null) return 'a rodada não teve Ready — não houve aposta';
   if (agora < estado.cutoffAt) return 'as apostas ainda estão abertas — o cutoff não passou';
-  return 'a rodada já tem auditoria confirmada';
+  return (
+    motivoDaJanelaFechada(estado.cutoffAt, agora, timezone) ??
+    'a rodada já tem auditoria confirmada'
+  );
 }

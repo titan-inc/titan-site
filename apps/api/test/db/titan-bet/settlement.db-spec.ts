@@ -9,7 +9,7 @@ import {
   SettlementService,
 } from '../../../src/titan-bet/settlement.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
-import { esperarPassar } from './ciclo';
+import { esperarPassar, depoisDaQuinta } from './ciclo';
 import { Fabrica } from './fabrica';
 
 /**
@@ -40,7 +40,7 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
     f = new Fabrica(db);
     repo = new TitanBetRepository(db);
     deposito = new DepositoService(repo);
-    settlement = new SettlementService(repo);
+    settlement = new SettlementService(repo, depoisDaQuinta);
     ledger = new LedgerService(repo);
   });
 

@@ -22,6 +22,16 @@ export function proximaRodada(agora: Date, timezone: string): { cutoffAt: Date; 
   return { cutoffAt, opensAt };
 }
 
+/**
+ * Quando a rodada pode entrar em auditoria (D-73): quinta 23:30 no fuso da
+ * guilda — depois da raid de quinta (D-30). A quinta é a da rodada: dois dias
+ * depois da data local do cutoff, o mesmo calendário das sessões (§5.2).
+ */
+export function inicioDaAuditoria(cutoffAt: Date, timezone: string): Date {
+  const terca = partesLocais(cutoffAt, timezone);
+  return instanteLocal(terca.ano, terca.mes, terca.dia + 2, 23, timezone, 30);
+}
+
 interface PartesLocais {
   ano: number;
   mes: number;
@@ -48,7 +58,7 @@ function partesLocais(instante: Date, timezone: string): PartesLocais {
 }
 
 /**
- * O instante UTC de `ano-mes-dia hora:00` no relógio do fuso. `dia` pode
+ * O instante UTC de `ano-mes-dia hora:minuto` no relógio do fuso. `dia` pode
  * transbordar o mês — `Date.UTC` normaliza. O deslocamento do fuso é medido no
  * próprio instante, então horário de verão entra sozinho.
  */
@@ -58,8 +68,9 @@ function instanteLocal(
   dia: number,
   hora: number,
   timezone: string,
+  minuto = 0,
 ): Date {
-  const alvo = Date.UTC(ano, mes - 1, dia, hora);
+  const alvo = Date.UTC(ano, mes - 1, dia, hora, minuto);
   let palpite = alvo;
   // Duas passadas bastam: a segunda corrige quando o palpite cruza a virada do horário de verão.
   for (let i = 0; i < 2; i++) palpite = alvo - deslocamento(new Date(palpite), timezone);

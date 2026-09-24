@@ -5,6 +5,7 @@ import { AuditoriaRecusada, AuditoriaService } from '../../../src/titan-bet/audi
 import { CalculoService } from '../../../src/titan-bet/calculo.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
 import { Fabrica } from './fabrica';
+import { depoisDaQuinta } from './ciclo';
 
 /**
  * Auditar — o fluxo (D-24, D-30, D-60, D-63; spec §7.2): T-A04, T-A05, T-A09,
@@ -47,7 +48,7 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
 
   beforeEach(() => {
     wcl = { listGuildReports: jest.fn<Promise<ReportDaGuilda[]>, [Date, Date]>() };
-    auditoria = new AuditoriaService(repo, wcl);
+    auditoria = new AuditoriaService(repo, wcl, depoisDaQuinta);
   });
 
   afterAll(async () => {
@@ -256,9 +257,9 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
       expect(fontes.flatMap((x) => x.reports)).toEqual([]);
 
       const leitor = { getTitanBetReport: jest.fn() };
-      await expect(new CalculoService(repo, leitor).calcular(auditId)).rejects.toBeInstanceOf(
-        AuditoriaRecusada,
-      );
+      await expect(
+        new CalculoService(repo, leitor, depoisDaQuinta).calcular(auditId),
+      ).rejects.toBeInstanceOf(AuditoriaRecusada);
       expect(leitor.getTitanBetReport).not.toHaveBeenCalled();
     });
 
@@ -333,7 +334,11 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
     it('antes do cutoff → recusado: apostas ainda abertas', async () => {
       const rodada = await f.rodada({ cutoffAt: new Date(Date.now() + 60 * 60 * 1000) });
       await f.pronta(rodada.id);
-      await expect(auditoria.auditar(rodada.id, OFFICER)).rejects.toBeInstanceOf(AuditoriaRecusada);
+      // O relógio do sistema, não o "depois da quinta": o cutoff aqui é daqui a 1h.
+      const agoraDeVerdade = new AuditoriaService(repo, wcl);
+      await expect(agoraDeVerdade.auditar(rodada.id, OFFICER)).rejects.toThrow(
+        /apostas ainda estão abertas/,
+      );
       expect(wcl.listGuildReports).not.toHaveBeenCalled();
     });
 

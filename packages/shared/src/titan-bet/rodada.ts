@@ -103,6 +103,13 @@ export const rodadasDoOfficerSchema = z
         .extend({
           readyAt: z.string().datetime().nullable(),
           readyByBattletag: z.string().nullable(),
+          /**
+           * A rodada pode ser auditada agora (D-73)? A API decide com a mesma
+           * regra do Auditar; o painel mostra, não compara relógio.
+           */
+          podeAuditar: z.boolean(),
+          /** Quinta 23:30 no fuso da guilda: quando a auditoria abre (D-73). */
+          auditavelDesde: z.string().datetime(),
         })
         .strict(),
     ),

@@ -1,6 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { BetMarketKind, Prisma } from '@prisma/client';
 import type { ResultadosDaAuditoria } from '@titan/shared';
+import { loadGuildTimezone } from '../config/guild.config';
 import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { AuditoriaRecusada } from './auditoria.service';
 import { candidatosDoMercado } from './candidatos';
@@ -23,6 +24,8 @@ import {
   type PullDaSemana,
   type Resultado,
 } from './resultados';
+import { motivoDaJanelaFechada } from './fases';
+import { RELOGIO, relogioDoSistema, type Relogio } from './relogio';
 import { TitanBetRepository, type ResultadoParaGravar } from './titan-bet.repository';
 
 /** O pedaço do WCL que o cálculo usa: o report oficial. */
@@ -58,9 +61,12 @@ interface Origem {
  */
 @Injectable()
 export class CalculoService {
+  private readonly timezone = loadGuildTimezone();
+
   constructor(
     private readonly repo: TitanBetRepository,
     @Inject(WarcraftLogsService) private readonly wcl: ReportsParaCalculo,
+    @Optional() @Inject(RELOGIO) private readonly agora: Relogio = relogioDoSistema,
   ) {}
 
   async calcular(auditId: string): Promise<void> {
@@ -71,6 +77,9 @@ export class CalculoService {
         `a auditoria está ${a.status} — só se calcula a pronta; recalcular é outra tentativa`,
       );
     }
+    // Calcular não é caminho em volta do Auditar (D-73).
+    const fechada = motivoDaJanelaFechada(a.round.cutoffAt, this.agora(), this.timezone);
+    if (fechada) throw new AuditoriaRecusada(fechada);
 
     const encounters = new Map(a.round.encounters.map((e) => [e.encounterId, e.id]));
     const candidatos: CandidatoIdentificavel[] = a.round.candidates;

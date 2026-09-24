@@ -4,6 +4,7 @@ import { declararSemRaidSchema, type AuditoriaCorrente } from '@titan/shared';
 import { useRouter } from 'next/navigation';
 import { useId, useState, useTransition } from 'react';
 import { Acao } from '../../../_components/ui/acao';
+import { Quando } from '../../mplus/_components/quando';
 import { chamarOfficer, Erro } from './officer-api';
 
 type Fonte = AuditoriaCorrente['fontes'][number];
@@ -27,10 +28,14 @@ export function Auditoria({
   roundId,
   auditoria,
   podeAuditar,
+  auditavelDesde,
 }: {
   roundId: string;
   auditoria: AuditoriaCorrente | null;
+  /** Decidido pela API (D-73): a tela não compara relógio. */
   podeAuditar: boolean;
+  /** Quinta 23:30 no fuso da guilda; `null` quando não há o que esperar. */
+  auditavelDesde: string | null;
 }) {
   const router = useRouter();
   const [erro, setErro] = useState<string | null>(null);
@@ -61,6 +66,11 @@ export function Auditoria({
           aberta={auditoria.status === 'aguardando_revisao'}
         />
       ))}
+      {!podeAuditar && auditavelDesde !== null && (
+        <p className="text-fg-muted text-sm">
+          O Auditar abre depois da raid de quinta: <Quando iso={auditavelDesde} />.
+        </p>
+      )}
       {podeAuditar && (
         <div>
           <Acao variante="fantasma" onClick={auditar} disabled={pendente}>

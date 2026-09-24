@@ -24,7 +24,6 @@ import { SlipsSubmetidos } from '../_components/slips-submetidos';
 
 export const metadata = { title: 'Rodada (officer) — Titan Inc' };
 
-const FASES_DO_AUDITAR = new Set(['BETTING_CLOSED', 'AUDITING', 'CALCULATED']);
 const FASES_DO_CLOSING = new Set(['SETTLED', 'CLOSED']);
 
 /**
@@ -114,7 +113,9 @@ export default async function RodadaOfficerPage({
         <Auditoria
           roundId={roundId}
           auditoria={corrente}
-          podeAuditar={FASES_DO_AUDITAR.has(fase)}
+          podeAuditar={resumo.podeAuditar}
+          // Só há o que esperar com as apostas fechadas e nada auditado ainda.
+          auditavelDesde={fase === 'BETTING_CLOSED' ? resumo.auditavelDesde : null}
         />
       </Secao>
 
