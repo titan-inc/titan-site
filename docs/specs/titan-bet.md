@@ -91,7 +91,7 @@ Termos do produto usados abaixo:
 - **Aposta válida** — aposta de slip **confirmado** por officer, em mercado **não** `VOID`.
   É a única que entra em pool, odds e receita da guilda.
 - **Opção** — o que se aposta dentro de um mercado: um personagem, ou (Weekly Progression)
-  um conjunto exato de bosses.
+  um boss de progressão da rodada (D-54).
 - **Pool válida (`V`)** — soma do gold das apostas válidas de um mercado.
 - **Prize pool (`P`)** — a parte de `V` que vai para os vencedores (§8).
 
@@ -339,6 +339,10 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | D-70 | B2      | **O conteúdo atual é o da atividade de raid real mais recente da guilda.** A preparação mostra por padrão só essa zone do catálogo do WCL, com **"Mostrar todas"** como ação secundária. A zone vem da **mesma descoberta da progressão de raid** (janela da `GameSeason` e pulls do WCL, com o mesmo cache e a mesma caminhada "season mais recente com atividade"): a zone da pull **Mythic** mais recente de boss do catálogo, fora de espelho de PTR/Beta (gêmeo exato em `id - 50000`). Dummy Dome (só Normal), Delves (dificuldades próprias) e espelhos de Beta nunca viram "atual", e zone que só aparece no catálogo, sem pull da guilda, também não. Sem atividade válida: nenhum tier inferido — o catálogo completo e um aviso. **Nunca** maior id, posição, nome ou data do catálogo. Sem configuração manual e sem variável de ambiente. |
 
+**Não reverte a D-22:** o officer continua escolhendo pelos identificadores estáveis do
+catálogo do WCL, e o catálogo inteiro continua disponível — a D-70 decide só por onde a
+tela abre.
+
 **Consequência aceita:** quando sai um tier novo, até a primeira pull Mythic real da Titan
 nele, o tier anterior continua aparecendo como atual; o officer usa "Mostrar todas". Na
 primeira atividade válida, a seleção passa sozinha para o tier novo.
@@ -565,15 +569,15 @@ congelados no Ready, com role.
 
 Todos semanais (D-29), todos escolhidos pelo officer (D-20).
 
-| Mercado              | Escolhas     | Candidatos (D-04)                      | Self-bet (D-09) | Resolve com                                                     |
-| -------------------- | ------------ | -------------------------------------- | --------------- | --------------------------------------------------------------- |
-| `TOP_DPS`            | exatamente 1 | `Melee` + `Ranged` do snapshot         | permitido       | a kill da semana                                                |
-| `TOP_DPS_PARSE`      | exatamente 1 | `Melee` + `Ranged`                     | permitido       | a kill da semana                                                |
-| `TOP_HPS`            | exatamente 1 | `Heal`                                 | permitido       | a kill da semana                                                |
-| `TOP_HPS_PARSE`      | exatamente 1 | `Heal`                                 | permitido       | a kill da semana                                                |
-| `TOP_DISPELS`        | exatamente 1 | todo o snapshot                        | permitido       | a kill da semana                                                |
-| `FIRST_DEATH`        | exatamente 1 | todo o snapshot                        | **proibido**    | boss farm: a kill; boss em progressão: todas as pulls da semana |
-| `WEEKLY_PROGRESSION` | 0..N         | encounters da rodada marcados para ela | —               | o conjunto de kills da semana                                   |
+| Mercado              | Escolhas     | Candidatos (D-04)                        | Self-bet (D-09)                                         | Resolve com                                                     |
+| -------------------- | ------------ | ---------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
+| `TOP_DPS`            | exatamente 1 | `Melee` + `Ranged` do snapshot           | permitido                                               | a kill da semana                                                |
+| `TOP_DPS_PARSE`      | exatamente 1 | `Melee` + `Ranged`                       | permitido                                               | a kill da semana                                                |
+| `TOP_HPS`            | exatamente 1 | `Heal`                                   | permitido                                               | a kill da semana                                                |
+| `TOP_HPS_PARSE`      | exatamente 1 | `Heal`                                   | permitido                                               | a kill da semana                                                |
+| `TOP_DISPELS`        | exatamente 1 | todo o snapshot                          | permitido                                               | a kill da semana                                                |
+| `FIRST_DEATH`        | exatamente 1 | todo o snapshot                          | **proibido** em qualquer personagem do apostador (D-56) | boss farm: a kill; boss em progressão: todas as pulls da semana |
+| `WEEKLY_PROGRESSION` | exatamente 1 | os bosses de progressão da rodada (D-54) | —                                                       | cada boss morto na semana é uma opção vencedora                 |
 
 **Farm × progressão deixa de ser tipo de mercado e passa a ser do boss.** R-22 e R-24
 definem: boss farm tem até seis mercados; boss em progressão, só First Death. Com D-20 é o
@@ -594,40 +598,39 @@ não há aposta em candidato que "saiu" do Titan Roster.
 O officer, ao configurar a rodada (§6.3). O sistema não abre mercado de farm porque o boss
 já morreu (D-20).
 
-### 7.2 Auditar: fonte oficial e fluxo (D-18, D-24, D-25, D-26, D-30)
+### 7.2 Auditar: fonte oficial e fluxo (D-18, D-24, D-26, D-30, D-60, D-62, D-63)
 
 Uma fonte é válida se, e só se: (1) é a raid padrão de **terça ou quinta** do reset; (2)
-é da **guilda Titan**; (3) o `title` começa com `titanbet`, sem diferenciar maiúsculas; (4)
-é o report oficial daquela sessão — escolhido **automaticamente** quando inequívoco, ou
-**pelo officer** quando ambíguo.
+é da **guilda Titan**; (3) o `title` começa com `titanbet`, sem diferenciar maiúsculas.
+**Todos** os `titanbet*` válidos da sessão são fonte (D-63) — ninguém escolhe um.
 
 ```
 Officer clica Auditar
   → identifica a BetRound
   → procura reports titanbet* da guilda nas sessões de terça e quinta do reset
-  → associa cada um à sua sessão
-  → inequívoco? usa. ausente ou ambíguo? para e pede revisão do officer
+  → associa cada um à sua sessão, pelo início do report (D-26)
+  → sessão com titanbet*: automática, com todos eles
+  → sessão sem nenhum: ausente — só a declaração do officer resolve (D-60)
   → congela a referência aos reports usados (code, title, revision)
-  → lê as fights (Mythic + catálogo de raid)
-  → calcula os resultados semanais
+  → lê as fights (Mythic + catálogo de raid) de todos, numa timeline só
+  → a mesma try em dois reports conta uma vez (mesmo boss, início < 10 s, reports diferentes)
+  → calcula os resultados semanais (a primeira kill cronológica vale — D-62)
   → apresenta a auditoria calculada
   → officer revisa e confirma
   → settlement
 ```
 
-- **Happy path:** um `titanbet*` por sessão, associação clara → usa sozinho. Registra
-  reports, horário e officer que acionou.
-- **Ausência (D-24):** nenhum `titanbet*` para uma sessão → a sessão fica **sem fonte**.
+- **Happy path:** `titanbet*` nas duas sessões → auditoria pronta, sem ninguém escolher.
+  Registra reports, horário e officer que acionou.
+- **Ausência (D-24, D-60):** nenhum `titanbet*` numa sessão → a sessão fica **sem fonte**.
   Não é "sem raid", não é zero kills, não é `{}`, não é `VOID`, e nenhum report comum
-  entra no lugar. Pede revisão do officer; o que o officer pode fazer é OQ-45.
-- **Ambiguidade (D-25):** mais de um candidato para uma sessão → o sistema não escolhe;
-  mostra os candidatos, o officer escolhe, e a escolha fica registrada com officer e
-  horário.
+  entra no lugar. O officer pode declarar **"não houve raid oficial"**, com motivo — a
+  sessão fica resolvida sem pulls. A ausência sozinha nunca resolve.
+- **Vários loggers (D-63):** dois ou mais `titanbet*` da mesma noite são uma timeline só;
+  a janela de 10 s é heurística técnica (M0 e §40 do test-design: cópias a 0,3–3,7 s, pulls
+  legítimas a ≥ 46 s) e só funde pulls de reports **diferentes**.
 - **Um** Auditar trabalha sobre a **rodada**. Não existem dois settlements, um para
   terça e outro para quinta.
-- **Anomalia:** o mesmo boss com kill nas **duas** sessões, ou pulls repetidas dentro de
-  um report, contrariam o lockout e o M0 — a auditoria não escolhe; pede revisão (mesma
-  regra da ambiguidade; o tratamento é OQ-40/OQ-45).
 
 Dentro do report: pull com `difficulty === 5` **e** encounter do catálogo de raid do WCL
 (filtro do `toRaidPulls`); `difficulty` sozinho não basta (§15.4). Os encounters que o
@@ -636,12 +639,13 @@ officer vê ao configurar vêm do catálogo do WCL (D-22).
 ### 7.3 Algoritmos semanais
 
 Comuns: só vence candidato do snapshot congelado (D-13); participação nunca altera
-elegibilidade; empate → todos vencem (R-20); sem vencedor → proposta de `VOID`, válida só
-com officer (D-06, D-16); só entram fights dos reports oficiais da rodada (§7.2).
+elegibilidade; empate → todos vencem (R-20); sem vencedor → `sem_vencedor`, com o `P` redistribuído
+entre os mercados premiáveis (D-61) — `VOID` só onde restituição é de fato exigida; só
+entram fights dos reports oficiais da rodada (§7.2).
 
 - **Top DPS / Top HPS / Top Dispels / Parse %** (boss farm): a **kill** do boss na
   semana — terça, ou quinta se não morreu na terça. Maior valor entre os candidatos que
-  participaram. Sem kill nos reports oficiais → proposta de `VOID`. Definições: OQ-25;
+  participaram. Sem kill nos reports oficiais → `sem_vencedor` (D-61). Definições: OQ-25;
   off-spec: OQ-34.
 - **First Death, boss farm:** na luta da kill, mortes de jogador em ordem de timestamp,
   pulando quem não está no snapshot (D-13); todas as mortes elegíveis na mesma timestamp
@@ -649,13 +653,13 @@ com officer (D-06, D-16); só entram fights dos reports oficiais da rodada (§7.
 - **First Death, boss em progressão (D-29):** **todas** as pulls Mythic válidas do boss
   nos reports oficiais da **semana** (terça + quinta) → por pull, o mesmo percurso do farm
   → soma por personagem → maior soma vence; empate → vários. Nenhuma pull válida na
-  semana → proposta de `VOID`. A lista de cada try, de qual sessão veio e seu First Death
+  semana → `sem_vencedor` (D-61). A lista de cada try, de qual sessão veio e seu First Death
   vão para a evidência (R-28a).
-- **Weekly Progression:** `K` = encounters Mythic mortos nos reports oficiais da rodada.
-  Aposta vence se e só se o conjunto escolhido **é igual** a `K`, inclusive `{}`. `K` só é
-  afirmado quando **as duas sessões** estão resolvidas (fonte encontrada ou decisão do
-  officer registrada); sessão sem fonte deixa `K` **indeterminado**, nunca `{}`. Kill de
-  outro dia não conta. `K` ∩ encounters configurados: OQ-47.
+- **Weekly Progression (D-54):** cada boss de progressão da rodada é uma opção; a aposta
+  vence se o boss escolhido morreu (Mythic) nos reports oficiais da semana. Vários mortos →
+  várias opções vencedoras. Nenhum morto → `sem_vencedor` (D-61). Só se afirma com **as
+  duas sessões** resolvidas (fonte encontrada ou "sem raid" declarado); sessão sem fonte
+  deixa o resultado indeterminado. Kill de outro dia não conta.
 
 ### 7.4 Lacuna não é resultado
 
@@ -748,8 +752,8 @@ O que ele **não é**, e a tela precisa dizer:
 
 Faixa: `0,9× ≤ projected(o)`. O piso é quando toda a pool está em `o`. Não há teto.
 
-Weekly Progression: `o` é o conjunto exato. Com dezenas de combinações possíveis, a
-maior parte terá `S(o) = 0` e mostrará "—".
+Weekly Progression: cada boss de progressão da rodada é uma opção, com a própria odd
+(D-54).
 
 Apostas individuais de outros membros **não** são visíveis: as apostas são secretas
 (D-21). O que aparece é a soma por opção — ver §8.5.
@@ -1496,6 +1500,16 @@ Nada do que foi decidido ficou tecnicamente impossível. Três descobertas pedem
 > Revisão 6. Nomes de entidade em inglês para conversar com o produto; enums em
 > snake_case português (§6.1). Nada foi escrito em `schema.prisma`; nenhuma migration
 > existe.
+
+> **Histórico.** Esta seção é o desenho que abriu o M2. O schema vigente é
+> `apps/api/prisma/schema.prisma` com as migrations `*_titan_bet_*`. Mudaram depois, pelas
+> revisões 11–13: a Weekly é por boss — sem `BetWeeklySelection` e sem
+> `inWeeklyProgression`; a aposta aponta o boss em `Bet.targetEncounterId` (D-54); a fonte da
+> auditoria guarda **todos** os reports em `BetAuditSourceReport`, com resolução
+> `automatica` \| `ausente` \| `sem_raid` — sem `ambigua` e sem `escolha_officer` (D-60,
+> D-63); `BetEventType` ganhou `slip_visualizado` (D-57); `sem_vencedor` é desfecho de
+> resultado (D-61); `restituicao_expirado` não é mais lançável (D-67). O depositante é
+> qualquer personagem, informado no Submeter (D-55).
 
 ### 16.1 Entidades finais (16)
 
