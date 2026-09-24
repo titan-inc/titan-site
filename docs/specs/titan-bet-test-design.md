@@ -2344,3 +2344,88 @@ slip`, **um** `POST submeter`, `GET slip`. Banco: `aguardando_deposito`, total 9
 
 A D-74 e a N1 não têm caso no banco de dev (exigiriam liquidar uma rodada com o WCL real);
 estão cobertas pelo `test:db` (§42.5, §42.6).
+
+## 43. D-76 — o Auditar congela os dados externos (achado 5, revisão 15)
+
+**Fluxo:** Discovery identifica os reports → Auditar congela os dados externos → Calcular é
+determinístico sobre os snapshots persistidos. O Calcular não tem porta para o WCL.
+
+### 43.1 O snapshot
+
+`BetAuditSourceReport.snapshot` (JSONB), formato em `apps/api/src/titan-bet/snapshot.ts`,
+lido pelo schema estrito `snapshotDoReportSchema` (versão desconhecida, campo a mais ou a
+menos: recusa):
+
+| Campo                                    | Conteúdo                                                                                                                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `versao`                                 | `1`                                                                                                                                                                                             |
+| `code`, `title`, `revision`, `startTime` | proveniência — a revisão é a lida **na mesma consulta** das fights                                                                                                                              |
+| `fights`                                 | só as Mythic dos encounters da rodada: `id`, `encounterID`, `difficulty`, `kill`, `startTime`, `endTime`                                                                                        |
+| `actors`                                 | só os citados pelas mortes e pelas tabelas: `id`, `name`, `server`                                                                                                                              |
+| `deaths`                                 | só as dessas fights: `fight`, `targetID`, `timestamp`                                                                                                                                           |
+| `kills`                                  | por fight de kill: dano, cura (`id`, `name`, `total`), dispels (a árvore, só `name`/`details`) e rankings de DPS/HPS (`name`, `server.name`, `spec`, `amount`, `rankPercent`, `bracketPercent`) |
+
+`congelarReport` projeta cada item nesses campos: o que o WCL mandar a mais não passa.
+
+**Auditar:** a descoberta lista os `titanbet*`; cada um é lido (`getTitanBetReport`, agora com
+`revision`) e congelado **antes** de qualquer gravação. Falhou a leitura de um, ou a revisão
+lida difere da descoberta → `AuditoriaRecusada`, nenhuma tentativa, nenhuma fonte; a
+tentativa anterior fica como estava. Referência e snapshot entram na mesma transação.
+
+### 43.2 Migrations (aditivas, nenhuma existente editada)
+
+- `20260924080000_titan_bet_snapshot_da_fonte_estrutura` — a coluna `snapshot JSONB`, anulável.
+- `20260924090000_titan_bet_snapshot_da_fonte_invariantes`:
+  - CHECK `BetAuditSourceReport_snapshot_obrigatorio` (`snapshot IS NOT NULL`) **NOT VALID** —
+    referência nova sempre com snapshot; as anteriores não são reavaliadas;
+  - CHECK `BetAuditSourceReport_snapshot_da_referencia` — `versao = 1`, `code = reportCode`,
+    `revision = reportRevision`;
+  - trigger `titanbet_snapshot_da_fonte_imutavel` — referência com snapshot não muda nem
+    some; referência sem snapshot não ganha um depois (nada retroativo).
+
+### 43.3 RED
+
+| Onde                                                                                                       | RED                                                                                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `warcraftlogs/titan-bet-report.spec.ts` — D-76, 2                                                          | **RED real**: a leitura não trazia `revision`                                                                                                                                                                                  |
+| `snapshot.spec.ts` — 7                                                                                     | awaiting seam (`./snapshot` inexistente)                                                                                                                                                                                       |
+| `snapshot-da-fonte.db-spec.ts` — 5                                                                         | **RED real** contra a estrutura: `aceito` em vez de `check` (sem snapshot; outra revisão, outro report, outra versão) e de `trigger` (mudar/apagar o snapshot, trocar a revisão); CHECK inexistente; o controle passava        |
+| `auditar-fluxo.db-spec.ts` — T-A30, 6; `congelamento.db-spec.ts` — 2, rodados contra os serviços da branch | **RED real**: o Auditar gravava a referência sem snapshot e o banco recusava (`BetAuditSourceReport_snapshot_obrigatorio`) — nada congelado; sem leitura por report, nem a falha do WCL nem a troca de revisão eram detectadas |
+| `calculo-historico.spec.ts` — 1                                                                            | escrito depois do GREEN (guarda): o banco já não aceita criar a referência sem snapshot                                                                                                                                        |
+
+O comportamento A→B em si foi reproduzido antes (§42.7: `{"vencedor":["B"],"revisaoNaEvidencia":3}`).
+
+### 43.4 GREEN — o cenário A→B (`congelamento.db-spec.ts`)
+
+Auditar com o WCL na revisão A (terça com dois reports que se duplicam, quinta com a kill de
+progressão e um report sem boss da rodada) → o snapshot de cada report é exatamente
+`congelarReport(A)` → o transporte passa a responder B, em que **tudo** se inverte (dano,
+cura, dispels, os dois Parse %, as mortes, a kill da Weekly) → Calcular:
+
+- **zero** leituras e listagens do WCL durante o Calcular;
+- resultados e evidência **iguais byte a byte** aos de uma rodada gêmea que nunca viu B
+  (só ids e instantes que são da rodada normalizados), em todos os mercados — Top DPS,
+  Top HPS, os dois Parse %, Dispels, First Death de farm e de progressão, Weekly;
+- uma terceira rodada auditada em B dá resultado diferente — o teste enxergaria B;
+- a evidência v2 sai dos snapshots: pulls, sequência de mortes, o par deduplicado
+  Terca1/Terca2, fontes na revisão 3;
+- `UPDATE` do snapshot gravado → `trigger`.
+
+### 43.5 Testes que mudaram porque a porta mudou
+
+- `calculo.db-spec.ts`: o WCL falso saiu do Calcular e entrou na tentativa — o
+  `auditoriaPronta` congela a semana pela mesma porta do Auditar (`repo.gravarAuditoria` com
+  snapshots) e o Calcular roda sem WCL. As asserções são as mesmas. O T-A12 ("lê do WCL
+  exatamente os reports congelados") passou a afirmar que calcula só sobre os snapshots da
+  tentativa; o T-Q04 continua recusando o recálculo, agora sem WCL nenhum na conta.
+- `auditar-fluxo.db-spec.ts`, `janela-da-auditoria.db-spec.ts`, `e2e.db-spec.ts`: o WCL falso
+  do Auditar ganhou `getTitanBetReport`; o Calcular é construído sem WCL.
+- `auditoria.db-spec.ts`: a fixture de referência grava o snapshot coerente com ela.
+- `test/wcl-real`: a injeção congela o snapshot com o WCL real, pelo mesmo `congelarReport`.
+
+### 43.6 Histórico
+
+Referências gravadas antes da revisão 15 ficam com `snapshot` nulo: o CHECK é `NOT VALID`,
+nada é reescrito, e resultados, confirmações, ledger e Closing Reports não dependem delas.
+Tentativa antiga **ainda não calculada**: o Calcular recusa com o report identificado e pede
+um novo Auditar, que abre outra tentativa já com snapshots. Nenhum snapshot é fabricado.

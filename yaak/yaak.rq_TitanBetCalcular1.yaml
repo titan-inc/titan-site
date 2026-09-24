@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Calcula os resultados da tentativa pronta lendo do WCL só os reports congelados no Auditar (§7.3), consolidados numa timeline — a mesma pull em dois reports conta uma vez (D-63) — e pulando sessão sem raid (D-60): DPS/HPS/dispels da tabela, Parse % de rankings Rankings/Today, First Death e, na Weekly, os bosses de progressão mortos (D-54). Mercado sem vencedor fica sem_vencedor, não VOID (D-61). Congela tudo na evidência (D-43, D-47). 204; 409 se a auditoria não está pronta ou antes de quinta 23:30 no fuso da guilda (D-73); a primeira kill do boss é a que vale (D-62). Chama o WCL de verdade.'
+description: 'OfficerGuard. Calcula os resultados da tentativa pronta sobre os snapshots congelados no Auditar, sem ler o WCL (D-76, §7.3), consolidados numa timeline — a mesma pull em dois reports conta uma vez (D-63) — e pulando sessão sem raid (D-60): DPS/HPS/dispels da tabela, Parse % de rankings Rankings/Today, First Death e, na Weekly, os bosses de progressão mortos (D-54). Mercado sem vencedor fica sem_vencedor, não VOID (D-61). Congela tudo na evidência (D-43, D-47). 204; 409 se a auditoria não está pronta ou antes de quinta 23:30 no fuso da guilda (D-73); a primeira kill do boss é a que vale (D-62). Não chama o WCL; tentativa anterior à revisão 15, sem snapshot, é recusada — audite de novo.'
 headers:
 - enabled: true
   name: Cookie
