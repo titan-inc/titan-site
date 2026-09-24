@@ -153,6 +153,21 @@ describe('WarcraftLogsService.getTitanBetReport', () => {
     expect(query.mock.calls[2]![1]).toMatchObject({ c: 'AbC123', f: [1, 2], s: 50 });
   });
 
+  // Achado da validação com WCL real (§40, B15): sem nenhuma fight Mythic dos
+  // encounters pedidos, a consulta de mortes ia com `fightIDs: []`, que o WCL
+  // recusa — e um `titanbet*` só com trash, ou só com boss fora da rodada,
+  // derrubava o cálculo inteiro.
+  it('report sem fight dos encounters pedidos: nenhuma consulta de detalhe, sem mortes nem kills', async () => {
+    query.mockResolvedValueOnce(meta);
+
+    const r = await wcl.getTitanBetReport('AbC123', [999]);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(r.fights.map((f) => f.id)).toEqual([1, 2, 3]);
+    expect(r.deaths).toEqual([]);
+    expect(r.kills).toEqual({});
+  });
+
   it('código de report fora do formato não vai para a query', async () => {
     await expect(wcl.getTitanBetReport('abc"){', [501])).rejects.toThrow(/código de report/);
     expect(query).not.toHaveBeenCalled();

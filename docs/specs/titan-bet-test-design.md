@@ -1946,3 +1946,117 @@ Nenhum resultado foi inventado.
 (B1, B3) e 1 no banco (B14, mensagem). B13 é CSS e foi verificado no navegador, não em
 teste. **Resultado:** `pnpm test` shared 395, api 935, web 213; `pnpm test:db` 316; format,
 lint, typecheck e build OK. A suíte não alterou o banco de dev (mesmo hash antes e depois).
+
+## 40. Validação do pipeline com o Warcraft Logs real (24/09/2026)
+
+Nenhum report da guilda tem o prefixo `titanbet` ainda (M0). Para não deixar o pipeline
+só nos dublês, um **harness de teste** passou reports reais recentes pelo motor, e o
+mesmo report foi tentado pelo caminho normal.
+
+### 40.1 O harness
+
+`apps/api/test/wcl-real/` — `ambiente.ts`, `jest-wcl-real.json`, `pipeline.wcl-real.ts`.
+Roda só à mão:
+
+```bash
+cd apps/api
+TEST_DATABASE_URL=… npx jest --config ./test/wcl-real/jest-wcl-real.json --runInBand
+```
+
+- **Banco:** só o `titan_test`, pela mesma guarda do `test:db`. Do `.env` entram só as
+  credenciais de leitura (WCL, Blizzard, WoWAudit, guilda) — nunca o `DATABASE_URL` de dev.
+- **WCL, Blizzard e WoWAudit reais, só leitura.**
+- **Injeção:** a auditoria é gravada direto pelo `TitanBetRepository.gravarAuditoria` — o
+  mesmo método que o Auditar usa —, com fontes `automatica` escolhidas pelo harness. Do
+  `CalculoService` em diante, só código de produção.
+- **Isolado do produto** (teste `src/titan-bet/harness-isolado.spec.ts`): nada em `src/`
+  o referencia; nem o `pnpm test` nem o `test:db` o executam; o `.dockerignore` o exclui
+  da imagem. Nenhum flag, rota, query param ou `if development` foi criado.
+
+### 40.2 A amostra real
+
+Semana do reset de **15/09/2026** (zone 53, The Venomous Abyss), dois loggers por noite:
+
+| Sessão | Reports                                | Fights (cada log)                                             |
+| ------ | -------------------------------------- | ------------------------------------------------------------- |
+| terça  | `pbjFHmdvA4hGa7yX`, `hLnPYc7zfRTAgB3C` | Nek'zali 2 pulls / 1 kill · The Lost Explorers 10 / 0         |
+| quinta | `qXpcnzbxAr6dYfPL`, `4ncyJGqa6A9htrCd` | The Lost Explorers 9 / **1 kill** · Entombed Sentinels 13 / 0 |
+
+Rodada montada pelo caminho normal: preparação com o catálogo real; **Ready real** — 306
+bettors do roster da Blizzard e 26 candidatos do WoWAudit (2 Tank, 10 Melee, 6 Heal,
+8 Ranged); 26 contas apostando em todos os mercados, girando por todos os candidatos;
+depósitos confirmados; cutoff.
+
+Mercados: Nek'zali (farm) — Top DPS, DPS Parse %, Top HPS, HPS Parse %, Dispels, First
+Death; Vashnik (farm, **não pullado na semana**) — Top DPS; The Lost Explorers e Entombed
+Sentinels (progressão) — First Death; Weekly Progression.
+
+**Restrições ignoradas só no harness:** prefixo `titanbet*` (nenhum dos quatro tem);
+janela da rodada (os reports são de 15–17/09, a rodada do harness fecha no dia do teste);
+associação da sessão (dada pela injeção, não pela data).
+
+### 40.3 A — o motor com a fonte real
+
+| Observado                                                                                  | Conferido contra                                                                            |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Top DPS e Top HPS: 1 vencedor cada                                                         | `rankings.amount` do WCL — **outro campo** que o da tabela usada: iguais                    |
+| DPS Parse % (empate: **2 vencedores**) e HPS Parse %                                       | maior `rankPercent` entre os candidatos da role: iguais                                     |
+| First Death de farm                                                                        | primeira morte bruta da kill (evento `Deaths`), entre candidatos: igual                     |
+| a kill de Nek'zali está nos dois logs (0,509 s de diferença); o motor usou a **mais cedo** | início das duas cópias                                                                      |
+| First Death de progressão: The Lost Explorers **19 tries**, Entombed Sentinels **13**      | um log por noite = 19 e 13; a soma dos dois logs = 38 e 26 — nenhuma try contada duas vezes |
+| Weekly: vence **The Lost Explorers** (kill na quinta); Entombed Sentinels não              | fights                                                                                      |
+| Vashnik: `sem_vencedor` (`sem_kill`)                                                       | sem pull na semana                                                                          |
+| Liquidação: 155.021 depositados = 139.494 prêmios + 15.507 receita + 20 resíduo            | invariante §16.6                                                                            |
+| Closing publicado; total devido = soma dos saldos do ledger                                | `LedgerService.saldos`                                                                      |
+
+Cópias da mesma try entre logs: **0,3–2,1 s**; menor intervalo entre pulls do mesmo boss
+no mesmo log: **137,5 s** — a janela de 10 s (D-63) separa as duas coisas com folga.
+
+**Bug encontrado — B15:** `getTitanBetReport` pedia as mortes com `fightIDs: []` quando o
+report não tinha fight dos encounters da rodada, e o WCL recusa — um `titanbet*` só com
+trash, ou só com boss fora da rodada, derrubaria o cálculo inteiro. RED em
+`titan-bet-report.spec.ts` (consulta extra); GREEN: sem fight pedida, nenhuma consulta de
+detalhe, sem mortes nem kills.
+
+### 40.4 B — o mesmo report pelo caminho normal
+
+Rodada da semana real deles (cutoff 15/09 12:00 BRT, Ready antes): o **Auditar normal,
+com o WCL real**, lista esses quatro reports na janela e nos dias certos, e os recusa pelo
+prefixo — terça e quinta `ausente`, nenhum report gravado, auditoria
+`aguardando_revisao`; o cálculo é recusado. Guardas de regressão (passaram de primeira —
+o produto já protegia): **T-A21** (`auditar-fluxo.db-spec.ts`) — logs com a forma dos
+reais, sem prefixo, nunca viram fonte e o cálculo nem lê o WCL; `titanbet*` da semana
+anterior não entra. Dia, cutoff e janela seguem com T-A02, T-A03, T-A05; "sem raid" com
+T-A19.
+
+### 40.5 Cobertura
+
+| Comportamento                                         | Classificação                                                                     |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Top DPS, Top HPS                                      | **VALIDADO COM WCL REAL** (campo independente)                                    |
+| DPS Parse %, HPS Parse % (inclusive empate)           | **VALIDADO COM WCL REAL**                                                         |
+| Dispels                                               | **VALIDADO COM WCL REAL** (mesmo campo da tabela; sem segundo campo na API)       |
+| First Death de farm                                   | **VALIDADO COM WCL REAL** (eventos brutos)                                        |
+| First Death de progressão, múltiplas pulls            | **VALIDADO COM WCL REAL**                                                         |
+| Weekly por boss                                       | **VALIDADO COM WCL REAL**                                                         |
+| primeira cópia da kill; sem kill duplicada            | **VALIDADO COM WCL REAL**                                                         |
+| segunda kill **distinta** do mesmo boss na semana     | **NÃO EXERCITADO POR AUSÊNCIA DE AMOSTRA REAL** — T-F01, T-A18                    |
+| múltiplos reports por sessão; deduplicação entre logs | **VALIDADO COM WCL REAL**                                                         |
+| pulls legítimas a menos de 10 s no mesmo log          | **NÃO EXERCITADO POR AUSÊNCIA DE AMOSTRA REAL** — menor intervalo 137 s; T-A20    |
+| candidatos e roles congelados (Ready real)            | **VALIDADO COM WCL REAL** (Blizzard + WoWAudit)                                   |
+| mercado sem vencedor, redistribuição                  | **VALIDADO COM WCL REAL**                                                         |
+| settlement, ledger, Closing                           | **VALIDADO COM WCL REAL**                                                         |
+| report sem fight da rodada (B15)                      | **VALIDADO POR TESTE AUTOMATIZADO**                                               |
+| VOID / restituição                                    | **VALIDADO POR TESTE AUTOMATIZADO** (nada o gera automaticamente — D-61)          |
+| sessão "sem raid" com cálculo                         | **VALIDADO POR TESTE AUTOMATIZADO** (e no navegador, §39)                         |
+| fonte `titanbet*` real descoberta pelo Auditar        | **NÃO EXERCITADO POR AUSÊNCIA DE AMOSTRA REAL** — não existe report com o prefixo |
+
+A saída completa do harness (com nomes de personagens e títulos de report) ficou fora
+do repositório.
+
+### 40.6 B4 — grafia de realm
+
+`azralon`/`Azralon`/`area-52` vêm de fontes diferentes gravando a grafia de exibição da
+`Character` (login grava o slug; WoWAudit, a grafia de exibição). É **dívida da camada
+global de identidade**, não do Titan Bet, que continua na Regra 6 sem canonicalização
+própria.

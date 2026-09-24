@@ -2,12 +2,13 @@ import { auditoriaCorrenteSchema } from '@titan/shared';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import type { ReportDaGuilda } from '../../../src/titan-bet/auditoria';
 import { AuditoriaRecusada, AuditoriaService } from '../../../src/titan-bet/auditoria.service';
+import { CalculoService } from '../../../src/titan-bet/calculo.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
 import { Fabrica } from './fabrica';
 
 /**
  * Auditar — o fluxo (D-24, D-30, D-60, D-63; spec §7.2): T-A04, T-A05, T-A09,
- * T-A12, T-A16, T-A19. titan-bet-test-design.md §3.7, §3.18.
+ * T-A12, T-A16, T-A19, T-A21. titan-bet-test-design.md §3.7, §3.18, §40.
  *
  * O WCL é falso — a fonte é o que está sob teste, não a rede. Os horários são
  * de uma semana real: cutoff na terça 22/09/2026, 12:00 BRT (15:00 UTC).
@@ -231,6 +232,46 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
       ).rejects.toBeInstanceOf(AuditoriaRecusada);
       const [, quinta] = await fontesDe(auditId);
       expect(quinta?.resolution).toBe('ausente');
+    });
+  });
+
+  // A validação com o WCL real (§40) injetou fontes abaixo da descoberta. Isto
+  // prende o caminho normal: logs com a forma dos reais — dois loggers por
+  // noite, nos dias e horários certos, sem o prefixo — nunca chegam ao motor.
+  describe('T-A21 — o caminho normal não aceita o que só o harness injeta (§40)', () => {
+    const naoTitanbet = [
+      report('LogA1', TERCA, { title: 'raid de terça' }),
+      report('LogA2', TERCA + 400, { title: 'outro logger' }),
+      report('LogB1', QUINTA, { title: 'raid de quinta' }),
+      report('LogB2', QUINTA + 2_100, { title: 'outro logger' }),
+    ];
+
+    it('sem `titanbet*`, nas sessões certas: nenhuma fonte, e o cálculo nem lê o WCL', async () => {
+      const rodada = await rodadaFechada();
+      wcl.listGuildReports.mockResolvedValue(naoTitanbet);
+      const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
+
+      const fontes = await fontesDe(auditId);
+      expect(fontes.map((x) => x.resolution)).toEqual(['ausente', 'ausente']);
+      expect(fontes.flatMap((x) => x.reports)).toEqual([]);
+
+      const leitor = { getTitanBetReport: jest.fn() };
+      await expect(new CalculoService(repo, leitor).calcular(auditId)).rejects.toBeInstanceOf(
+        AuditoriaRecusada,
+      );
+      expect(leitor.getTitanBetReport).not.toHaveBeenCalled();
+    });
+
+    it('`titanbet*` da semana anterior ao cutoff não entra na rodada', async () => {
+      const rodada = await rodadaFechada();
+      const semanaAnterior = TERCA - 7 * 24 * 60 * 60 * 1000;
+      wcl.listGuildReports.mockResolvedValue([
+        report('Velho1', semanaAnterior, { title: 'titanbet' }),
+        report('Terca1', TERCA),
+      ]);
+      const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
+      const codes = (await fontesDe(auditId)).flatMap((x) => x.reports.map((r) => r.reportCode));
+      expect(codes).toEqual(['Terca1']);
     });
   });
 

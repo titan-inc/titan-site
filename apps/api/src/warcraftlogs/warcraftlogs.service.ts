@@ -416,6 +416,20 @@ export class WarcraftLogsService {
     const kills = pedidas.filter((f) => f.kill === true);
     const ids = pedidas.map((f) => f.id);
 
+    // Nenhuma fight dos encounters pedidos (report só de trash, ou só com boss
+    // fora da rodada): não há morte nem tabela para ler, e o WCL recusa
+    // `fightIDs: []` — o report continua valendo, só não traz pull.
+    if (ids.length === 0) {
+      return {
+        code,
+        startTime: rel.startTime,
+        fights,
+        actors: rel.masterData.actors,
+        deaths: [],
+        kills: {},
+      };
+    }
+
     const porKill = kills
       .map(
         (k) => `
