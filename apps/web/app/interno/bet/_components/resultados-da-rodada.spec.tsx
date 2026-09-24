@@ -62,6 +62,42 @@ describe('ResultadosDaRodada', () => {
 });
 
 /** Achados da validação no navegador (titan-bet-test-design.md §39). */
+describe('ResultadosDaRodada — rodada sem premiável (D-74)', () => {
+  afterEach(cleanup);
+
+  const semPremiavel = {
+    ...CLOSING,
+    conteudo: {
+      ...CLOSING.conteudo,
+      mercados: [{ ...CLOSING.conteudo.mercados[1]!, destinoDoPool: 'restituido' as const }],
+      guildBank: { receita: 30, residuo: 0 },
+      totais: [{ membro: { name: 'Apostadorum', realm: 'Azralon' }, devido: 270 }],
+    },
+  };
+
+  it('diz que 90% voltou a quem apostou, e não que redistribuiu', () => {
+    render(<ResultadosDaRodada closing={semPremiavel} />);
+    const fd = grupo('First Death · Boss Farm');
+    expect(within(fd).getByText(/90% do pool voltou a quem apostou/)).toBeTruthy();
+    expect(within(fd).queryByText(/redistribuído/)).toBeNull();
+    expect(screen.getByText(/Apostadorum-Azralon: 270 gold/)).toBeTruthy();
+  });
+
+  it('com o destino `redistribuido`, continua dizendo que redistribuiu', () => {
+    const redistribuido = {
+      ...CLOSING,
+      conteudo: {
+        ...CLOSING.conteudo,
+        mercados: CLOSING.conteudo.mercados.map((m) =>
+          m.marketId === 'm-fd' ? { ...m, destinoDoPool: 'redistribuido' as const } : m,
+        ),
+      },
+    };
+    render(<ResultadosDaRodada closing={redistribuido} />);
+    expect(within(grupo('First Death · Boss Farm')).getByText(/redistribuído/)).toBeTruthy();
+  });
+});
+
 describe('ResultadosDaRodada — achados do navegador', () => {
   afterEach(cleanup);
 

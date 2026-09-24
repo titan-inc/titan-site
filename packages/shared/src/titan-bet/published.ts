@@ -72,6 +72,13 @@ const mercadoPublicadoSchema = z
     desfecho: z.enum(['vencedores', 'sem_vencedor', 'anulado']),
     /** Por que não houve vencedor, ou por que foi VOID. */
     motivo: z.string().nullable(),
+    /**
+     * Para onde foi o pool (D-74): `premios` aos vencedores; `redistribuido` aos
+     * mercados premiáveis (D-44, D-61); `restituido` — rodada sem nenhum
+     * premiável, 90% de volta a quem apostou neste mercado; `anulado` — VOID,
+     * 100% de volta. Ausente nos relatórios publicados antes da revisão 14.
+     */
+    destinoDoPool: z.enum(['premios', 'redistribuido', 'restituido', 'anulado']).optional(),
     /** Os candidatos vencedores do mercado. */
     vencedores: z.array(personagemPublicoSchema),
     /** Weekly (D-54): os bosses de progressão mortos na semana — as opções vencedoras. */

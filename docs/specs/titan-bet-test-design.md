@@ -2210,3 +2210,42 @@ e a rota responde 404 com a mesma mensagem da leitura da rodada. Sem cookie cont
 testes de odds existentes ganharam `!` pelo retorno anulável — nenhuma asserção mudou.
 Collection Yaak: odds (D-75) e as requests de Auditar, sem raid, Calcular, Confirmar e
 rodadas do officer (D-73).
+
+### 42.5 Achado 4 — rodada sem mercado premiável (D-74)
+
+Reproduzido: órfão com `P > 0` numa rodada sem premiável → `liquidarRodada` devolvia
+`sem_mercado_premiavel` e a confirmação era recusada ("a D-44 não tem regra para isso"). A
+decisão veio na revisão 14.
+
+**Migrations novas (aditivas; nenhuma existente editada):**
+
+- `20260924060000_titan_bet_restituicao_sem_premiavel_estrutura` — `ALTER TYPE
+"GoldLedgerKind" ADD VALUE 'restituicao_sem_premiavel'`;
+- `20260924070000_titan_bet_restituicao_sem_premiavel_invariantes` — índice único
+  `GoldLedgerEntry_um_credito_de_resultado_por_aposta` (`premio`, `restituicao_anulado`,
+  `restituicao_sem_premiavel`), criado **antes** de remover o antigo, que ele contém; CHECK
+  `GoldLedgerEntry_restituicao_sem_premiavel_completa` (conta do membro, aposta, mercado e
+  resultado). Append-only, D-67 e as demais invariantes intactas. Sem drift entre
+  `schema.prisma` e o banco migrado (`prisma migrate diff`: migration vazia).
+
+| Onde                                                                                                                                          | RED                                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ledger.db-spec.ts` — T-L13, 4                                                                                                                | **RED real**: `aceito` onde se espera `unique` (duplicada, com prêmio) e `check` (sem aposta/mercado/resultado, conta da guilda); o controle passava |
+| `liquidacao.spec.ts` — T-M17, 6 (V 300 um apostador; 333/211/456 com floor e resto 2; betId por aposta; dois órfãos; reconciliação 300 casos) | **RED real**: `esperado liquidada, veio sem_mercado_premiavel`; "com premiável a D-44 vale" passava — guarda                                         |
+| `settlement.db-spec.ts` — T-M14 integrado, 4, rodado contra o domínio da branch                                                               | **RED real**: `LedgerRecusado: nenhum mercado premiável…` nos 4                                                                                      |
+| `closing-servico.db-spec.ts` — T-C07, 2, rodado contra o `closing.service.ts` da branch                                                       | **RED real**: sem `destinoDoPool` e sem a restituição no total do membro                                                                             |
+| `shared` — `lancamentosDoSlipSchema`, `closingReportSchema`                                                                                   | **RED real** (tipo e destino); "relatório antigo sem destino continua válido" — guarda                                                               |
+| `web resultados-da-rodada.spec.tsx` — D-74, rodado contra o componente da branch                                                              | **RED real**: não dizia que o pool voltou; "`redistribuido` diz que redistribuiu" — guarda                                                           |
+
+**Testes que mudaram porque afirmavam a regra substituída** (explícito, com comentário no
+código): T-M14 puro ("um órfão e um VOID: recusa") e T-M16 ("sem premiável → não liquida")
+em `liquidacao.spec.ts`, e T-M14 integrado ("a confirmação para") em `settlement.db-spec.ts`
+— os três passaram a afirmar a D-74. T-M15 (reconciliação aleatória) ganhou a parcela do
+restituído.
+
+GREEN: `restituirOrfao` em `liquidacao.ts` — `floor(P × stake / V)` por aposta válida, `G₀`
+em `receita_guilda`, o resto em `residuo_guilda`; o settlement lança
+`restituicao_sem_premiavel`; saldo e Closing a contam como crédito; o Closing publica
+`destinoDoPool` (`premios` | `redistribuido` | `restituido` | `anulado`, lido do ledger,
+opcional para não invalidar relatórios já publicados). VOID continua 100% sem receita, e
+slip que nunca foi válido continua fora (D-67; T-M14 integrado, "slip pendente não entra").

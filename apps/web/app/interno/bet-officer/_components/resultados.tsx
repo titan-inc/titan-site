@@ -115,7 +115,8 @@ function MercadoCalculado({
       <h3 className="text-fg text-sm font-semibold">{tituloDoMercado(m.kind, encounterName)}</h3>
       {m.outcome === 'sem_vencedor' && (
         <p className="text-fg-muted text-sm">
-          Sem vencedor: {motivo(m.motivo)}. O P vai para os mercados premiáveis.
+          Sem vencedor: {motivo(m.motivo)}. O P vai para os mercados premiáveis; sem nenhum na
+          rodada, volta a quem apostou neste mercado (D-74).
         </p>
       )}
       {m.outcome === 'anulado' && (

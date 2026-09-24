@@ -72,8 +72,17 @@ function Mercado({
       {m.desfecho === 'sem_vencedor' && (
         <p className="text-fg-muted text-sm">
           Sem vencedor: {motivo(m.motivo)}.
-          {algumVencedor &&
+          {m.destinoDoPool === undefined &&
+            algumVencedor &&
             ' O prize pool deste mercado foi redistribuído entre os mercados com vencedor.'}
+          {m.destinoDoPool === 'redistribuido' &&
+            ' O prize pool deste mercado foi redistribuído entre os mercados com vencedor.'}
+        </p>
+      )}
+      {m.destinoDoPool === 'restituido' && (
+        <p className="text-fg-muted text-sm">
+          Nenhum mercado da rodada teve vencedor para receber: 90% do pool voltou a quem apostou
+          neste mercado, e 10% ficou com o Guild Bank.
         </p>
       )}
       {m.desfecho === 'anulado' && (

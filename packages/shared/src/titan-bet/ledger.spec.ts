@@ -53,6 +53,11 @@ describe('lancamentosDoSlipSchema', () => {
     ).toBe(false);
   });
 
+  it('D-74: a restituição sem mercado premiável é um tipo próprio de lançamento', () => {
+    const lista = { lancamentos: [{ ...lancamento, kind: 'restituicao_sem_premiavel' }] };
+    expect(lancamentosDoSlipSchema.parse(lista)).toEqual(lista);
+  });
+
   it('o id é só dígitos — é o que o ajuste manda de volta', () => {
     expect(
       lancamentosDoSlipSchema.safeParse({ lancamentos: [{ ...lancamento, entryId: 'x' }] }).success,

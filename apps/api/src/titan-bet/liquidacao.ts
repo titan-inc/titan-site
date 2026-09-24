@@ -10,6 +10,11 @@ import { restituirMercado, type ApostaNoRateio } from './rateio';
  * entre os mercados **premiáveis** da rodada (resultado `vencedores` e
  * `W > 0`). Cada órfão reparte o próprio `P`, e o resto de cada divisão é do
  * Guild Bank (D-10).
+ *
+ * Rodada **sem nenhum** premiável (D-74): não há para onde o `P` ir, e ele volta
+ * aos apostadores válidos do próprio órfão, pelo stake — `floor(P × stake / V)`,
+ * o indivisível do Guild Bank. O `G₀` continua da guilda. Não é VOID: o VOID
+ * devolve o stake inteiro e não tem receita.
  */
 
 export interface MercadoParaLiquidar {
@@ -52,19 +57,24 @@ export type MercadoLiquidado =
     }
   | {
       marketId: string;
+      /** Órfão numa rodada sem nenhum premiável (D-74): o `P` volta a quem apostou nele. */
+      tipo: 'restituido';
+      V: number;
+      P: number;
+      receitaGuilda: number;
+      restituicoes: Array<{ betId: string; amount: number }>;
+      /** `P − Σ restituições`: o indivisível dos `floor`, da guilda. */
+      restoGuilda: number;
+    }
+  | {
+      marketId: string;
       tipo: 'anulado';
       V: number;
       receitaGuilda: 0;
       restituicoes: Array<{ betId: string; amount: number }>;
     };
 
-export type Liquidacao =
-  | { tipo: 'liquidada'; mercados: MercadoLiquidado[] }
-  /**
-   * Um órfão com `P > 0` e nenhum mercado premiável para receber: a D-44 não
-   * tem regra para isso, e aqui não se inventa uma. Nada é liquidado.
-   */
-  | { tipo: 'sem_mercado_premiavel'; orfaos: string[] };
+export type Liquidacao = { tipo: 'liquidada'; mercados: MercadoLiquidado[] };
 
 export function liquidarRodada(mercados: MercadoParaLiquidar[]): Liquidacao {
   const premiaveis = mercados.filter((m) => m.desfecho === 'vencedores' && W(m) > 0);
@@ -75,16 +85,15 @@ export function liquidarRodada(mercados: MercadoParaLiquidar[]): Liquidacao {
   );
   const receptores = premiaveis.map((m) => m.marketId);
 
-  const travados = orfaos.filter((m) => P(m) > 0 && receptores.length === 0);
-  if (travados.length > 0) {
-    return { tipo: 'sem_mercado_premiavel', orfaos: travados.map((m) => m.marketId) };
-  }
-
   const cotaPorReceptor = new Map<string, number>(receptores.map((id) => [id, 0]));
   const liquidados = new Map<string, MercadoLiquidado>();
 
   for (const o of orfaos) {
     const p = P(o);
+    if (p > 0 && receptores.length === 0) {
+      liquidados.set(o.marketId, restituirOrfao(o));
+      continue;
+    }
     const recebem = p > 0 ? receptores : [];
     const cota = recebem.length > 0 ? Math.floor(p / recebem.length) : 0;
     for (const id of recebem) cotaPorReceptor.set(id, cotaPorReceptor.get(id)! + cota);
@@ -130,6 +139,26 @@ export function liquidarRodada(mercados: MercadoParaLiquidar[]): Liquidacao {
   }
 
   return { tipo: 'liquidada', mercados: mercados.map((m) => liquidados.get(m.marketId)!) };
+}
+
+/** D-74: o `P` do órfão de volta aos apostadores dele, proporcional ao stake. */
+function restituirOrfao(o: MercadoParaLiquidar): MercadoLiquidado {
+  const v = V(o);
+  const p = P(o);
+  const restituicoes = o.apostas.map((a) => ({
+    betId: a.betId,
+    amount: Math.floor((p * a.stake) / v),
+  }));
+  const devolvido = restituicoes.reduce((total, r) => total + r.amount, 0);
+  return {
+    marketId: o.marketId,
+    tipo: 'restituido',
+    V: v,
+    P: p,
+    receitaGuilda: v - p,
+    restituicoes,
+    restoGuilda: p - devolvido,
+  };
 }
 
 function V(m: MercadoParaLiquidar): number {

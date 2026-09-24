@@ -279,24 +279,115 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
     });
   });
 
-  describe('T-M14 integrado — sem premiável, a confirmação para (D-44)', () => {
-    it('só o órfão e um VOID: recusado, nada lançado, auditoria continua calculada', async () => {
+  // Revisão 14 (D-74): até aqui a confirmação parava ("nenhum mercado
+  // premiável", auditoria continuava calculada). A decisão veio: o P do órfão
+  // volta aos apostadores do próprio mercado, e a rodada liquida.
+  describe('T-M14 integrado — sem premiável, o órfão restitui 90% (D-74)', () => {
+    const doTipo = <T extends { kind: string }>(ls: T[], kind: string) =>
+      ls.filter((l) => l.kind === kind);
+
+    it('só o órfão e um VOID: 90% do órfão e 100% do VOID de volta; G₀ do órfão fica', async () => {
       const c = await cenario();
-      await c.apostar(c.firstDeath.id, 'first_death', 1000, c.A);
-      await c.apostar(c.topDps.id, 'top_dps', 500, c.A);
+      const fd = await c.apostar(c.firstDeath.id, 'first_death', 1000, c.A);
+      const top = await c.apostar(c.topDps.id, 'top_dps', 500, c.A);
       const a = await calculada(c, {
         [c.firstDeath.id]: { outcome: 'vencedores', vencedores: [c.B] },
         [c.topDps.id]: { outcome: 'anulado', voidReason: 'mercado_cancelado' },
       });
 
-      await expect(settlement.confirmar(a.id, OFFICER)).rejects.toThrow(/nenhum mercado premiável/);
-      expect((await lancamentos(c.rodada.id)).map((l) => l.kind)).toEqual([
-        'deposito_validado',
-        'deposito_validado',
+      await settlement.confirmar(a.id, OFFICER);
+
+      const ls = await lancamentos(c.rodada.id);
+      expect(doTipo(ls, 'restituicao_sem_premiavel')).toEqual([
+        expect.objectContaining({
+          account: 'membro',
+          amount: 900,
+          betId: fd.betId,
+          slipId: fd.slipId,
+          marketId: c.firstDeath.id,
+        }),
       ]);
+      expect(doTipo(ls, 'restituicao_anulado')).toEqual([
+        expect.objectContaining({ amount: 500, betId: top.betId }),
+      ]);
+      expect(doTipo(ls, 'receita_guilda').map((l) => [l.marketId, l.amount])).toEqual([
+        [c.firstDeath.id, 100],
+      ]);
+      expect(doTipo(ls, 'premio')).toEqual([]);
       expect((await db.betAudit.findUniqueOrThrow({ where: { id: a.id } })).status).toBe(
-        'calculada',
+        'confirmada',
       );
+    });
+
+    it('V 300, um apostador, sem vencedor: 30 ao Guild Bank, 270 restituídos', async () => {
+      const c = await cenario();
+      const fd = await c.apostar(c.firstDeath.id, 'first_death', 300, c.A);
+      const a = await calculada(c, {
+        [c.firstDeath.id]: { outcome: 'sem_vencedor', motivo: 'sem_kill' },
+      });
+
+      await settlement.confirmar(a.id, OFFICER);
+
+      const ls = await lancamentos(c.rodada.id);
+      expect(doTipo(ls, 'restituicao_sem_premiavel').map((l) => [l.betId, l.amount])).toEqual([
+        [fd.betId, 270],
+      ]);
+      expect(doTipo(ls, 'receita_guilda').map((l) => l.amount)).toEqual([30]);
+      expect(doTipo(ls, 'residuo_guilda')).toEqual([]);
+      expect(await ledger.saldos(c.rodada.id)).toEqual({
+        saldos: [expect.objectContaining({ slipId: fd.slipId, devido: 270, pago: 0 })],
+      });
+    });
+
+    it('vários apostadores e stakes: proporcional, floor, indivisível ao Guild Bank; reconcilia', async () => {
+      const c = await cenario();
+      // V 1.000 → P 900: 333 → 299; 211 → 189; 456 → 410; resto 2.
+      const apostas = [
+        await c.apostar(c.firstDeath.id, 'first_death', 333, c.A),
+        await c.apostar(c.firstDeath.id, 'first_death', 211, c.B),
+        await c.apostar(c.firstDeath.id, 'first_death', 456, c.A),
+      ];
+      const a = await calculada(c, {
+        [c.firstDeath.id]: { outcome: 'sem_vencedor', motivo: 'sem_kill' },
+      });
+
+      await settlement.confirmar(a.id, OFFICER);
+
+      const ls = await lancamentos(c.rodada.id);
+      const porAposta = new Map(
+        doTipo(ls, 'restituicao_sem_premiavel').map((l) => [l.betId, l.amount]),
+      );
+      expect(apostas.map((x) => porAposta.get(x.betId))).toEqual([299, 189, 410]);
+      expect(doTipo(ls, 'receita_guilda').map((l) => l.amount)).toEqual([100]);
+      expect(doTipo(ls, 'residuo_guilda').map((l) => l.amount)).toEqual([2]);
+      const soma = (kinds: string[]) =>
+        ls.filter((l) => kinds.includes(l.kind)).reduce((t, l) => t + l.amount, 0);
+      expect(soma(['deposito_validado'])).toBe(
+        soma(['restituicao_sem_premiavel', 'receita_guilda', 'residuo_guilda']),
+      );
+    });
+
+    it('slip que nunca chegou a válido não entra: nada é restituído a ele (D-67)', async () => {
+      const c = await cenario();
+      const valida = await c.apostar(c.firstDeath.id, 'first_death', 400, c.A);
+      const pendente = await c.apostar(
+        c.firstDeath.id,
+        'first_death',
+        600,
+        c.B,
+        'aguardando_deposito',
+      );
+      const a = await calculada(c, {
+        [c.firstDeath.id]: { outcome: 'sem_vencedor', motivo: 'sem_kill' },
+      });
+
+      await settlement.confirmar(a.id, OFFICER);
+
+      const ls = await lancamentos(c.rodada.id);
+      expect(doTipo(ls, 'restituicao_sem_premiavel').map((l) => [l.betId, l.amount])).toEqual([
+        [valida.betId, 360],
+      ]);
+      expect(ls.some((l) => l.slipId === pendente.slipId)).toBe(false);
     });
   });
 

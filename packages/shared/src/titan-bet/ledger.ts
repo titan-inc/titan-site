@@ -61,6 +61,7 @@ export const lancamentosDoSlipSchema = z
             'restituicao_expirado',
             'ajuste',
             'pagamento',
+            'restituicao_sem_premiavel',
           ]),
           amount: z.number().int(),
           reason: z.string().nullable(),

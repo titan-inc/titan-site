@@ -1323,7 +1323,12 @@ export interface DadosDaConfirmacao {
 /** Um lançamento do settlement (§16.6); o ator é o officer que confirmou. */
 export interface LancamentoDoSettlement {
   account: 'membro' | 'guild_bank';
-  kind: 'premio' | 'restituicao_anulado' | 'receita_guilda' | 'residuo_guilda';
+  kind:
+    | 'premio'
+    | 'restituicao_anulado'
+    | 'restituicao_sem_premiavel'
+    | 'receita_guilda'
+    | 'residuo_guilda';
   amount: number;
   slipId: string | null;
   betId: string | null;

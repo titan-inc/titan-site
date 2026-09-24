@@ -68,13 +68,16 @@ export function restituirMercado(apostas: ApostaNoRateio[]): {
 const CREDITOS: ReadonlySet<GoldLedgerKind> = new Set([
   'premio',
   'restituicao_anulado',
+  // D-74: o P do órfão de volta, numa rodada sem premiável.
+  'restituicao_sem_premiavel',
   // Só histórico: não é mais lançável (D-67), mas o saldo lê o que existir.
   'restituicao_expirado',
   'ajuste',
 ]);
 
 /**
- * Saldo devido = Σ (`premio` + `restituicao_*` + `ajuste`) − Σ `pagamento`.
+ * Saldo devido = Σ (`premio` + `restituicao_*` + `ajuste`) − Σ `pagamento`
+ * (`restituicao_sem_premiavel` incluída, D-74).
  * `deposito_validado` é o gold que entrou, não o que se deve; receita e resíduo
  * são da conta da guilda. Saldo negativo não existe (D-50): o ajuste que o produziria é recusado antes; aqui ele só é calculado.
  */

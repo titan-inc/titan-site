@@ -21,6 +21,8 @@ interface Officer {
 const CREDITOS: ReadonlySet<GoldLedgerKind> = new Set([
   'premio',
   'restituicao_anulado',
+  // D-74: o P do órfão de volta, numa rodada sem premiável.
+  'restituicao_sem_premiavel',
   // Só histórico: não é mais lançável (D-67), mas o saldo lê o que existir.
   'restituicao_expirado',
   'ajuste',
@@ -78,6 +80,22 @@ export class ClosingService {
 type Rodada = NonNullable<Awaited<ReturnType<ClosingRepository['rodadaConfirmada']>>>;
 type Lancamento = Awaited<ReturnType<ClosingRepository['lancamentosDaRodada']>>[number];
 
+/**
+ * Para onde foi o pool do mercado (D-74), lido do que o settlement lançou —
+ * nunca recalculado aqui. Mercado sem prêmio nem restituição (órfão numa
+ * rodada com premiável) teve o P redistribuído (D-44, D-61).
+ */
+function destinoDoPool(
+  r: Rodada['audits'][number]['results'][number],
+  lancamentos: Lancamento[],
+): 'premios' | 'redistribuido' | 'restituido' | 'anulado' {
+  if (r.outcome === 'anulado') return 'anulado';
+  const doMercado = lancamentos.filter((l) => l.marketId === r.marketId);
+  if (doMercado.some((l) => l.kind === 'restituicao_sem_premiavel')) return 'restituido';
+  if (doMercado.some((l) => l.kind === 'premio')) return 'premios';
+  return 'redistribuido';
+}
+
 function montar(
   rodada: Rodada,
   auditoria: Rodada['audits'][number],
@@ -100,6 +118,7 @@ function montar(
       encounterName: r.market.roundEncounter?.encounterName ?? null,
       desfecho: r.outcome,
       motivo: r.voidReason ?? motivoDaEvidencia(r.evidence),
+      destinoDoPool: destinoDoPool(r, lancamentos),
       vencedores: r.winners.map((w) => w.candidate),
       bossesVencedores: r.kills.map((k) => k.roundEncounter.encounterName),
       ganhos: [...ganhos.values()],

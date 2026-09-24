@@ -158,6 +158,19 @@ describe('closingReportSchema', () => {
     },
   );
 
+  it('D-74: o destino do pool do mercado — premios, redistribuido, restituido ou anulado', () => {
+    for (const destinoDoPool of ['premios', 'redistribuido', 'restituido', 'anulado']) {
+      const mercados = [{ ...doc.mercados[1], destinoDoPool }];
+      expect(closingReportSchema.parse({ ...doc, mercados })).toEqual({ ...doc, mercados });
+    }
+    const invalido = [{ ...doc.mercados[1], destinoDoPool: 'sumiu' }];
+    expect(closingReportSchema.safeParse({ ...doc, mercados: invalido }).success).toBe(false);
+  });
+
+  it('D-74: relatório publicado antes da revisão 14, sem o destino, continua válido', () => {
+    expect(closingReportSchema.parse(doc)).toEqual(doc);
+  });
+
   it('membro é personagem: nome e realm, e só isso (D-48)', () => {
     expect(
       closingReportSchema.safeParse({ ...doc, totais: [{ membro: { name: 'X' }, devido: 1 }] })

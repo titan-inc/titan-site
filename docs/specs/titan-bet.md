@@ -1729,14 +1729,14 @@ Zero linhas = aposta em `{}`.
 
 **Índices únicos parciais (SQL na migration — precedente `WowDataBuild_um_ativo_so`):**
 
-| Índice                                                                                       | Garante                                                                    |
-| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `BetSlip (roundId, ownerUserId) WHERE status IN ('rascunho','aguardando_deposito','valido')` | ≤ 1 slip **ativo** por membro por rodada; recusados e expirados não contam |
-| `BetMarket (roundId) WHERE kind = 'weekly_progression'`                                      | uma Weekly por rodada (`NULL` não colide no unique composto)               |
-| `BetAudit (roundId) WHERE status = 'confirmada'`                                             | uma auditoria confirmada por rodada                                        |
-| `GoldLedgerEntry (betId) WHERE kind IN ('premio','restituicao_anulado')`                     | um lançamento de resultado por aposta                                      |
-| `GoldLedgerEntry (slipId) WHERE kind = 'deposito_validado'`                                  | um depósito por slip                                                       |
-| `GoldLedgerEntry (resultId, kind) WHERE kind IN ('receita_guilda','residuo_guilda')`         | uma receita e um resíduo por mercado                                       |
+| Índice                                                                                       | Garante                                                                                                                         |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `BetSlip (roundId, ownerUserId) WHERE status IN ('rascunho','aguardando_deposito','valido')` | ≤ 1 slip **ativo** por membro por rodada; recusados e expirados não contam                                                      |
+| `BetMarket (roundId) WHERE kind = 'weekly_progression'`                                      | uma Weekly por rodada (`NULL` não colide no unique composto)                                                                    |
+| `BetAudit (roundId) WHERE status = 'confirmada'`                                             | uma auditoria confirmada por rodada                                                                                             |
+| `GoldLedgerEntry (betId) WHERE kind IN ('premio','restituicao_anulado')`                     | um lançamento de resultado por aposta — **substituído** na revisão 14 pelo índice que inclui `restituicao_sem_premiavel` (D-74) |
+| `GoldLedgerEntry (slipId) WHERE kind = 'deposito_validado'`                                  | um depósito por slip                                                                                                            |
+| `GoldLedgerEntry (resultId, kind) WHERE kind IN ('receita_guilda','residuo_guilda')`         | uma receita e um resíduo por mercado                                                                                            |
 
 **CHECK (aprovados na D-37; só regras locais à linha):**
 
@@ -1842,16 +1842,17 @@ linha do ledger, e nenhuma outra tabela guarda esses valores:
 | `coversThroughEntryId`                       | `pagamento`: até onde quita (a composição)          |
 | `actorUserId`, `actorBattletag`, `createdAt` |                                                     |
 
-| `kind`                 | Conta      | Quando                                             |
-| ---------------------- | ---------- | -------------------------------------------------- |
-| `deposito_validado`    | membro     | slip → `valido`, na mesma transação                |
-| `premio`               | membro     | confirmação da auditoria; uma por aposta vencedora |
-| `restituicao_anulado`  | membro     | `VOID` confirmado; uma por aposta válida           |
-| `receita_guilda`       | guild_bank | confirmação; `G₀` por mercado                      |
-| `residuo_guilda`       | guild_bank | confirmação; resíduo do `floor`                    |
-| `restituicao_expirado` | membro     | **não é mais lançável** (D-67); só histórico       |
-| `ajuste`               | qualquer   | officer, com motivo, sinal e referência (D-11)     |
-| `pagamento`            | membro     | officer marca pago; valor = saldo                  |
+| `kind`                      | Conta      | Quando                                                                                                 |
+| --------------------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
+| `deposito_validado`         | membro     | slip → `valido`, na mesma transação                                                                    |
+| `premio`                    | membro     | confirmação da auditoria; uma por aposta vencedora                                                     |
+| `restituicao_anulado`       | membro     | `VOID` confirmado; uma por aposta válida                                                               |
+| `receita_guilda`            | guild_bank | confirmação; `G₀` por mercado                                                                          |
+| `residuo_guilda`            | guild_bank | confirmação; resíduo do `floor`                                                                        |
+| `restituicao_expirado`      | membro     | **não é mais lançável** (D-67); só histórico                                                           |
+| `ajuste`                    | qualquer   | officer, com motivo, sinal e referência (D-11)                                                         |
+| `pagamento`                 | membro     | officer marca pago; valor = saldo                                                                      |
+| `restituicao_sem_premiavel` | membro     | confirmação, rodada **sem nenhum** premiável (D-74): `floor(P × stake / V)` por aposta válida do órfão |
 
 Saldo devido = Σ (`premio` + `restituicao_*` + `ajuste`) − Σ `pagamento` da conta.
 **Pagar** = travar o `BetSlip` da conta, calcular o saldo, inserir `pagamento`. Pagamento
@@ -1873,8 +1874,10 @@ triggers. É a mesma fronteira do `psql` em produção, já tratada como acesso 
 **Reconciliações verificáveis:** por mercado resolvido **sem redistribuição** (§8.6),
 Σ `premio` + `receita_guilda` + `residuo_guilda` = `V` e Σ `premio` ≤ `P`; com
 redistribuição, a mesma igualdade vale somando os mercados não anulados da rodada; por `VOID`, Σ `restituicao_anulado` = `V`;
-por rodada liquidada, antes de ajustes, Σ `deposito_validado` = Σ (`premio` +
-`restituicao_anulado` + `receita_guilda` + `residuo_guilda`).
+por órfão restituído (D-74), Σ `restituicao_sem_premiavel` + `receita_guilda` +
+`residuo_guilda` = `V`; por rodada liquidada, antes de ajustes, Σ `deposito_validado` =
+Σ (`premio` + `restituicao_anulado` + `restituicao_sem_premiavel` + `receita_guilda` +
+`residuo_guilda`).
 
 ### 16.7 `RoundClosingReport`
 

@@ -31,8 +31,8 @@ interface Officer {
  * porta para dinheiro sair da conta de uma aposta.
  *
  * O rateio é o da rodada inteira (`liquidarRodada`), com a redistribuição do
- * mercado sem aposta vencedora (D-44). Sem mercado premiável para receber, a
- * D-44 manda parar e consultar: nada é confirmado.
+ * mercado sem aposta vencedora (D-44). Sem nenhum mercado premiável na rodada,
+ * o P do órfão volta aos apostadores dele (D-74).
  */
 @Injectable()
 export class SettlementService {
@@ -104,17 +104,10 @@ export function planejarSettlement(
   }
 
   const liquidacao = liquidarRodada(mercados);
-  if (liquidacao.tipo === 'sem_mercado_premiavel') {
-    return {
-      recusa:
-        `nenhum mercado premiável para receber o prize pool de ${liquidacao.orfaos.join(', ')} — ` +
-        'a D-44 não tem regra para isso; consultar a liderança antes de confirmar',
-    };
-  }
 
   const lancamentos: LancamentoDoSettlement[] = [];
   const doMembro = (
-    kind: 'premio' | 'restituicao_anulado',
+    kind: 'premio' | 'restituicao_anulado' | 'restituicao_sem_premiavel',
     betId: string,
     marketId: string,
     amount: number,
@@ -156,6 +149,15 @@ export function planejarSettlement(
         daGuilda('residuo_guilda', m.marketId, m.residuo);
         break;
       case 'orfao':
+        daGuilda('receita_guilda', m.marketId, m.receitaGuilda);
+        daGuilda('residuo_guilda', m.marketId, m.restoGuilda);
+        break;
+      case 'restituido':
+        // D-74: sem premiável na rodada, o P volta a quem apostou; o G₀ e o
+        // indivisível ficam com a guilda.
+        m.restituicoes.forEach((x) =>
+          doMembro('restituicao_sem_premiavel', x.betId, m.marketId, x.amount),
+        );
         daGuilda('receita_guilda', m.marketId, m.receitaGuilda);
         daGuilda('residuo_guilda', m.marketId, m.restoGuilda);
         break;

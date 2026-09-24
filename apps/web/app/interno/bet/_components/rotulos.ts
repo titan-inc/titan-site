@@ -83,7 +83,8 @@ export const TIPO_DE_LANCAMENTO: Record<
   | 'residuo_guilda'
   | 'restituicao_expirado'
   | 'ajuste'
-  | 'pagamento',
+  | 'pagamento'
+  | 'restituicao_sem_premiavel',
   string
 > = {
   deposito_validado: 'Depósito validado',
@@ -94,4 +95,5 @@ export const TIPO_DE_LANCAMENTO: Record<
   restituicao_expirado: 'Restituição (expirado, histórico)',
   ajuste: 'Ajuste',
   pagamento: 'Pagamento',
+  restituicao_sem_premiavel: 'Restituição (rodada sem premiável)',
 };

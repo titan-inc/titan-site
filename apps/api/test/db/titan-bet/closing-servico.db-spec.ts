@@ -263,6 +263,56 @@ describe('Titan Bet — Closing Report (serviço + banco)', () => {
     });
   });
 
+  describe('T-C07 — rodada sem premiável: o Closing diz que o pool voltou (D-74)', () => {
+    it('destino `restituido`, ninguém identificado no mercado, e a restituição no total do membro', async () => {
+      const c = await cenario();
+      await c.slip(c.ana, [[c.firstDeath.id, 'first_death', 200, c.A]]);
+      await c.slip(c.bia, [[c.firstDeath.id, 'first_death', 400, c.B]]);
+      await liquidar(c, { [c.firstDeath.id]: { semVencedor: 'sem_kill' } });
+      await closing.publicar(c.rodada.id, OFFICER);
+
+      const doc = closingReportSchema.parse(
+        (await db.roundClosingReport.findFirstOrThrow({ where: { roundId: c.rodada.id } })).content,
+      );
+      expect(doc.mercados).toEqual([
+        expect.objectContaining({
+          marketId: c.firstDeath.id,
+          desfecho: 'sem_vencedor',
+          destinoDoPool: 'restituido',
+          vencedores: [],
+          ganhos: [],
+        }),
+      ]);
+      // V 600 → P 540: 200 → 180, 400 → 360. G₀ 60 do Guild Bank.
+      expect(doc.totais).toEqual(
+        expect.arrayContaining([
+          { membro: { name: c.ana.name, realm: 'Goldrinn' }, devido: 180 },
+          { membro: { name: c.bia.name, realm: 'Goldrinn' }, devido: 360 },
+        ]),
+      );
+      expect(doc.guildBank).toEqual({ receita: 60, residuo: 0 });
+    });
+
+    it('com premiável na rodada, o sem vencedor é `redistribuido`, e o premiado `premios`', async () => {
+      const c = await cenario();
+      await c.slip(c.ana, [
+        [c.topDps.id, 'top_dps', 500, c.A],
+        [c.firstDeath.id, 'first_death', 300, c.A],
+      ]);
+      await liquidar(c, {
+        [c.topDps.id]: { vencedores: [c.A] },
+        [c.firstDeath.id]: { semVencedor: 'sem_kill' },
+      });
+      await closing.publicar(c.rodada.id, OFFICER);
+
+      const doc = closingReportSchema.parse(
+        (await db.roundClosingReport.findFirstOrThrow({ where: { roundId: c.rodada.id } })).content,
+      );
+      const destino = Object.fromEntries(doc.mercados.map((m) => [m.marketId, m.destinoDoPool]));
+      expect(destino).toEqual({ [c.topDps.id]: 'premios', [c.firstDeath.id]: 'redistribuido' });
+    });
+  });
+
   describe('T-C04 — o membro é o personagem de elegibilidade, nunca o BattleTag (D-48)', () => {
     it('ganho e total com nome e realm do snapshot de bettors', async () => {
       const c = await cenario();
