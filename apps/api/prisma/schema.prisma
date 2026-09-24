@@ -2222,6 +2222,8 @@ enum BetEventType {
   rodada_criada
   /// Preparação da semana salva (D-45): o que foi criado, alterado e removido.
   configuracao_salva
+  /// "Ver slip" do Officer Panel (D-57): quem abriu qual slip, e quando.
+  slip_visualizado
 }
 
 /// Trilha de auditoria do Titan Bet (§16.8), no molde do LootSessionEvent.

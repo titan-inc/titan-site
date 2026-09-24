@@ -138,6 +138,82 @@ export class TitanBetRepository {
     });
   }
 
+  /**
+   * A conta tem slip nesta rodada, em qualquer estado? É como o ex-membro é
+   * reconhecido (D-53a): o `GuildCharacter` some com a revalidação, o slip não.
+   */
+  async contaTemSlipNaRodada(roundId: string, userId: string): Promise<boolean> {
+    const slip = await this.prisma.betSlip.findFirst({
+      where: { roundId, ownerUserId: userId },
+      select: { id: true },
+    });
+    return slip !== null;
+  }
+
+  /** O personagem de elegibilidade de um slip da conta nesta rodada (D-53a). */
+  async elegibilidadeDeSlipDaConta(roundId: string, userId: string): Promise<string | null> {
+    const slip = await this.prisma.betSlip.findFirst({
+      where: { roundId, ownerUserId: userId },
+      orderBy: { createdAt: 'desc' },
+      select: { eligibilityCharacterId: true },
+    });
+    return slip?.eligibilityCharacterId ?? null;
+  }
+
+  /**
+   * "Ver slip" (D-57): o slip como foi submetido, e o registro do acesso na
+   * mesma transação — não existe leitura sem o `BetEvent`. Rascunho não é lido
+   * nem registrado.
+   */
+  async verSlipComoOfficer(r: { slipId: string; officer: { userId: string; battletag: string } }) {
+    return this.prisma.$transaction(async (tx) => {
+      const slip = await tx.betSlip.findUnique({
+        where: { id: r.slipId },
+        select: {
+          id: true,
+          roundId: true,
+          status: true,
+          ownerBattletag: true,
+          eligibility: { select: { character: { select: { name: true, realm: true } } } },
+          depositCharacter: { select: { name: true, realm: true } },
+          expectedTotal: true,
+          submittedAt: true,
+          validatedByBattletag: true,
+          validatedAt: true,
+          rejectedByBattletag: true,
+          rejectedAt: true,
+          rejectionReason: true,
+          expiredAt: true,
+          bets: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              marketId: true,
+              marketKind: true,
+              stake: true,
+              targetCharacterId: true,
+              target: { select: { character: { select: { name: true, realm: true } } } },
+              targetEncounterId: true,
+              targetEncounter: { select: { encounterName: true } },
+            },
+          },
+        },
+      });
+      if (!slip) return { tipo: 'inexistente' as const };
+      if (slip.status === 'rascunho') return { tipo: 'rascunho' as const };
+
+      await tx.betEvent.create({
+        data: {
+          roundId: slip.roundId,
+          type: 'slip_visualizado',
+          actorUserId: r.officer.userId,
+          actorBattletag: r.officer.battletag,
+          payload: { slipId: slip.id },
+        },
+      });
+      return { tipo: 'ok' as const, slip };
+    });
+  }
+
   /** Os personagens ligados à conta agora (`GuildCharacter`) — parte do D-56. */
   async personagensDaConta(userId: string): Promise<string[]> {
     const ligados = await this.prisma.guildCharacter.findMany({

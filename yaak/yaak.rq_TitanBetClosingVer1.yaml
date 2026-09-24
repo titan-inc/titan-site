@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'RosterGuard. A última versão publicada do Round Closing Report da rodada — de qualquer membro da guilda (D-21). 404 antes da primeira publicação.'
+description: 'ApostadorDaRodadaGuard (membro da guilda, ou quem saiu dela com slip nesta rodada — D-53a). A última versão publicada do Round Closing Report da rodada — de qualquer membro da guilda (D-21). 404 antes da primeira publicação.'
 headers:
 - enabled: true
   name: Cookie

@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'RosterGuard. O slip da PRÓPRIA conta na rodada: o ativo, ou o mais recente (um recusado volta com o motivo), com o depositante como foi informado — nome e realm (D-55). 404 se a conta não tem slip nesta rodada. Não existe leitura por id de slip — não há como pedir o de outra pessoa (D-36).'
+description: 'ApostadorDaRodadaGuard (membro da guilda, ou quem saiu dela com slip nesta rodada — D-53a). O slip da PRÓPRIA conta na rodada: o ativo, ou o mais recente (um recusado volta com o motivo), com o depositante como foi informado — nome e realm (D-55). 404 se a conta não tem slip nesta rodada. Não existe leitura por id de slip — não há como pedir o de outra pessoa (D-36).'
 headers:
 - enabled: true
   name: Cookie

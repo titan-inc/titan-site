@@ -1,17 +1,18 @@
 import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common';
 import type { ClosingPublicado } from '@titan/shared';
-import { RosterGuard } from '../auth/session.guard';
+import { ApostadorDaRodadaGuard } from './apostador-da-rodada.guard';
 import { ClosingService } from './closing.service';
 
 /**
  * O que o Titan Bet publica para a guilda (D-21; spec §9): o Round Closing
- * Report. `RosterGuard` — é de qualquer membro, apostou ou não.
+ * Report. De qualquer membro, apostou ou não — e de quem saiu da guilda com
+ * slip nesta rodada (D-53a, `ApostadorDaRodadaGuard`).
  *
  * Só o documento publicado, nunca uma consulta montada na hora sobre apostas
  * (§9.1): o conteúdo foi validado pelo schema publicado ao gravar.
  */
 @Controller('internal/titan-bet/rodadas/:roundId')
-@UseGuards(RosterGuard)
+@UseGuards(ApostadorDaRodadaGuard)
 export class TitanBetResultsController {
   constructor(private readonly closing: ClosingService) {}
 

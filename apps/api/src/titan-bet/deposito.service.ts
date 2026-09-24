@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { DepositosPendentes } from '@titan/shared';
+import type { DepositosPendentes, SlipDoOfficer } from '@titan/shared';
 import { TitanBetRepository } from './titan-bet.repository';
 
 /** A ação do officer sobre o depósito foi recusada; nada mudou. */
@@ -55,6 +55,52 @@ export class DepositoService {
       this.repo.recusarDeposito({ slipId, officer, motivo, agora: new Date() }),
     );
     if (r.tipo === 'nao_pendente') throw new DepositoRecusado(naoPendente(r.status));
+  }
+
+  /**
+   * "Ver slip" (D-57): o slip como foi submetido, só leitura, e o acesso
+   * registrado em `BetEvent` na mesma transação. `null` se o slip não existe.
+   */
+  async verSlip(slipId: string, officer: Officer): Promise<SlipDoOfficer | null> {
+    const r = await this.repo.verSlipComoOfficer({ slipId, officer });
+    if (r.tipo === 'inexistente') return null;
+    if (r.tipo === 'rascunho') throw new DepositoRecusado('o slip ainda não foi submetido');
+    const s = r.slip;
+    return {
+      slipId: s.id,
+      roundId: s.roundId,
+      status: s.status as SlipDoOfficer['status'],
+      ownerBattletag: s.ownerBattletag,
+      eligibilityCharacter: s.eligibility.character,
+      // Submetido tem os três preenchidos — CHECK do banco por estado (§16.4).
+      depositCharacter: s.depositCharacter!,
+      expectedTotal: s.expectedTotal!,
+      submittedAt: s.submittedAt!.toISOString(),
+      apostas: s.bets.map((b): SlipDoOfficer['apostas'][number] =>
+        b.marketKind === 'weekly_progression'
+          ? {
+              marketId: b.marketId,
+              marketKind: 'weekly_progression',
+              stake: b.stake,
+              boss: {
+                roundEncounterId: b.targetEncounterId!,
+                encounterName: b.targetEncounter!.encounterName,
+              },
+            }
+          : {
+              marketId: b.marketId,
+              marketKind: b.marketKind,
+              stake: b.stake,
+              alvo: { characterId: b.targetCharacterId!, ...b.target!.character },
+            },
+      ),
+      validatedByBattletag: s.validatedByBattletag,
+      validatedAt: s.validatedAt?.toISOString() ?? null,
+      rejectedByBattletag: s.rejectedByBattletag,
+      rejectedAt: s.rejectedAt?.toISOString() ?? null,
+      rejectionReason: s.rejectionReason,
+      expiredAt: s.expiredAt?.toISOString() ?? null,
+    };
   }
 
   private async comoRecusa<T>(operacao: () => Promise<T>): Promise<T> {

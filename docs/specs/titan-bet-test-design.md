@@ -1610,3 +1610,50 @@ depósito, e continua assim.
 
 `pnpm test:db` **291/291**; `pnpm test`: shared **370**, api **902**, web 147; format,
 lint, typecheck e build OK; banco de dev com o mesmo hash.
+
+## 33. Revisão 11, milestone 4 — acesso por rodada e "ver slip" (24/09/2026)
+
+**Status: GREEN.** D-53 e D-57 — **mudança de produto**, não correção.
+
+### 33.1 RED
+
+| Camada   | Onde                                               | RED                                                                                                                                                                                                                                                            |
+| -------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| contrato | `betting-leitura.spec.ts` — T-Z09                  | **RED** — 4 falhas: `slipDoOfficerSchema` não existia                                                                                                                                                                                                          |
+| HTTP     | `titan-bet.controller.spec.ts` — 95                | **RED** — 11 falhas: 5 rotas da rodada barrando o ex-membro com slip (T-Z10); a rota `GET officer/slips/:slipId` inexistente (3 × 404 no lugar de 401/403, 2 do T-Z09); odds ainda chamadas com a conta (T-Z08, D-53b)                                         |
+| serviço  | `apostas-fluxo.db-spec.ts`, `odds.db-spec.ts` — 44 | **RED** — 9 falhas reais: `contaTemSlipNaRodada` (2) e `verSlip` (5) inexistentes; ex-membro com rascunho ou com slip recusado barrado no Salvar (2). Uma 10ª era erro do próprio teste (`opcoesDe` devolve objeto, não lista) — corrigida, não conta como RED |
+
+**Passaram antes da implementação, registrados como controle:** os dois T-Z11 de serviço
+— "não salva nem submete" é o comportamento que já existia, e a leitura das odds sem conta
+passava por acidente: `where: { userId: undefined }` o Prisma ignora, e a checagem antiga
+achava qualquer bettor. O RED da D-53b é o HTTP. Também passou o "self-bet continua
+valendo" do T-Z10, porque `ContaNaoElegivel` é subclasse de `ApostaRecusada` — pelo
+motivo errado no RED, pelo certo no GREEN (a elegibilidade do slip entra em `proprios`).
+
+### 33.2 O que mudou
+
+- **Banco:** `BetEventType.slip_visualizado` (`20260924040000_titan_bet_slip_visualizado`).
+- **Guard (D-53a):** `ApostadorDaRodadaGuard` nas rotas da rodada (odds, slip, salvar,
+  submeter, closing): o `RosterGuard` mais quem **tem slip nesta rodada**, em qualquer
+  estado. Membro passa sem consulta ao banco; outra rodada e o resto do site continuam
+  403 para o ex-membro. O login já dá sessão `not_member` — nada mudou no auth.
+- **Elegibilidade (D-53a, D-65):** sem personagem ligado no snapshot, vale o de
+  elegibilidade de um slip da conta na rodada — quem saiu depois de ter slip edita,
+  submete e começa outro depois de um recusado. **Limite:** quem saiu antes de ter slip
+  não é reconhecido (spec, leitura 4).
+- **Odds (D-53b):** `OddsService.daRodada(roundId)`, sem conta; quem vê é o guard.
+  Salvar continua 403 fora do snapshot; Submeter sem rascunho, 422.
+- **Ver slip (D-57):** `GET /internal/titan-bet/officer/slips/:slipId` (`OfficerGuard`)
+  → `slipDoOfficerSchema`; leitura e `BetEvent` na mesma transação; rascunho → 409,
+  inexistente → 404, sem registro. Nenhuma escrita no slip.
+- **Yaak:** "Ver slip (officer)" novo; odds, slip, salvar, submeter e closing com o
+  guard novo; a descrição do Confirmar atualizada para a D-61.
+
+**Testes substituídos, registrados no próprio teste:** "sem personagem no roster → 403"
+nas rotas do membro (agora: sem roster **e** sem slip); "conta fora do snapshot não vê
+odds" (serviço e HTTP).
+
+### 33.3 Resultado
+
+`pnpm test:db` **302/302**; `pnpm test`: shared **374**, api **913**, web 147; format,
+lint, typecheck e build OK; banco de dev com o mesmo hash.

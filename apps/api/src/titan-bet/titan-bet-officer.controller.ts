@@ -27,6 +27,7 @@ import {
   type PrepararRodada,
   type RecusarDeposito,
   type SessaoDaAuditoria,
+  type SlipDoOfficer,
 } from '@titan/shared';
 import type { Request } from 'express';
 import { OfficerGuard } from '../auth/session.guard';
@@ -229,5 +230,16 @@ export class TitanBetOfficerController {
     await comoHttp(() =>
       this.auditoria.declararSemRaid(auditId, session, body.motivo, contaDe(req)),
     );
+  }
+
+  /**
+   * "Ver slip" para disputa (D-57): o slip exatamente como foi submetido,
+   * somente leitura. Cada acesso fica em `BetEvent`, com o officer e a hora.
+   */
+  @Get('slips/:slipId')
+  async verSlip(@Param('slipId') slipId: string, @Req() req: Request): Promise<SlipDoOfficer> {
+    const slip = await comoHttp(() => this.deposito.verSlip(slipId, contaDe(req)));
+    if (!slip) throw new NotFoundException('O slip não existe');
+    return slip;
   }
 }

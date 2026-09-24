@@ -17,6 +17,7 @@ import { PreparacaoRecusada, PreparacaoService } from './preparacao.service';
 import { ReadyRecusado, ReadyService } from './ready.service';
 import { TitanBetMemberController } from './titan-bet-member.controller';
 import { TitanBetOfficerController } from './titan-bet-officer.controller';
+import { TitanBetRepository } from './titan-bet.repository';
 
 /**
  * Milestone "RED/GREEN Autorização" (titan-bet-test-design.md §3.9, §7).
@@ -50,6 +51,7 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
     { amount: 100, reason: 'kill conferida', correctsEntryId: '7' },
   ],
   ['get', '/internal/titan-bet/officer/rodadas/r1/auditoria'],
+  ['get', '/internal/titan-bet/officer/slips/s1'],
   [
     'post',
     '/internal/titan-bet/officer/auditorias/a1/fontes/terca/sem-raid',
@@ -93,7 +95,10 @@ describe('Titan Bet — autorização das rotas', () => {
     pendentes: jest.fn(),
     confirmar: jest.fn(),
     recusar: jest.fn(),
+    verSlip: jest.fn(),
   };
+  // O guard do apostador pergunta ao banco se a conta tem slip na rodada (D-53a).
+  const repo = { contaTemSlipNaRodada: jest.fn() };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -112,6 +117,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: SettlementService, useValue: settlement },
         { provide: LedgerService, useValue: ledger },
         { provide: ClosingService, useValue: closing },
+        { provide: TitanBetRepository, useValue: repo },
       ],
     }).compile();
 
@@ -155,6 +161,8 @@ describe('Titan Bet — autorização das rotas', () => {
     calculo.resultados.mockResolvedValue({ auditId: 'a1', status: 'calculada', mercados: [] });
     deposito.confirmar.mockResolvedValue(undefined);
     deposito.recusar.mockResolvedValue(undefined);
+    deposito.verSlip.mockResolvedValue({ slipId: 's1' });
+    repo.contaTemSlipNaRodada.mockResolvedValue(false);
   });
 
   function comSessao(sessao: keyof typeof SESSAO) {
@@ -405,6 +413,24 @@ describe('Titan Bet — autorização das rotas', () => {
       expect(deposito.recusar).not.toHaveBeenCalled();
     });
 
+    it('T-Z09 — ver slip: só leitura, com o officer da sessão (D-57)', async () => {
+      comSessao('officer');
+      const officer = { userId: 'u1', battletag: 'Conta#1234' };
+      const r = await request(server).get('/internal/titan-bet/officer/slips/s1').expect(200);
+      expect(r.body).toEqual({ slipId: 's1' });
+      expect(deposito.verSlip).toHaveBeenCalledWith('s1', officer);
+    });
+
+    it('T-Z09 — slip inexistente → 404; rascunho → 409', async () => {
+      comSessao('officer');
+      deposito.verSlip.mockResolvedValueOnce(null);
+      await request(server).get('/internal/titan-bet/officer/slips/s1').expect(404);
+      deposito.verSlip.mockRejectedValueOnce(
+        new DepositoRecusado('o slip ainda não foi submetido'),
+      );
+      await request(server).get('/internal/titan-bet/officer/slips/s1').expect(409);
+    });
+
     it('recusa de domínio vira 409, não 500', async () => {
       comSessao('officer');
       ready.ready.mockRejectedValue(new ReadyRecusado('a rodada já teve Ready'));
@@ -422,10 +448,29 @@ describe('Titan Bet — autorização das rotas', () => {
       nenhumServiceChamado();
     });
 
-    it.each(MEMBRO_ROTAS)('%s %s sem personagem no roster → 403', async (...rota) => {
+    // Mudança de produto (D-53a): "sem personagem no roster → 403" passou a
+    // valer só para quem também não tem slip nesta rodada.
+    it.each(MEMBRO_ROTAS)('%s %s sem roster e sem slip na rodada → 403', async (...rota) => {
       comSessao('semRoster');
       await chamar(rota).expect(403);
       nenhumServiceChamado();
+    });
+
+    it.each(MEMBRO_ROTAS)(
+      'T-Z10: %s %s sem roster, com slip nesta rodada → chega ao service (D-53a)',
+      async (...rota) => {
+        comSessao('semRoster');
+        repo.contaTemSlipNaRodada.mockResolvedValue(true);
+        const r = await chamar(rota);
+        expect([200, 201, 204]).toContain(r.status);
+        expect(repo.contaTemSlipNaRodada).toHaveBeenCalledWith('r1', 'u1');
+      },
+    );
+
+    it('T-Z10: membro da guilda não depende de slip — o banco nem é consultado', async () => {
+      comSessao('social');
+      await request(server).get('/internal/titan-bet/rodadas/r1/odds').expect(200);
+      expect(repo.contaTemSlipNaRodada).not.toHaveBeenCalled();
     });
 
     it('RosterGuard, não MemberGuard: rank acima do corte da área interna chega ao service', async () => {
@@ -450,14 +495,13 @@ describe('Titan Bet — autorização das rotas', () => {
       });
     });
 
-    it('T-Z08 — odds pela superfície do membro, com a conta da sessão', async () => {
+    // Mudança de produto (D-53b): as odds deixaram de depender do snapshot de
+    // bettors — quem passa o guard vê. O 403 de "conta fora do snapshot" saiu.
+    it('T-Z08 — odds pela superfície do membro', async () => {
       comSessao('social');
       const r = await request(server).get('/internal/titan-bet/rodadas/r1/odds').expect(200);
       expect(r.body).toEqual({ roundId: 'r1', mercados: [] });
-      expect(odds.daRodada).toHaveBeenCalledWith('r1', 'u1');
-
-      odds.daRodada.mockRejectedValue(new ContaNaoElegivel());
-      await request(server).get('/internal/titan-bet/rodadas/r1/odds').expect(403);
+      expect(odds.daRodada).toHaveBeenCalledWith('r1');
     });
 
     it('o Closing Report publicado é de qualquer membro da guilda (RosterGuard, D-21)', async () => {

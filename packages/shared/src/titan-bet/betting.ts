@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { characterInputSchema } from '../wow.js';
+import { mercadoDeBossSchema } from './config.js';
 
 /**
  * Titan Bet — contrato PRIVADO do Bet Slip (spec do Titan Bet §9.1).
@@ -101,8 +102,8 @@ export type MeuSlip = z.infer<typeof meuSlipSchema>;
  *
  * Montado só de `BetSlip`: dono, depositante e total — nunca a escolha. Estrito
  * para que um join conveniente com `Bet` quebre o parse em vez de vazar
- * (T-D01). Se a tela de confirmação mostra as apostas é a OQ-48, que não
- * mexe aqui.
+ * (T-D01). As apostas, o officer vê em outra superfície, registrada: o "ver
+ * slip" (D-57, `slipDoOfficerSchema`).
  */
 export const depositoPendenteSchema = z
   .object({
@@ -118,3 +119,54 @@ export type DepositoPendente = z.infer<typeof depositoPendenteSchema>;
 
 export const depositosPendentesSchema = z.object({ depositos: z.array(depositoPendenteSchema) });
 export type DepositosPendentes = z.infer<typeof depositosPendentesSchema>;
+
+const personagemVistoSchema = z.object({ name: z.string(), realm: z.string() }).strict();
+
+/** Uma aposta como o officer vê: o alvo com nome, não só o id. */
+const apostaVistaSchema = z.union([
+  z
+    .object({
+      marketId: z.string(),
+      marketKind: mercadoDeBossSchema,
+      stake: z.number().int(),
+      alvo: z.object({ characterId: z.string(), name: z.string(), realm: z.string() }).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      marketId: z.string(),
+      marketKind: z.literal('weekly_progression'),
+      stake: z.number().int(),
+      boss: z.object({ roundEncounterId: z.string(), encounterName: z.string() }).strict(),
+    })
+    .strict(),
+]);
+
+/**
+ * "Ver slip" do Officer Panel, para disputa (D-57): o slip exatamente como foi
+ * submetido, **somente leitura**. Cada leitura fica registrada em `BetEvent`.
+ *
+ * Rascunho fica de fora: não foi submetido, e é escolha que o membro ainda
+ * pode mudar. Estrito, sem id de conta — o dono aparece pelo battletag
+ * gravado no slip.
+ */
+export const slipDoOfficerSchema = z
+  .object({
+    slipId: z.string(),
+    roundId: z.string(),
+    status: z.enum(['aguardando_deposito', 'valido', 'recusado', 'expirado']),
+    ownerBattletag: z.string(),
+    eligibilityCharacter: personagemVistoSchema,
+    depositCharacter: personagemVistoSchema,
+    expectedTotal: z.number().int(),
+    submittedAt: z.string().datetime(),
+    apostas: z.array(apostaVistaSchema),
+    validatedByBattletag: z.string().nullable(),
+    validatedAt: z.string().datetime().nullable(),
+    rejectedByBattletag: z.string().nullable(),
+    rejectedAt: z.string().datetime().nullable(),
+    rejectionReason: z.string().nullable(),
+    expiredAt: z.string().datetime().nullable(),
+  })
+  .strict();
+export type SlipDoOfficer = z.infer<typeof slipDoOfficerSchema>;

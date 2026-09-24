@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import type { OddsDaRodada } from '@titan/shared';
-import { ContaNaoElegivel } from './apostas.service';
 import { candidatosDoMercado } from './candidatos';
-import { ElegibilidadeService } from './elegibilidade.service';
 import { multiplicadorProjetado } from './odds';
 import { TitanBetRepository } from './titan-bet.repository';
 
 /**
- * Projected payout de todos os mercados publicados, para o bettor da rodada
- * (R-35, D-36; spec §16.10).
+ * Projected payout de todos os mercados publicados (R-35, D-36; spec §16.10).
+ *
+ * Não depende de conta: membro da guilda fora do snapshot também vê mercados e
+ * odds (D-53b) — quem decide quem chega aqui é o guard da rota.
  *
  * Só sai daqui o multiplicador por opção: as somas vêm agregadas do repository
  * (`GROUP BY`), e nenhuma linha de aposta chega a este service.
@@ -18,16 +18,9 @@ import { TitanBetRepository } from './titan-bet.repository';
  */
 @Injectable()
 export class OddsService {
-  constructor(
-    private readonly repo: TitanBetRepository,
-    private readonly elegibilidade: ElegibilidadeService,
-  ) {}
+  constructor(private readonly repo: TitanBetRepository) {}
 
-  async daRodada(roundId: string, userId: string): Promise<OddsDaRodada> {
-    if (!(await this.elegibilidade.personagemDeElegibilidade(roundId, userId))) {
-      throw new ContaNaoElegivel();
-    }
-
+  async daRodada(roundId: string): Promise<OddsDaRodada> {
     const [cardapio, somas] = await Promise.all([
       this.repo.cardapio(roundId),
       this.repo.somasValidasPorOpcao(roundId),

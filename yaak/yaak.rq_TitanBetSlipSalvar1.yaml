@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: '{"apostas": [{"marketId": "", "stake": 300, "targetCharacterId": ""}, {"marketId": "", "stake": 200, "encounterId": ""}]}'
 bodyType: application/json
-description: 'RosterGuard. "Salvar" (D-27): o rascunho INTEIRO, como está agora — substitui as apostas anteriores. Stake inteiro de 200 a 1000, uma aposta por mercado; Weekly Progression aposta num boss de progressão (encounterId do encounter da rodada, D-54). Preencha os ids com os da rodada. 403 se a conta não está no snapshot de bettors do Ready; 422 para aposta que a regra recusa — inclusive First Death em personagem da própria conta ou no de elegibilidade (D-56).'
+description: 'ApostadorDaRodadaGuard (membro da guilda, ou quem saiu dela com slip nesta rodada — D-53a). "Salvar" (D-27): o rascunho INTEIRO, como está agora — substitui as apostas anteriores. Stake inteiro de 200 a 1000, uma aposta por mercado; Weekly Progression aposta num boss de progressão (encounterId do encounter da rodada, D-54). Preencha os ids com os da rodada. 403 se a conta não está no snapshot de bettors do Ready (quem saiu da guilda segue pelo personagem de elegibilidade do próprio slip); 422 para aposta que a regra recusa — inclusive First Death em personagem da própria conta ou no de elegibilidade (D-56).'
 headers:
 - enabled: true
   name: Cookie

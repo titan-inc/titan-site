@@ -2,7 +2,11 @@ import { oddsDaRodadaSchema } from '@titan/shared';
 import { randomUUID } from 'node:crypto';
 import { CharactersRepository } from '../../../src/characters/characters.repository';
 import { PrismaService } from '../../../src/prisma/prisma.service';
-import { ApostasService, ContaNaoElegivel } from '../../../src/titan-bet/apostas.service';
+import {
+  ApostaRecusada,
+  ApostasService,
+  ContaNaoElegivel,
+} from '../../../src/titan-bet/apostas.service';
 import { DepositoService } from '../../../src/titan-bet/deposito.service';
 import { ElegibilidadeService } from '../../../src/titan-bet/elegibilidade.service';
 import { OddsService } from '../../../src/titan-bet/odds.service';
@@ -32,7 +36,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     const elegibilidade = new ElegibilidadeService(repo);
     apostas = new ApostasService(repo, elegibilidade, new CharactersRepository(db));
     deposito = new DepositoService(repo);
-    odds = new OddsService(repo, elegibilidade);
+    odds = new OddsService(repo);
   });
 
   afterAll(async () => {
@@ -130,7 +134,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       await apostar(c, 5, c.ranged.id, 1000, 'rascunho');
       await apostar(c, 6, c.melee.id, 1000, 'expirado');
 
-      const resposta = await odds.daRodada(c.rodada.id, c.contas[0]!.userId);
+      const resposta = await odds.daRodada(c.rodada.id);
 
       // V = 900 (só os válidos), P = floor(9·900/10) = 810.
       expect(opcoesDe(resposta, c.topDps.id)).toEqual({
@@ -142,7 +146,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     it('sem nenhuma aposta válida, toda opção é "—"', async () => {
       const c = await cenario();
       await apostar(c, 0, c.melee.id, 300, 'aguardando_deposito');
-      const resposta = await odds.daRodada(c.rodada.id, c.contas[0]!.userId);
+      const resposta = await odds.daRodada(c.rodada.id);
       expect(opcoesDe(resposta, c.topDps.id)).toEqual({
         [c.melee.id]: null,
         [c.ranged.id]: null,
@@ -156,7 +160,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       await apostar(c, 0, c.melee.id, 300, 'valido');
 
       // Quem vê não precisa ter apostado.
-      const resposta = await odds.daRodada(c.rodada.id, c.contas[6]!.userId);
+      const resposta = await odds.daRodada(c.rodada.id);
 
       expect(resposta.roundId).toBe(c.rodada.id);
       expect(opcoesDe(resposta, c.topDps.id)).toEqual({
@@ -194,7 +198,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
         'rascunho',
       );
 
-      const resposta = await odds.daRodada(c.rodada.id, c.contas[3]!.userId);
+      const resposta = await odds.daRodada(c.rodada.id);
       // V 1.000 → P 900: 900/600 e 900/400. O rascunho não conta (D-12).
       expect(opcoesDe(resposta, c.weekly.id)).toEqual({
         [c.prog1.id]: 1.5,
@@ -202,12 +206,42 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       });
     });
 
-    it('conta fora do snapshot de bettors não vê: ContaNaoElegivel', async () => {
+    // Mudança de produto (D-53b): substitui "conta fora do snapshot não vê".
+  });
+
+  describe('T-Z11 — membro fora do snapshot vê mercados e odds; não aposta (D-53b)', () => {
+    // Quem vê é decidido pelo guard (membro da guilda, ou dono de slip — T-Z10,
+    // HTTP). O service não recebe conta: a resposta é a mesma para todo mundo.
+    it('as odds não dependem de conta: todos os mercados, com as somas válidas', async () => {
+      const c = await cenario();
+      await apostar(c, 0, c.melee.id, 300, 'valido');
+      const vista = await odds.daRodada(c.rodada.id);
+      expect(vista.mercados.map((m) => m.marketId).sort()).toEqual(
+        [c.topDps.id, c.firstDeath.id, c.weekly.id].sort(),
+      );
+      expect(opcoesDe(vista, c.topDps.id)[c.melee.id]).toEqual(expect.any(Number));
+    });
+
+    it('não salva nem submete', async () => {
       const c = await cenario();
       const fora = await db.user.create({
-        data: { battlenetId: randomUUID(), battletag: 'Fora#1', membership: 'member' },
+        data: { battlenetId: randomUUID(), battletag: 'Fora#2', membership: 'member' },
       });
-      await expect(odds.daRodada(c.rodada.id, fora.id)).rejects.toBeInstanceOf(ContaNaoElegivel);
+      const pj = await f.personagem();
+      await db.guildCharacter.create({ data: { userId: fora.id, characterId: pj.id, rank: 7 } });
+      const conta = { userId: fora.id, battletag: fora.battletag };
+
+      await expect(
+        apostas.salvar(c.rodada.id, conta, {
+          apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.melee.id }],
+        }),
+      ).rejects.toBeInstanceOf(ContaNaoElegivel);
+      await expect(apostas.submeter(c.rodada.id, conta, depositante(pj))).rejects.toBeInstanceOf(
+        ApostaRecusada,
+      );
+      expect(
+        await db.betSlip.count({ where: { roundId: c.rodada.id, ownerUserId: fora.id } }),
+      ).toBe(0);
     });
   });
 
@@ -217,7 +251,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       await apostar(c, 0, c.melee.id, 300, 'valido');
       await apostar(c, 1, c.ranged.id, 700, 'valido');
 
-      const resposta = await odds.daRodada(c.rodada.id, c.contas[2]!.userId);
+      const resposta = await odds.daRodada(c.rodada.id);
       expect(oddsDaRodadaSchema.parse(resposta)).toEqual(resposta);
 
       const json = JSON.stringify(resposta);

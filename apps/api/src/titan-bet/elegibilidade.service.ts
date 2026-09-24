@@ -18,9 +18,14 @@ export class ElegibilidadeService {
    * mesmo critério do personagem que representa a conta na sessão
    * (`SessionUser.matchedCharacter`). É o que o slip grava como
    * `eligibilityCharacterId`.
+   *
+   * Sem nenhum ligado à conta — quem saiu da guilda depois do Ready —, vale o
+   * de um slip da conta nesta rodada (D-53a, D-65). Quem saiu antes de ter slip
+   * não tem mais como ser reconhecido: é o limite registrado da D-53a.
    */
   async personagemDeElegibilidade(roundId: string, userId: string): Promise<string | null> {
     const [melhor] = await this.repo.personagensDaContaNoSnapshot(roundId, userId);
-    return melhor?.characterId ?? null;
+    if (melhor) return melhor.characterId;
+    return this.repo.elegibilidadeDeSlipDaConta(roundId, userId);
   }
 }

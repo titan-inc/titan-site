@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: '{"depositCharacter": {"name": "", "realm": ""}}'
 bodyType: application/json
-description: 'RosterGuard. "Submeter pagamento" (D-27): congela o rascunho e devolve o total a depositar. depositCharacter é qualquer personagem, por nome + realm, sem região (D-55); fica congelado no slip e o officer confere na confirmação. First Death em personagem do próprio apostador — incluindo o depositante — é recusado (D-56). Depois disso o slip não edita mais; 422 com o motivo quando recusado.'
+description: 'ApostadorDaRodadaGuard (membro da guilda, ou quem saiu dela com slip nesta rodada — D-53a). "Submeter pagamento" (D-27): congela o rascunho e devolve o total a depositar. depositCharacter é qualquer personagem, por nome + realm, sem região (D-55); fica congelado no slip e o officer confere na confirmação. First Death em personagem do próprio apostador — incluindo o depositante — é recusado (D-56). Depois disso o slip não edita mais; 422 com o motivo quando recusado.'
 headers:
 - enabled: true
   name: Cookie
