@@ -1,4 +1,5 @@
 import {
+  consolidarComPares,
   consolidarPulls,
   killDaSemana,
   resultadoFirstDeathFarm,
@@ -103,6 +104,16 @@ describe('consolidarPulls — a timeline dos vários reports (D-63)', () => {
     const fora = pull({ encounterId: PROG, startTime: t0 + 10_000, report: 'R2' });
     expect(consolidarPulls([a, quase])).toEqual([a]);
     expect(consolidarPulls([a, fora])).toEqual([a, fora]);
+  });
+
+  it('N1: os pares deduplicados — a cópia descartada e a mantida, para a evidência', () => {
+    const tryR1 = pull({ encounterId: PROG, startTime: t0, report: 'R1' });
+    const tryR2 = pull({ encounterId: PROG, startTime: t0 + 1_000, report: 'R2' });
+    const outraR1 = pull({ encounterId: PROG, startTime: t0 + 5_000, report: 'R1' });
+    expect(consolidarComPares([tryR2, outraR1, tryR1])).toEqual({
+      unicas: [tryR1, outraR1],
+      pares: [{ mantida: tryR1, descartada: tryR2 }],
+    });
   });
 
   it('T-A20: uma pull legítima entre duas cópias não some', () => {

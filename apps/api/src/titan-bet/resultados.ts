@@ -18,6 +18,8 @@ export interface MorteNaPull {
   /** Id do `Character`, ou qualquer id fora do snapshot. */
   characterId: string;
   timestamp: number;
+  /** O ator no report, como o WCL chama — só para a evidência (§15.10). */
+  ator?: number;
 }
 
 export interface PullDaSemana {
@@ -75,17 +77,38 @@ export const JANELA_DE_DUPLICATA_MS = 10_000;
  * saída é a do tempo.
  */
 export function consolidarPulls(pulls: PullDaSemana[]): PullDaSemana[] {
+  return consolidarComPares(pulls).unicas;
+}
+
+/** Uma cópia descartada e a pull que ficou no lugar dela (D-63; evidência, §15.10). */
+export interface ParDeDuplicata {
+  mantida: PullDaSemana;
+  descartada: PullDaSemana;
+}
+
+/** `consolidarPulls`, e os pares que ela deduplicou — a prova da deduplicação. */
+export function consolidarComPares(pulls: PullDaSemana[]): {
+  unicas: PullDaSemana[];
+  pares: ParDeDuplicata[];
+} {
   const unicas: PullDaSemana[] = [];
+  const pares: ParDeDuplicata[] = [];
   for (const p of [...pulls].sort((a, b) => a.startTime - b.startTime)) {
-    const copia = unicas.some(
+    const original = unicas.find(
       (u) =>
         u.encounterId === p.encounterId &&
         u.report !== p.report &&
         Math.abs(u.startTime - p.startTime) < JANELA_DE_DUPLICATA_MS,
     );
-    if (!copia) unicas.push(p);
+    if (original) pares.push({ mantida: original, descartada: p });
+    else unicas.push(p);
   }
-  return unicas;
+  return { unicas, pares };
+}
+
+/** Pull que conta para o Titan Bet — a mesma régua dos resultados, para a evidência. */
+export function pullValida(p: PullDaSemana): boolean {
+  return valida(p);
 }
 
 export interface EvidenciaDeMetrica {

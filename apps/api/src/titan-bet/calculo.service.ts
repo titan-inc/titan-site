@@ -13,14 +13,17 @@ import {
   type LeituraDoReport,
 } from './leitura-wcl';
 import {
-  consolidarPulls,
+  consolidarComPares,
+  JANELA_DE_DUPLICATA_MS,
   killDaSemana,
+  pullValida,
   motivoDaEvidencia,
   resultadoFirstDeathFarm,
   resultadoFirstDeathProgressao,
   resultadoTopMetrica,
   resultadoWeekly,
   type KillDaSemana,
+  type ParDeDuplicata,
   type PullDaSemana,
   type Resultado,
 } from './resultados';
@@ -119,16 +122,34 @@ export class CalculoService {
       }
     }
     // Uma timeline só: a mesma pull em dois reports conta uma vez (D-63).
-    const timeline = consolidarPulls(pulls);
+    const { unicas: timeline, pares } = consolidarComPares(pulls);
 
+    const agora = new Date();
+    const contexto: ContextoDaEvidencia = {
+      comum: {
+        versao: 2,
+        algoritmo: VERSAO_DO_ALGORITMO,
+        computedAt: agora.toISOString(),
+        // O vínculo com a rodada, a tentativa e o snapshot congelado no Ready.
+        rodada: {
+          roundId: a.roundId,
+          auditId: a.id,
+          attempt: a.attempt,
+          candidatosCongeladosEm: a.round.readyAt?.toISOString() ?? null,
+        },
+        fontes,
+      },
+      origem,
+      pares,
+    };
     const apostas = await this.repo.apostasValidasDaRodada(a.roundId);
     const resultados = a.round.markets.map((m) => {
       const r = this.resultadoDoMercado(m, a, timeline, origem, candidatos);
-      return this.paraGravar(m, r, apostas, fontes);
+      return this.paraGravar(m, r, apostas, contexto);
     });
 
     try {
-      await this.repo.gravarCalculo({ auditId, roundId: a.roundId, agora: new Date(), resultados });
+      await this.repo.gravarCalculo({ auditId, roundId: a.roundId, agora, resultados });
     } catch (erro: unknown) {
       // Dois cálculos ao mesmo tempo: o banco deixa passar um (unique e trigger).
       const motivo = erro instanceof Error ? erro.message : String(erro);
@@ -166,7 +187,7 @@ export class CalculoService {
     pulls: PullDaSemana[],
     origem: Map<PullDaSemana, Origem>,
     candidatos: CandidatoIdentificavel[],
-  ): { resultado: Resultado<unknown>; kills: string[]; extra?: Prisma.InputJsonObject } {
+  ): ResultadoComPulls {
     const elegiveis = new Set(
       candidatosDoMercado(m.kind, a.round.candidates).map((c) => c.characterId),
     );
@@ -183,6 +204,13 @@ export class CalculoService {
         resultado:
           resultado.outcome === 'vencedores' ? { ...resultado, vencedores: [] } : resultado,
         kills: resultado.outcome === 'vencedores' ? resultado.vencedores : [],
+        encounters: progressao,
+        // As kills dos bosses de progressão: é delas que sai a Weekly.
+        usadas: progressao.flatMap((id) => {
+          const k = killDaSemana(pulls, id);
+          return k.tipo === 'kill' ? [k.pull] : [];
+        }),
+        elegiveisDaMorte: null,
       };
     }
 
@@ -190,12 +218,26 @@ export class CalculoService {
       return {
         resultado: resultadoFirstDeathProgressao(pulls, m.roundEncounterId!, elegiveis),
         kills: [],
+        encounters: [m.roundEncounterId!],
+        // Todas as tries válidas da semana (D-29), na ordem em que aconteceram.
+        usadas: pulls
+          .filter((p) => p.encounterId === m.roundEncounterId && pullValida(p))
+          .sort((x, y) => x.startTime - y.startTime),
+        elegiveisDaMorte: elegiveis,
       };
     }
 
     const kill = killDaSemana(pulls, m.roundEncounterId!);
+    const usadas = kill.tipo === 'kill' ? [kill.pull] : [];
+    const encounters = [m.roundEncounterId!];
     if (m.kind === 'first_death') {
-      return { resultado: resultadoFirstDeathFarm(kill, elegiveis), kills: [] };
+      return {
+        resultado: resultadoFirstDeathFarm(kill, elegiveis),
+        kills: [],
+        encounters,
+        usadas,
+        elegiveisDaMorte: elegiveis,
+      };
     }
 
     const valores =
@@ -212,6 +254,9 @@ export class CalculoService {
     return {
       resultado,
       kills: [],
+      encounters,
+      usadas,
+      elegiveisDaMorte: null,
       // O que foi lido de cada candidato, como veio (§15.10): é a prova do valor.
       extra: {
         valores: valores
@@ -241,20 +286,34 @@ export class CalculoService {
 
   private paraGravar(
     m: Mercado,
-    r: { resultado: Resultado<unknown>; kills: string[]; extra?: Prisma.InputJsonObject },
+    r: ResultadoComPulls,
     apostas: Awaited<ReturnType<TitanBetRepository['apostasValidasDaRodada']>>,
-    fontes: Prisma.InputJsonObject[],
+    contexto: ContextoDaEvidencia,
   ): ResultadoParaGravar {
     // Nenhum caminho automático produz `anulado` (D-61): o resultado é vencedores
     // ou sem vencedor.
     const doMercado = apostas.filter((b) => b.marketId === m.id);
     const V = doMercado.reduce((s, b) => s + b.stake, 0);
     const evidencia: Prisma.InputJsonObject = {
-      versao: 1,
-      algoritmo: VERSAO_DO_ALGORITMO,
-      fontes,
+      ...contexto.comum,
       mercado: { kind: m.kind, track: m.track, roundEncounterId: m.roundEncounterId },
       resultado: r.resultado.evidencia as Prisma.InputJsonValue,
+      // Qual report, qual fight, quando e quanto durou; no First Death, quem
+      // morreu até a primeira elegível (§15.10) — nunca o payload do WCL.
+      pulls: r.usadas.map((p) => pullNaEvidencia(p, contexto.origem, r.elegiveisDaMorte)),
+      deduplicacao: {
+        janelaMs: JANELA_DE_DUPLICATA_MS,
+        regra:
+          'mesmo encounter, reports diferentes, início a menos da janela; ' +
+          'fica a cópia que começou primeiro',
+        pares: contexto.pares
+          .filter((x) => r.encounters.includes(x.mantida.encounterId))
+          .map((x) => ({
+            mantida: idDaPull(x.mantida, contexto.origem),
+            descartada: idDaPull(x.descartada, contexto.origem),
+            diferencaMs: Math.abs(x.descartada.startTime - x.mantida.startTime),
+          })),
+      },
       ...r.extra,
     };
 
@@ -293,6 +352,73 @@ export class CalculoService {
       kills: r.kills,
     };
   }
+}
+
+interface ResultadoComPulls {
+  resultado: Resultado<unknown>;
+  kills: string[];
+  /** Os `BetRoundEncounter` do mercado — de quais bosses são os pares deduplicados. */
+  encounters: string[];
+  /** As pulls de que o resultado saiu, para a evidência. */
+  usadas: PullDaSemana[];
+  /** First Death: quem é elegível, para cortar a sequência de mortes; senão `null`. */
+  elegiveisDaMorte: ReadonlySet<string> | null;
+  extra?: Prisma.InputJsonObject;
+}
+
+interface ContextoDaEvidencia {
+  /** O que toda evidência da tentativa carrega: versão, algoritmo, hora, vínculo, fontes. */
+  comum: Prisma.InputJsonObject;
+  origem: Map<PullDaSemana, Origem>;
+  pares: ParDeDuplicata[];
+}
+
+function idDaPull(p: PullDaSemana, origem: Map<PullDaSemana, Origem>) {
+  return { report: p.report, fightId: origem.get(p)!.fight.id, startTime: p.startTime };
+}
+
+/**
+ * A pull como a §15.10 pede: report, fight, encounter do WCL, dificuldade, kill,
+ * início, fim e duração (o denominador de DPS/HPS). No First Death, as mortes
+ * em ordem até a primeira elegível — os de fora do snapshot aparecem, pulados
+ * pelo resultado (D-13), e empates na mesma ms entram todos (D-14).
+ */
+function pullNaEvidencia(
+  p: PullDaSemana,
+  origem: Map<PullDaSemana, Origem>,
+  elegiveis: ReadonlySet<string> | null,
+): Prisma.InputJsonObject {
+  const { report, fight } = origem.get(p)!;
+  const base = {
+    session: p.session,
+    report: p.report,
+    fightId: fight.id,
+    encounterId: fight.encounterID,
+    difficulty: p.difficulty,
+    kill: p.kill,
+    startTime: p.startTime,
+    endTime: report.startTime + fight.endTime,
+    duracaoMs: fight.endTime - fight.startTime,
+  };
+  if (!elegiveis) return base;
+
+  const ordem = [...p.deaths].sort((x, y) => x.timestamp - y.timestamp);
+  const primeira = ordem.find((d) => elegiveis.has(d.characterId))?.timestamp;
+  const ator = new Map(report.actors.map((x) => [x.id, x]));
+  return {
+    ...base,
+    mortes: ordem
+      .filter((d) => primeira === undefined || d.timestamp <= primeira)
+      .map((d) => {
+        const quem = d.ator === undefined ? undefined : ator.get(d.ator);
+        return {
+          quem: d.characterId,
+          name: quem?.name ?? null,
+          server: quem?.server ?? null,
+          timestamp: d.timestamp,
+        };
+      }),
+  };
 }
 
 function eWeekly(kind: BetMarketKind): boolean {

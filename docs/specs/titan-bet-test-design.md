@@ -2249,3 +2249,35 @@ em `receita_guilda`, o resto em `residuo_guilda`; o settlement lança
 `destinoDoPool` (`premios` | `redistribuido` | `restituido` | `anulado`, lido do ledger,
 opcional para não invalidar relatórios já publicados). VOID continua 100% sem receita, e
 slip que nunca foi válido continua fora (D-67; T-M14 integrado, "slip pendente não entra").
+
+### 42.6 Achado N1 — evidência incompleta frente à §15.10
+
+Reproduzido: a evidência gravada trazia fontes, mercado, `resultado.pull` só com
+`{ session, startTime }`, os valores lidos e a versão do algoritmo — sem fight, encounter
+do WCL, fim/duração, a sequência de mortes do First Death, os pares deduplicados, o
+vínculo com a tentativa e o snapshot, e `computedAt`.
+
+| Onde                                          | RED                                                                                                             |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `calculo.db-spec.ts` — T-Q11, 5               | **RED real**: `pulls` e `deduplicacao` ausentes (`Received: undefined`), `versao: 1`, sem `rodada`/`computedAt` |
+| `resultados.spec.ts` — N1, pares deduplicados | awaiting seam (`consolidarComPares` nova)                                                                       |
+
+GREEN — documento de evidência **versão 2** (o algoritmo continua `titanbet-2`; nenhum
+resultado muda):
+
+- `pulls`: as pulls de que o resultado saiu — kill (métricas, First Death farm), todas as
+  tries válidas (First Death de progressão), as kills dos bosses de progressão (Weekly) —
+  com `session`, `report`, `fightId`, `encounterId` (WCL), `difficulty`, `kill`,
+  `startTime`, `endTime` e `duracaoMs`; no First Death, `mortes`: em ordem, até a primeira
+  elegível, com os de fora (`fora:<ator>`) e os empates, nome e servidor como o WCL deu;
+- `deduplicacao`: `janelaMs`, a regra e os pares `{ mantida, descartada, diferencaMs }` do
+  boss do mercado;
+- `rodada`: `roundId`, `auditId`, `attempt` e `candidatosCongeladosEm` (o Ready);
+- `computedAt` igual ao `calculatedAt` da tentativa.
+
+Nada do payload do WCL é guardado além disso. A mesma evidência sai inteira pelo contrato
+de resultados (`resultadosDaAuditoriaSchema`, depois de ida e volta em JSON).
+
+Teste existente com asserção ampliada: `leitura-wcl.spec.ts`, "morte de quem não é
+candidato…" — a morte passou a carregar `ator`, e o esperado inclui o id (mais forte, não
+mais fraco).

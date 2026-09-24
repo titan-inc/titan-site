@@ -932,6 +932,7 @@ export class TitanBetRepository {
       select: {
         id: true,
         status: true,
+        attempt: true,
         roundId: true,
         sources: {
           select: {
@@ -951,6 +952,7 @@ export class TitanBetRepository {
         round: {
           select: {
             cutoffAt: true,
+            readyAt: true,
             encounters: {
               select: { id: true, encounterId: true, track: true },
             },

@@ -125,6 +125,7 @@ export function pullsDoReport(
         .map((d) => ({
           characterId: quem.get(d.targetID) ?? `fora:${d.targetID}`,
           timestamp: report.startTime + d.timestamp,
+          ator: d.targetID,
         })),
     }));
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resultadosDaAuditoriaSchema } from '@titan/shared';
 import type { BetCandidateRole, BetMarketKind } from '@prisma/client';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { AuditoriaRecusada } from '../../../src/titan-bet/auditoria.service';
@@ -575,6 +576,178 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       const { porta, lidos } = wcl(semanaPadrao(c));
       await new CalculoService(repo, porta, depoisDaQuinta).calcular(a.id);
       expect(lidos.sort()).toEqual(['Quinta1', 'Terca1']);
+    });
+  });
+
+  describe('T-Q11 — a evidência gravada cobre a §15.10 (N1)', () => {
+    type Pull = {
+      session: string;
+      report: string;
+      fightId: number;
+      encounterId: number;
+      difficulty: number;
+      kill: boolean;
+      startTime: number;
+      endTime: number;
+      duracaoMs: number;
+      mortes?: Array<{ quem: string; name: string; server: string; timestamp: number }>;
+    };
+    type Evidencia = {
+      versao: number;
+      algoritmo: string;
+      computedAt: string;
+      rodada: { roundId: string; auditId: string; attempt: number; candidatosCongeladosEm: string };
+      pulls: Pull[];
+      deduplicacao: {
+        janelaMs: number;
+        regra: string;
+        pares: Array<{
+          mantida: { report: string; fightId: number; startTime: number };
+          descartada: { report: string; fightId: number; startTime: number };
+          diferencaMs: number;
+        }>;
+      };
+    };
+    const evidenciaDe = async (auditId: string, marketId: string) =>
+      (await resultadosDe(auditId)).find((r) => r.marketId === marketId)!
+        .evidence as unknown as Evidencia;
+
+    it('a pull identificada: report, fight, encounter, dificuldade, kill, início, fim e duração', async () => {
+      const c = await cenario();
+      const a = await auditoriaPronta(c);
+      await new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id);
+
+      const ev = await evidenciaDe(a.id, c.m.topDps!.id);
+      expect(ev.pulls).toEqual([
+        {
+          session: 'terca',
+          report: 'Terca1',
+          fightId: 3,
+          encounterId: FARM,
+          difficulty: 5,
+          kill: true,
+          startTime: TERCA_21H + 200_000,
+          endTime: TERCA_21H + 500_000,
+          duracaoMs: 300_000,
+        },
+      ]);
+    });
+
+    it('First Death: a sequência de mortes até a primeira elegível, com os de fora e o timestamp', async () => {
+      const c = await cenario();
+      const a = await auditoriaPronta(c);
+      await new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id);
+      const { A, B, H } = c.pessoas;
+      const morte = (quem: { characterId: string; name: string }, timestamp: number) => ({
+        quem: quem.characterId,
+        name: quem.name,
+        server: 'Azralon',
+        timestamp,
+      });
+
+      const farm = await evidenciaDe(a.id, c.m.fdFarm!.id);
+      // H morre primeiro; A, depois, fica fora da sequência.
+      expect(farm.pulls).toEqual([
+        expect.objectContaining({
+          report: 'Terca1',
+          fightId: 3,
+          kill: true,
+          mortes: [morte(H, TERCA_21H + 250_000)],
+        }),
+      ]);
+
+      const prog = await evidenciaDe(a.id, c.m.fdProg!.id);
+      expect(prog.pulls.map((p) => [p.report, p.fightId, p.mortes])).toEqual([
+        [
+          'Terca1',
+          1,
+          [
+            // O outsider morreu antes e foi pulado (D-13) — mas está na prova.
+            { quem: 'fora:99', name: 'Outsider', server: 'Azralon', timestamp: TERCA_21H + 10_000 },
+            morte(B, TERCA_21H + 11_000),
+          ],
+        ],
+        ['Terca1', 2, [morte(B, TERCA_21H + 80_000)]],
+        ['Quinta1', 1, [morte(A, QUINTA_21H + 5_000)]],
+        ['Quinta1', 2, [morte(B, QUINTA_21H + 90_000)]],
+      ]);
+    });
+
+    it('o vínculo com a rodada, a tentativa e o snapshot; computedAt e a versão do algoritmo', async () => {
+      const c = await cenario();
+      const a = await auditoriaPronta(c);
+      await new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta).calcular(a.id);
+
+      const auditoria = await db.betAudit.findUniqueOrThrow({ where: { id: a.id } });
+      const rodada = await db.betRound.findUniqueOrThrow({ where: { id: c.rodada.id } });
+      const ev = await evidenciaDe(a.id, c.m.weekly!.id);
+      expect(ev).toMatchObject({
+        versao: 2,
+        algoritmo: 'titanbet-2',
+        computedAt: auditoria.calculatedAt!.toISOString(),
+        rodada: {
+          roundId: c.rodada.id,
+          auditId: a.id,
+          attempt: 1,
+          candidatosCongeladosEm: rodada.readyAt!.toISOString(),
+        },
+      });
+      // Weekly: a kill do boss de progressão, identificada.
+      expect(ev.pulls).toEqual([
+        expect.objectContaining({ report: 'Quinta1', fightId: 2, encounterId: PROG, kill: true }),
+      ]);
+    });
+
+    it('os pares deduplicados e a regra usada (D-63)', async () => {
+      const c = await cenario();
+      const a = await auditoriaPronta(c, { terca: ['Terca1', 'Terca2'], quinta: ['Quinta1'] });
+      const semana = semanaPadrao(c);
+      const copia = {
+        ...semana.Terca1,
+        code: 'Terca2',
+        startTime: semana.Terca1.startTime + 2_000,
+      };
+      await new CalculoService(
+        repo,
+        wcl({ ...semana, Terca2: copia }).porta,
+        depoisDaQuinta,
+      ).calcular(a.id);
+
+      const prog = await evidenciaDe(a.id, c.m.fdProg!.id);
+      expect(prog.deduplicacao.janelaMs).toBe(10_000);
+      expect(prog.deduplicacao.regra).toMatch(/mesmo encounter/);
+      expect(prog.deduplicacao.pares).toEqual([
+        {
+          mantida: { report: 'Terca1', fightId: 1, startTime: TERCA_21H },
+          descartada: { report: 'Terca2', fightId: 1, startTime: TERCA_21H + 2_000 },
+          diferencaMs: 2_000,
+        },
+        {
+          mantida: { report: 'Terca1', fightId: 2, startTime: TERCA_21H + 70_000 },
+          descartada: { report: 'Terca2', fightId: 2, startTime: TERCA_21H + 72_000 },
+          diferencaMs: 2_000,
+        },
+      ]);
+      // Só os pares do boss do mercado: o do farm fica nos mercados do farm.
+      const top = await evidenciaDe(a.id, c.m.topDps!.id);
+      expect(top.deduplicacao.pares.map((x) => x.mantida.fightId)).toEqual([3]);
+    });
+
+    it('a evidência atravessa o contrato de resultados sem perder nada', async () => {
+      const c = await cenario();
+      const a = await auditoriaPronta(c);
+      const servico = new CalculoService(repo, wcl(semanaPadrao(c)).porta, depoisDaQuinta);
+      await servico.calcular(a.id);
+
+      const lida = resultadosDaAuditoriaSchema.parse(
+        JSON.parse(JSON.stringify(await servico.resultados(a.id))),
+      );
+      for (const r of await resultadosDe(a.id)) {
+        const m = lida.mercados.find((x) => x.marketId === r.marketId)!;
+        expect(m.evidencia).toEqual(r.evidence);
+        expect(m.evidencia).toHaveProperty('pulls');
+        expect(m.evidencia).toHaveProperty('rodada');
+      }
     });
   });
 });

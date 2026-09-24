@@ -134,9 +134,11 @@ describe('pullsDoReport — pulls do report oficial, na sessão do report (D-26)
   });
 
   it('morte de quem não é candidato continua na lista, fora do snapshot (D-13)', () => {
+    // N1: a morte leva também o ator do report — é por ele que a evidência
+    // mostra nome e servidor de quem morreu, inclusive os de fora (§15.10).
     expect(pulls[0]!.deaths).toEqual([
-      { characterId: 'fora:11', timestamp: 1_030_000 },
-      { characterId: 'c-shrewd', timestamp: 1_031_000 },
+      { characterId: 'fora:11', timestamp: 1_030_000, ator: 11 },
+      { characterId: 'c-shrewd', timestamp: 1_031_000, ator: 10 },
     ]);
   });
 });
