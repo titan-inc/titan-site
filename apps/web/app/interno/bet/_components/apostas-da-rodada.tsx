@@ -243,10 +243,12 @@ export function ApostasDaRodada({
         </p>
       ) : (
         <form onSubmit={salvar} noValidate className="flex flex-col gap-6">
-          <p className="text-fg-subtle text-xs">
-            O multiplicador é uma projeção: o retorno por 1 gold se o mercado fechasse agora com
-            aquela opção vencendo. Muda a cada aposta confirmada e não é promessa.
-          </p>
+          {aberta && (
+            <p className="text-fg-subtle text-xs">
+              O multiplicador é uma projeção: o retorno por 1 gold se o mercado fechasse agora com
+              aquela opção vencendo. Muda a cada aposta confirmada e não é promessa.
+            </p>
+          )}
 
           {cardapio.mercados.map((m) => (
             <MercadoDaRodada

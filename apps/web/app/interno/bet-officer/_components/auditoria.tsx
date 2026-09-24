@@ -130,7 +130,7 @@ function FonteDaSessao({
       {fonte.resolution === 'ausente' && (
         <>
           <p className="text-fg-muted text-sm">
-            Nenhum report `titanbet*` nesta sessão. A ausência não resolve sozinha.
+            Nenhum report titanbet* nesta sessão. A ausência não resolve sozinha.
           </p>
           {aberta && (
             <div className="flex flex-wrap items-end gap-3">

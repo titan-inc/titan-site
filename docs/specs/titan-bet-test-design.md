@@ -1872,3 +1872,77 @@ recebeu as migrations da revisão 11–12.
 `pnpm test`: shared 395, api 935, web **204**; `pnpm test:db` 316; format, lint, typecheck e
 build OK; banco de dev com o mesmo hash. A matriz da §34 está completa: F0 (T-C01–T-C05,
 mais o T-C06), F1 (T-UI01–T-UI11) e F2 (T-UI20–T-UI28).
+
+## 39. Validação integrada no navegador (24/09/2026)
+
+Banco de **dev local** (`localhost:5432/titan`), Chrome controlado pelo DevTools MCP, login
+real pela Battle.net (conta rank 2: membro e officer). Nada de produção foi tocado.
+
+### 39.1 Banco de dev
+
+- Backup lógico antes (`pg_dump -Fc`, fora do repositório).
+- **42 migrations** pendentes — o dev estava em 11/08, não só atrás do Titan Bet (loot, M+,
+  identidade expand/backfill/contract). Aplicadas com `prisma migrate deploy`, sem reset.
+- Destrutivo só onde o dado já tinha sido movido: `identidade_contract` apaga colunas de
+  nome depois do `identidade_backfill` levá-las para `Character`. Contagens preservadas
+  (1 `User`, 13 `GuildCharacter` — todos com `Character` —, 24 `CharacterSnapshot`).
+
+### 39.2 Dados locais de teste criados
+
+| O quê                                                            | Como                                                                                        | Por quê                                                                                           |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Rodada da semana (period 1083)                                   | pela UI, fluxo real (Ready lê Blizzard e WoWAudit)                                          | fluxo do membro e do officer até o depósito                                                       |
+| 2 slips da conta: um recusado (motivo "teste local…"), um válido | pela UI                                                                                     | recusa e confirmação                                                                              |
+| Ajustes +50, +10 e pagamentos 50, 10                             | pela UI, motivo "teste local…"                                                              | exercitar ajuste e pagamento sem prêmio (não há settlement real com dinheiro)                     |
+| Rodadas passadas `teste-local-1081` e `teste-local-1080`         | SQL, cópia da config e do snapshot reais, `readyByBattletag = 'teste-local'`, **sem slips** | etapas pós-cutoff; as triggers seguem valendo (Ready gravado uma vez, nenhum slip fora da janela) |
+
+Auditar consultou o **WCL real**, só leitura: nenhum `titanbet*` existe (como o M0 já
+registrou), então as sessões ficaram ausentes e foram declaradas sem raid. O cálculo deu
+`sem_vencedor` em tudo; com V = 0 não há dinheiro a redistribuir, e a liquidação passou.
+Nenhum resultado foi inventado.
+
+### 39.3 Fluxos
+
+| Fluxo                                                        | Resultado                                                                     |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| navegação, menu, lista de rodadas                            | PASS (após B3, B13)                                                           |
+| abrir a rodada; mercados, candidatos por role, odds          | PASS — odds 0,90× conferida à mão                                             |
+| Weekly por boss                                              | PASS                                                                          |
+| First Death sem personagem próprio                           | PASS — o candidato da conta some dos First Death e fica no Top DPS            |
+| Salvar, editar rascunho, erros locais (stake, depositante)   | PASS                                                                          |
+| Submeter com nome + realm, aguardando depósito, total        | PASS                                                                          |
+| recusado com motivo → começar outro slip                     | PASS                                                                          |
+| Closing Report no membro                                     | PASS (após B10, B11, B12)                                                     |
+| officer: acesso (`isActingOfficer`), 401 sem cookie          | PASS (só uma conta, officer; o "não officer" no navegador fica com os testes) |
+| criar rodada, preparar, Ready                                | PASS (B1, B2)                                                                 |
+| depósitos: recusa exige motivo, confirmar o próprio (D-58)   | PASS                                                                          |
+| slips sem escolhas; "ver slip" explícito, `BetEvent` gravado | PASS                                                                          |
+| Auditar, "sem raid" + motivo                                 | PASS (B7) — fontes com `titanbet*`: **não verificável** com dado real         |
+| calcular; liquidar em dois passos, cancelar                  | PASS (B8)                                                                     |
+| saldos, ajuste, pagamento                                    | PASS (B5, B6, B14)                                                            |
+| publicar Closing                                             | PASS                                                                          |
+| celular 390 px, alvos de toque, console, rede                | PASS após B13; console sem erro; rede sem 4xx/5xx inesperado                  |
+
+### 39.4 Achados
+
+| #   | Achado                                                                                | Destino                                      |
+| --- | ------------------------------------------------------------------------------------- | -------------------------------------------- |
+| B1  | lista de rodadas do officer vazia sem estado vazio                                    | corrigido (`ListaDeRodadas`)                 |
+| B2  | o catálogo do WCL traz todas as raids de todas as expansões, com zonas duplicadas     | **decisão pendente**                         |
+| B3  | a lista chamava a sexta de abertura de "reset"; agora mostra o cutoff                 | corrigido                                    |
+| B4  | realm com grafia inconsistente entre fontes (`azralon`/`Azralon`, `area-52`)          | **fora do Titan Bet** — identidade (Regra 6) |
+| B5  | ajuste lançado deixava o formulário aberto com a lista velha                          | corrigido                                    |
+| B6  | tipo de lançamento cru (`deposito_validado`)                                          | corrigido                                    |
+| B7  | crases literais em "`titanbet*`"                                                      | corrigido                                    |
+| B8  | resultados do officer sem o boss — dois "First Death" indistinguíveis                 | corrigido                                    |
+| B9  | refresh após liquidar — **não reproduzido**, artefato do script de medição            | descartado                                   |
+| B10 | aviso de projeção em rodada fechada                                                   | corrigido                                    |
+| B11 | "redistribuído" quando nenhum mercado teve vencedor                                   | corrigido                                    |
+| B12 | total devido vazio sem estado vazio                                                   | corrigido                                    |
+| B13 | menu lateral estourava a largura no celular (anterior ao Titan Bet, agravado por ele) | corrigido (`overflow-x-auto`)                |
+| B14 | recusa de saldo negativo citava "OQ-52, em aberto" — decidida na D-50                 | corrigido                                    |
+
+**RED:** 6 falhas reais (B5/B6, B7, B8, B10, B11, B12), _awaiting seam_ da `ListaDeRodadas`
+(B1, B3) e 1 no banco (B14, mensagem). B13 é CSS e foi verificado no navegador, não em
+teste. **Resultado:** `pnpm test` shared 395, api 935, web 213; `pnpm test:db` 316; format,
+lint, typecheck e build OK. A suíte não alterou o banco de dev (mesmo hash antes e depois).

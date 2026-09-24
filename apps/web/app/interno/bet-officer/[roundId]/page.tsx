@@ -79,6 +79,12 @@ export default async function RodadaOfficerPage({
   const bosses = Object.fromEntries(
     preparacao.dados.encounters.map((e) => [e.roundEncounterId, e.encounterName]),
   );
+  // marketId → boss, para cada resultado dizer de que boss é (§39, B8).
+  const encounters = Object.fromEntries(
+    preparacao.dados.encounters.flatMap((e) =>
+      e.mercados.map((m) => [m.marketId, e.encounterName]),
+    ),
+  );
 
   return (
     <main className="flex flex-1 flex-col gap-10">
@@ -118,6 +124,7 @@ export default async function RodadaOfficerPage({
             resultados={resultados?.tipo === 'ok' ? resultados.dados : null}
             auditId={corrente.auditId}
             bosses={bosses}
+            encounters={encounters}
             podeCalcular={corrente.status === 'pronta'}
           />
         </Secao>

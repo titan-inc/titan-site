@@ -266,6 +266,19 @@ describe('ApostasDaRodada', () => {
     });
   });
 
+  // Achado do navegador (§39, B10): "muda a cada aposta confirmada" é falso
+  // depois do cutoff — o aviso de projeção só vale com as apostas abertas.
+  it('B10: rodada fechada não mostra o aviso de projeção', () => {
+    render(
+      <ApostasDaRodada
+        cardapio={{ ...CARDAPIO, fase: 'CLOSED', podeApostar: false }}
+        odds={ODDS}
+        slip={null}
+      />,
+    );
+    expect(screen.queryByText(/projeção/i)).toBeNull();
+  });
+
   describe('T-UI09 — odds: "—" sem aposta, e projeção, não promessa (§16.10)', () => {
     it('multiplicador nulo é "—"; o aviso de projeção aparece', () => {
       render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={null} />);

@@ -405,7 +405,9 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
       });
     });
 
-    it('ajuste que deixaria saldo negativo → recusado (OQ-52 em aberto)', async () => {
+    // A OQ-52 foi decidida (D-50): a regra não mudou — continua recusado —, só a
+    // mensagem, que ainda dizia "em aberto" (achado do navegador, §39, B14).
+    it('ajuste que deixaria saldo negativo → recusado: não existe dívida de membro (D-50)', async () => {
       const c = await cenario();
       const x = await c.apostar(c.topDps.id, 'top_dps', 500, c.A);
       const a = await calculada(c, {
@@ -420,7 +422,7 @@ describe('Titan Bet — settlement e ledger (serviço + banco)', () => {
           { slipId: x.slipId, amount: -50, reason: 'prêmio a mais', correctsEntryId: premio.id },
           OFFICER,
         ),
-      ).rejects.toThrow(/OQ-52/);
+      ).rejects.toThrow(/não existe dívida de membro \(D-50\)/);
       expect((await lancamentos(c.rodada.id)).some((l) => l.kind === 'ajuste')).toBe(false);
     });
 

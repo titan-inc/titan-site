@@ -84,7 +84,10 @@ export function SidebarNav({
   ];
 
   return (
-    <nav aria-label="Área interna" className="flex gap-1 md:flex-col">
+    <nav
+      aria-label="Área interna"
+      className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible"
+    >
       {itens.map((item) => {
         const ativo = item.segment === atual;
 
@@ -95,8 +98,8 @@ export function SidebarNav({
             aria-current={ativo ? 'page' : undefined}
             className={
               ativo
-                ? 'bg-surface text-fg rounded-md px-3 py-2 text-sm font-medium'
-                : 'text-fg-muted hover:bg-surface hover:text-fg rounded-md px-3 py-2 text-sm transition-colors'
+                ? 'bg-surface text-fg shrink-0 rounded-md px-3 py-2 text-sm font-medium'
+                : 'text-fg-muted hover:bg-surface hover:text-fg shrink-0 rounded-md px-3 py-2 text-sm transition-colors'
             }
           >
             {item.label}

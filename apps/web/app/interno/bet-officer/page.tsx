@@ -1,8 +1,6 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getRodadasOfficer, getSessionUser } from '../../../lib/api';
-import { FASE } from '../bet/_components/rotulos';
-import { Quando } from '../mplus/_components/quando';
+import { ListaDeRodadas } from '../bet/_components/lista-de-rodadas';
 import { destinoDoPainel } from './_components/acesso';
 import { CriarRodada } from './_components/criar-rodada';
 
@@ -37,21 +35,7 @@ export default async function BetOfficerPage() {
           Não foi possível carregar as rodadas agora.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {lista.dados.rodadas.map((r) => (
-            <li key={r.roundId}>
-              <Link
-                href={`/interno/bet-officer/${r.roundId}`}
-                className="border-border hover:bg-surface flex flex-wrap items-center justify-between gap-2 rounded-lg border p-4 transition-colors"
-              >
-                <span className="text-fg text-sm font-medium">
-                  Semana do reset de <Quando iso={r.opensAt} />
-                </span>
-                <span className="text-fg-muted font-mono text-xs uppercase">{FASE[r.fase]}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <ListaDeRodadas rodadas={lista.dados.rodadas} base="/interno/bet-officer" />
       )}
     </main>
   );

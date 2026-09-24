@@ -19,12 +19,15 @@ export function Resultados({
   resultados,
   auditId,
   bosses,
+  encounters = {},
   podeCalcular,
 }: {
   resultados: ResultadosDaAuditoria | null;
   auditId?: string;
   /** roundEncounterId → nome, para a Weekly (os resultados trazem ids). */
   bosses: Record<string, string>;
+  /** marketId → nome do boss do mercado (a Weekly não tem). */
+  encounters?: Record<string, string>;
   podeCalcular: boolean;
 }) {
   const router = useRouter();
@@ -58,7 +61,12 @@ export function Resultados({
       )}
 
       {resultados?.mercados.map((m) => (
-        <MercadoCalculado key={m.marketId} mercado={m} bosses={bosses} />
+        <MercadoCalculado
+          key={m.marketId}
+          mercado={m}
+          bosses={bosses}
+          encounterName={encounters[m.marketId] ?? null}
+        />
       ))}
 
       {resultados?.status === 'calculada' &&
@@ -96,13 +104,15 @@ export function Resultados({
 function MercadoCalculado({
   mercado: m,
   bosses,
+  encounterName,
 }: {
   mercado: Mercado;
   bosses: Record<string, string>;
+  encounterName: string | null;
 }) {
   return (
     <section className="border-border flex flex-col gap-1 rounded-lg border p-3">
-      <h3 className="text-fg text-sm font-semibold">{tituloDoMercado(m.kind, null)}</h3>
+      <h3 className="text-fg text-sm font-semibold">{tituloDoMercado(m.kind, encounterName)}</h3>
       {m.outcome === 'sem_vencedor' && (
         <p className="text-fg-muted text-sm">
           Sem vencedor: {motivo(m.motivo)}. O P vai para os mercados premiáveis.

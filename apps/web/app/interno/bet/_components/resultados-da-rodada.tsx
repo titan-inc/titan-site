@@ -13,6 +13,8 @@ type MercadoPublicado = ClosingPublicado['conteudo']['mercados'][number];
  */
 export function ResultadosDaRodada({ closing }: { closing: ClosingPublicado }) {
   const { conteudo } = closing;
+  // Só houve redistribuição se algum mercado teve vencedor para receber (D-61).
+  const algumVencedor = conteudo.mercados.some((m) => m.desfecho === 'vencedores');
 
   return (
     <div className="flex flex-col gap-6">
@@ -20,12 +22,19 @@ export function ResultadosDaRodada({ closing }: { closing: ClosingPublicado }) {
         Versão {closing.version}, publicada em <Quando iso={closing.publishedAt} />.
       </p>
 
+      {!algumVencedor && (
+        <p className="text-fg-muted text-sm">Nenhum mercado teve vencedor nesta rodada.</p>
+      )}
+
       {conteudo.mercados.map((m) => (
-        <Mercado key={m.marketId} mercado={m} />
+        <Mercado key={m.marketId} mercado={m} algumVencedor={algumVencedor} />
       ))}
 
       <section className="border-border flex flex-col gap-2 rounded-lg border p-4">
         <h3 className="text-fg text-sm font-semibold">Total devido por membro</h3>
+        {conteudo.totais.length === 0 && (
+          <p className="text-fg-muted text-sm">Ninguém tem valor a receber nesta rodada.</p>
+        )}
         <ul className="flex flex-col gap-1">
           {conteudo.totais.map((t) => (
             <li key={personagem(t.membro)} className="text-fg text-sm">
@@ -42,7 +51,13 @@ export function ResultadosDaRodada({ closing }: { closing: ClosingPublicado }) {
   );
 }
 
-function Mercado({ mercado: m }: { mercado: MercadoPublicado }) {
+function Mercado({
+  mercado: m,
+  algumVencedor,
+}: {
+  mercado: MercadoPublicado;
+  algumVencedor: boolean;
+}) {
   const id = useId();
 
   return (
@@ -56,8 +71,9 @@ function Mercado({ mercado: m }: { mercado: MercadoPublicado }) {
 
       {m.desfecho === 'sem_vencedor' && (
         <p className="text-fg-muted text-sm">
-          Sem vencedor: {motivo(m.motivo)}. O prize pool deste mercado foi redistribuído entre os
-          mercados com vencedor.
+          Sem vencedor: {motivo(m.motivo)}.
+          {algumVencedor &&
+            ' O prize pool deste mercado foi redistribuído entre os mercados com vencedor.'}
         </p>
       )}
       {m.desfecho === 'anulado' && (

@@ -1,9 +1,7 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getRodadasBet, getSessionUser } from '../../../lib/api';
-import { Quando } from '../mplus/_components/quando';
 import { destinoDaPaginaBet } from './_components/acesso';
-import { FASE } from './_components/rotulos';
+import { ListaDeRodadas } from './_components/lista-de-rodadas';
 
 export const metadata = { title: 'Titan Bet — Titan Inc' };
 
@@ -37,26 +35,8 @@ export default async function BetPage() {
         <p className="border-border text-fg-muted rounded-lg border border-dashed p-5 text-sm">
           Não foi possível carregar as rodadas agora.
         </p>
-      ) : lista.dados.rodadas.length === 0 ? (
-        <p className="border-border text-fg-muted rounded-lg border border-dashed p-5 text-sm">
-          Nenhuma rodada publicada ainda.
-        </p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {lista.dados.rodadas.map((r) => (
-            <li key={r.roundId}>
-              <Link
-                href={`/interno/bet/${r.roundId}`}
-                className="border-border hover:bg-surface flex flex-wrap items-center justify-between gap-2 rounded-lg border p-4 transition-colors"
-              >
-                <span className="text-fg text-sm font-medium">
-                  Semana do reset de <Quando iso={r.opensAt} />
-                </span>
-                <span className="text-fg-muted font-mono text-xs uppercase">{FASE[r.fase]}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <ListaDeRodadas rodadas={lista.dados.rodadas} base="/interno/bet" />
       )}
     </main>
   );

@@ -9,7 +9,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import { Acao } from '../../../_components/ui/acao';
-import { gold } from '../../bet/_components/rotulos';
+import { gold, TIPO_DE_LANCAMENTO } from '../../bet/_components/rotulos';
 import { chamarOfficer, Erro } from './officer-api';
 
 type Saldo = SaldosDaRodada['saldos'][number];
@@ -72,7 +72,11 @@ export function Saldos({ saldos }: { saldos: Saldo[] }) {
               </Acao>
             </div>
             {ajustando?.slipId === s.slipId && (
-              <Ajuste slipId={s.slipId} lancamentos={ajustando.lancamentos} />
+              <Ajuste
+                slipId={s.slipId}
+                lancamentos={ajustando.lancamentos}
+                onLancado={() => setAjustando(null)}
+              />
             )}
           </li>
         ))}
@@ -85,9 +89,12 @@ export function Saldos({ saldos }: { saldos: Saldo[] }) {
 function Ajuste({
   slipId,
   lancamentos,
+  onLancado,
 }: {
   slipId: string;
   lancamentos: LancamentosDoSlip['lancamentos'];
+  /** Lançado, o formulário fecha: a lista dele já não inclui o ajuste novo. */
+  onLancado: () => void;
 }) {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -117,6 +124,7 @@ function Ajuste({
         corpo: pedido.data,
       });
       if (!r.ok) return setErro(r.motivo);
+      onLancado();
       router.refresh();
     });
   }
@@ -132,7 +140,7 @@ function Ajuste({
         >
           {lancamentos.map((l) => (
             <option key={l.entryId} value={l.entryId}>
-              #{l.entryId} {l.kind} {gold(l.amount)}
+              #{l.entryId} {TIPO_DE_LANCAMENTO[l.kind]} {gold(l.amount)}
             </option>
           ))}
         </select>

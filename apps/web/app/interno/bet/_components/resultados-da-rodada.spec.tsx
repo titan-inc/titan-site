@@ -60,3 +60,35 @@ describe('ResultadosDaRodada', () => {
     expect(screen.getByText(/versão 1/i)).toBeTruthy();
   });
 });
+
+/** Achados da validação no navegador (titan-bet-test-design.md §39). */
+describe('ResultadosDaRodada — achados do navegador', () => {
+  afterEach(cleanup);
+
+  const semNinguem = {
+    ...CLOSING,
+    conteudo: {
+      ...CLOSING.conteudo,
+      mercados: CLOSING.conteudo.mercados.map((m) => ({
+        ...m,
+        desfecho: 'sem_vencedor' as const,
+        motivo: 'sem_kill',
+        vencedores: [],
+        bossesVencedores: [],
+        ganhos: [],
+      })),
+      totais: [],
+    },
+  };
+
+  it('B11: sem vencedor em nenhum mercado, não diz que redistribuiu', () => {
+    render(<ResultadosDaRodada closing={semNinguem} />);
+    expect(screen.queryByText(/redistribu/i)).toBeNull();
+    expect(screen.getByText(/nenhum mercado teve vencedor/i)).toBeTruthy();
+  });
+
+  it('B12: sem valor devido, a seção diz isso em vez de ficar vazia', () => {
+    render(<ResultadosDaRodada closing={semNinguem} />);
+    expect(screen.getByText(/ninguém tem valor a receber/i)).toBeTruthy();
+  });
+});

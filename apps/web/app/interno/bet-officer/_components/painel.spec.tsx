@@ -409,3 +409,58 @@ describe('T-UI28 — publicar o Closing Report (D-48)', () => {
     expect(await screen.findByText('a auditoria não está confirmada')).toBeTruthy();
   });
 });
+
+/** Achados da validação no navegador (titan-bet-test-design.md §39). */
+describe('achados do navegador — Officer Panel', () => {
+  it('B7: o texto da sessão ausente não mostra crase de markdown', () => {
+    render(<Auditoria roundId="r1" auditoria={AUDITORIA} podeAuditar />);
+    const quinta = screen.getByRole('region', { name: /Quinta/ });
+    expect(within(quinta).getByText(/nenhum report titanbet\*/i)).toBeTruthy();
+    expect(quinta.textContent).not.toContain('`');
+  });
+
+  it('B8: cada resultado diz de que boss é — dois First Death não se confundem', () => {
+    render(
+      <Resultados
+        resultados={RESULTADOS}
+        bosses={{ e2: 'Boss Novo' }}
+        encounters={{ m1: 'Boss Farm', m3: 'Boss Farm' }}
+        podeCalcular={false}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Top DPS · Boss Farm' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'First Death · Boss Farm' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Weekly Progression' })).toBeTruthy();
+  });
+
+  it('B6 e B5: o lançamento aparece pelo nome, e o ajuste lançado fecha o formulário', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        resposta({
+          lancamentos: [
+            {
+              entryId: '41',
+              kind: 'deposito_validado',
+              amount: 500,
+              reason: null,
+              actorBattletag: OFFICER_BT,
+              createdAt: '2026-09-23T17:00:00.000Z',
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(resposta(null, 204));
+    render(<Saldos saldos={SALDOS.saldos} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Ajustar' }));
+
+    const lista = await screen.findByLabelText('Lançamento corrigido');
+    expect(lista.textContent).toContain('Depósito validado');
+    expect(lista.textContent).not.toContain('deposito_validado');
+
+    await userEvent.type(screen.getByLabelText('Valor (gold, com sinal)'), '50');
+    await userEvent.type(screen.getByLabelText('Motivo do ajuste'), 'conferido');
+    await userEvent.click(screen.getByRole('button', { name: 'Lançar ajuste' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Lançar ajuste' })).toBeNull();
+  });
+});

@@ -76,7 +76,7 @@ const CREDITOS: ReadonlySet<GoldLedgerKind> = new Set([
 /**
  * Saldo devido = Σ (`premio` + `restituicao_*` + `ajuste`) − Σ `pagamento`.
  * `deposito_validado` é o gold que entrou, não o que se deve; receita e resíduo
- * são da conta da guilda. Saldo negativo é a OQ-52 — aqui ele só é calculado.
+ * são da conta da guilda. Saldo negativo não existe (D-50): o ajuste que o produziria é recusado antes; aqui ele só é calculado.
  */
 export function saldoDevido(lancamentos: Array<{ kind: GoldLedgerKind; amount: number }>): number {
   let saldo = 0;

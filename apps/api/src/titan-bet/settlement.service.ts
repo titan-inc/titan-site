@@ -235,7 +235,9 @@ export class LedgerService {
           return { recusa: 'o lançamento corrigido não é da conta deste slip' };
         }
         if (saldoDevido(lancamentos) + a.amount < 0) {
-          return { recusa: 'o ajuste deixaria o saldo negativo — é a OQ-52, em aberto' };
+          return {
+            recusa: 'o ajuste deixaria o saldo negativo — não existe dívida de membro (D-50)',
+          };
         }
         return {
           kind: 'ajuste',

@@ -73,3 +73,25 @@ export function motivo(codigo: string | null): string {
   if (codigo === null) return 'sem motivo registrado';
   return MOTIVO[codigo] ?? codigo;
 }
+
+/** Os lançamentos do ledger (§16.6), como o officer lê. */
+export const TIPO_DE_LANCAMENTO: Record<
+  | 'deposito_validado'
+  | 'premio'
+  | 'restituicao_anulado'
+  | 'receita_guilda'
+  | 'residuo_guilda'
+  | 'restituicao_expirado'
+  | 'ajuste'
+  | 'pagamento',
+  string
+> = {
+  deposito_validado: 'Depósito validado',
+  premio: 'Prêmio',
+  restituicao_anulado: 'Restituição (anulado)',
+  receita_guilda: 'Receita da guilda',
+  residuo_guilda: 'Resíduo da guilda',
+  restituicao_expirado: 'Restituição (expirado, histórico)',
+  ajuste: 'Ajuste',
+  pagamento: 'Pagamento',
+};
