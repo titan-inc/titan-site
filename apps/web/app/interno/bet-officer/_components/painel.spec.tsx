@@ -237,6 +237,42 @@ describe('T-UI24 — "ver slip": ação explícita, só leitura (D-57)', () => {
     expect(screen.queryByRole('button', { name: /Confirmar|Recusar|Salvar/ })).toBeNull();
   });
 
+  it('D-71: expirado que nunca foi submetido aparece como tal, sem data nem total inventados', async () => {
+    const nunca = {
+      slipId: 's-nunca',
+      ownerBattletag: 'Esquecido#4321',
+      status: 'expirado' as const,
+      depositCharacter: null,
+      expectedTotal: null,
+      submittedAt: null,
+    };
+    fetchMock.mockResolvedValueOnce(
+      resposta({
+        ...SLIP_VISTO,
+        slipId: 's-nunca',
+        status: 'expirado',
+        ownerBattletag: 'Esquecido#4321',
+        depositCharacter: null,
+        expectedTotal: null,
+        submittedAt: null,
+        validatedByBattletag: null,
+        validatedAt: null,
+        expiredAt: '2026-09-29T15:00:00.000Z',
+      }),
+    );
+    render(<SlipsSubmetidos slips={[...SLIPS.slips, nunca]} />);
+
+    const linha = screen.getByText(/Esquecido#4321/);
+    expect(linha.textContent).toMatch(/nunca submetido/i);
+    // O submetido continua com total e depositante.
+    expect(screen.getByText(/Membro#1234/).textContent).toMatch(/500/);
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Ver slip' })[1]!);
+    const aberto = await screen.findByText(/nunca submetido — o último rascunho salvo/i);
+    expect(aberto).toBeTruthy();
+    expect(screen.getByText(/Alvoescolhido-Azralon/)).toBeTruthy();
+  });
+
   it('rascunho → 409 com o motivo', async () => {
     fetchMock.mockResolvedValueOnce(resposta({ message: 'o slip ainda não foi submetido' }, 409));
     render(<SlipsSubmetidos slips={SLIPS.slips} />);

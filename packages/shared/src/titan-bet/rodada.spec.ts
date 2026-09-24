@@ -131,4 +131,32 @@ describe('T-C05 — os slips submetidos da rodada, sem as escolhas', () => {
       false,
     );
   });
+  const nuncaSubmetido = {
+    ...slip,
+    status: 'expirado',
+    depositCharacter: null,
+    expectedTotal: null,
+    submittedAt: null,
+  };
+
+  it('D-71: expirado que nunca foi submetido vem sem data, total e depositante', () => {
+    expect(slipsSubmetidosSchema.parse({ slips: [nuncaSubmetido] })).toEqual({
+      slips: [nuncaSubmetido],
+    });
+  });
+
+  it('D-71: só o expirado pode vir sem submissão', () => {
+    for (const status of ['aguardando_deposito', 'valido', 'recusado']) {
+      expect(
+        slipsSubmetidosSchema.safeParse({ slips: [{ ...nuncaSubmetido, status }] }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('D-71: sem submissão é tudo ou nada — nunca meia data', () => {
+    expect(
+      slipsSubmetidosSchema.safeParse({ slips: [{ ...nuncaSubmetido, expectedTotal: 500 }] })
+        .success,
+    ).toBe(false);
+  });
 });

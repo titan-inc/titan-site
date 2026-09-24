@@ -130,6 +130,20 @@ describe('T-Z09 — "ver slip" do officer: o slip como foi submetido (D-57)', ()
     expect(slipDoOfficerSchema.parse(visto)).toEqual(visto);
   });
 
+  it('D-71: expirado que nunca foi submetido vem sem data, total e depositante', () => {
+    const nunca = {
+      ...visto,
+      status: 'expirado',
+      depositCharacter: null,
+      expectedTotal: null,
+      submittedAt: null,
+      expiredAt: '2026-09-29T15:00:00.000Z',
+    };
+    expect(slipDoOfficerSchema.parse(nunca)).toEqual(nunca);
+    expect(slipDoOfficerSchema.safeParse({ ...nunca, status: 'valido' }).success).toBe(false);
+    expect(slipDoOfficerSchema.safeParse({ ...nunca, expectedTotal: 500 }).success).toBe(false);
+  });
+
   it('rascunho não é "como foi submetido": fora do contrato', () => {
     expect(slipDoOfficerSchema.safeParse({ ...visto, status: 'rascunho' }).success).toBe(false);
   });

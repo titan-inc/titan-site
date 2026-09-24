@@ -2115,3 +2115,26 @@ aviso quando `null`.
 
 `pnpm test`: shared **398**, api **954**, web **217**; `pnpm test:db` **318**; format, lint,
 typecheck e build OK; a suíte não alterou o banco de dev (mesmo hash antes e depois).
+
+## 42. Achados da auditoria independente do PR #114 (24/09/2026)
+
+Decisões na revisão 14 da spec (D-71 a D-75). Cada achado foi reproduzido na branch antes
+da correção; nenhum teste foi adaptado para produzir RED.
+
+### 42.1 Achado 1 — expirado sem `submittedAt` (D-71)
+
+Reproduzido: rascunho → cutoff → `expirado` com `submittedAt`, `expectedTotal` e
+depositante nulos (o CHECK `BetSlip_submetido_completo` não cobre `expirado`). A lista e o
+"ver slip" do officer faziam `submittedAt!.toISOString()` → `TypeError` → 500.
+
+| Onde                                                          | RED                                                                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `apostas-fluxo.db-spec.ts` — T-S28                            | **RED real**: `Cannot read properties of null (reading 'toISOString')` em `DepositoService.submetidos` |
+| `shared rodada.spec.ts` / `betting-leitura.spec.ts` — D-71, 2 | **RED real**: o contrato exigia os três campos                                                         |
+| `shared` — "só expirado" e "tudo ou nada", 3                  | passavam antes (campos obrigatórios); ficam como guarda do relaxamento                                 |
+| `web painel.spec.tsx` — D-71                                  | **RED real**: `Cannot read properties of null (reading 'toLocaleString')` ao renderizar                |
+
+GREEN: `camposDaSubmissao` + `submissaoCoerente` (`packages/shared/src/titan-bet/submissao.ts`)
+— nulos só em `expirado`, e os três juntos; o serviço serializa o que está gravado, sem
+data inventada; a tela diz "nunca submetido" e, no "ver slip", "o último rascunho salvo".
+O submetido que expirou pendente continua com data e total (T-S28).

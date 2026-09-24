@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { characterInputSchema } from '../wow.js';
 import { mercadoDeBossSchema } from './config.js';
+import { camposDaSubmissao, submissaoCoerente } from './submissao.js';
 
 /**
  * Titan Bet — contrato PRIVADO do Bet Slip (spec do Titan Bet §9.1).
@@ -157,9 +158,7 @@ export const slipDoOfficerSchema = z
     status: z.enum(['aguardando_deposito', 'valido', 'recusado', 'expirado']),
     ownerBattletag: z.string(),
     eligibilityCharacter: personagemVistoSchema,
-    depositCharacter: personagemVistoSchema,
-    expectedTotal: z.number().int(),
-    submittedAt: z.string().datetime(),
+    ...camposDaSubmissao,
     apostas: z.array(apostaVistaSchema),
     validatedByBattletag: z.string().nullable(),
     validatedAt: z.string().datetime().nullable(),
@@ -168,5 +167,6 @@ export const slipDoOfficerSchema = z
     rejectionReason: z.string().nullable(),
     expiredAt: z.string().datetime().nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine(submissaoCoerente);
 export type SlipDoOfficer = z.infer<typeof slipDoOfficerSchema>;

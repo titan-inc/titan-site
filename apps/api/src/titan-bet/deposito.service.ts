@@ -54,10 +54,7 @@ export class DepositoService {
         slipId: s.id,
         ownerBattletag: s.ownerBattletag,
         status: s.status as SlipsSubmetidos['slips'][number]['status'],
-        // Submetido tem os três preenchidos — CHECK do banco por estado (§16.4).
-        depositCharacter: s.depositCharacter!,
-        expectedTotal: s.expectedTotal!,
-        submittedAt: s.submittedAt!.toISOString(),
+        ...submissao(s),
       })),
     };
   }
@@ -91,10 +88,7 @@ export class DepositoService {
       status: s.status as SlipDoOfficer['status'],
       ownerBattletag: s.ownerBattletag,
       eligibilityCharacter: s.eligibility.character,
-      // Submetido tem os três preenchidos — CHECK do banco por estado (§16.4).
-      depositCharacter: s.depositCharacter!,
-      expectedTotal: s.expectedTotal!,
-      submittedAt: s.submittedAt!.toISOString(),
+      ...submissao(s),
       apostas: s.bets.map((b): SlipDoOfficer['apostas'][number] =>
         b.marketKind === 'weekly_progression'
           ? {
@@ -130,6 +124,23 @@ export class DepositoService {
       throw new DepositoRecusado(erro instanceof Error ? erro.message : String(erro));
     }
   }
+}
+
+/**
+ * O que o Submeter congelou, como está gravado. Submetido tem os três — CHECK
+ * do banco por estado (§16.4) —; o rascunho que expirou no cutoff não tem
+ * nenhum, e vai nulo, sem data inventada (D-71).
+ */
+function submissao(s: {
+  depositCharacter: { name: string; realm: string } | null;
+  expectedTotal: number | null;
+  submittedAt: Date | null;
+}) {
+  return {
+    depositCharacter: s.depositCharacter,
+    expectedTotal: s.expectedTotal,
+    submittedAt: s.submittedAt?.toISOString() ?? null,
+  };
 }
 
 function naoPendente(status: string | null): string {

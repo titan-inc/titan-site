@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mercadoDeBossSchema, trackDoEncounterSchema } from './config.js';
+import { camposDaSubmissao, submissaoCoerente } from './submissao.js';
 
 /**
  * Titan Bet — a rodada como o front a lê (titan-bet-test-design.md §34.1).
@@ -121,11 +122,10 @@ export const slipsSubmetidosSchema = z
           slipId: z.string(),
           ownerBattletag: z.string(),
           status: z.enum(['aguardando_deposito', 'valido', 'recusado', 'expirado']),
-          depositCharacter: z.object({ name: z.string(), realm: z.string() }).strict(),
-          expectedTotal: z.number().int(),
-          submittedAt: z.string().datetime(),
+          ...camposDaSubmissao,
         })
-        .strict(),
+        .strict()
+        .superRefine(submissaoCoerente),
     ),
   })
   .strict();

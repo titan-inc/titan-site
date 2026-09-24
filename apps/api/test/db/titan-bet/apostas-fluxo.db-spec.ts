@@ -10,7 +10,7 @@ import { CutoffService } from '../../../src/titan-bet/cutoff.service';
 import { DepositoRecusado, DepositoService } from '../../../src/titan-bet/deposito.service';
 import { ElegibilidadeService } from '../../../src/titan-bet/elegibilidade.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
-import { slipDoOfficerSchema } from '@titan/shared';
+import { slipDoOfficerSchema, slipsSubmetidosSchema } from '@titan/shared';
 import { Ciclo, esperarPassar } from './ciclo';
 import { depositante, Fabrica } from './fabrica';
 
@@ -647,6 +647,49 @@ describe('Titan Bet — apostas e depósito (serviço + banco)', () => {
       expect(await status(valido!.id)).toBe('valido');
       expect(await status(recusado!.id)).toBe('recusado');
       expect(await status(intacto.id)).toBe('rascunho');
+    });
+
+    it('T-S28 — rascunho expirado nunca foi submetido: lista e "ver slip" funcionam, sem data inventada (D-71)', async () => {
+      const r = await ciclo.aberta(4_000);
+      const { slip: rascunho } = await ciclo.slipComAposta(r, 'conta-rascunho');
+      const { slip: pendente } = await ciclo.slipComAposta(r, 'conta-pendente');
+      await ciclo.submeter(pendente);
+
+      await esperarPassar(db, r.rodada.cutoffAt);
+      await cutoff.expirarVencidos();
+
+      const gravado = await db.betSlip.findUniqueOrThrow({ where: { id: rascunho.id } });
+      expect(gravado.status).toBe('expirado');
+      expect(gravado.submittedAt).toBeNull();
+
+      const lista = await deposito.submetidos(r.rodada.id);
+      expect(slipsSubmetidosSchema.parse(lista)).toEqual(lista);
+      expect(lista.slips.find((s) => s.slipId === rascunho.id)).toMatchObject({
+        status: 'expirado',
+        submittedAt: null,
+        depositCharacter: null,
+        expectedTotal: null,
+      });
+      // O submetido que expirou pendente continua com a data e o total.
+      expect(lista.slips.find((s) => s.slipId === pendente.id)).toMatchObject({
+        status: 'expirado',
+        submittedAt: expect.any(String),
+        expectedTotal: 500,
+      });
+
+      const visto = await deposito.verSlip(rascunho.id, OFFICER);
+      expect(slipDoOfficerSchema.parse(visto)).toEqual(visto);
+      expect(visto).toMatchObject({
+        status: 'expirado',
+        submittedAt: null,
+        depositCharacter: null,
+        expectedTotal: null,
+        expiredAt: expect.any(String),
+      });
+      expect(visto!.apostas).toHaveLength(1);
+
+      const vistoPendente = await deposito.verSlip(pendente.id, OFFICER);
+      expect(vistoPendente!.submittedAt).toEqual(expect.any(String));
     });
 
     it('depois do cutoff, Salvar é recusado', async () => {

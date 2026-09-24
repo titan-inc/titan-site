@@ -46,8 +46,7 @@ export function SlipsSubmetidos({ slips }: { slips: ListaDeSlips['slips'] }) {
             className="border-border flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
           >
             <span className="text-fg">
-              {s.ownerBattletag} · {STATUS_DO_SLIP[s.status]} · {gold(s.expectedTotal)} por{' '}
-              {personagem(s.depositCharacter)}
+              {s.ownerBattletag} · {STATUS_DO_SLIP[s.status]} · {submissao(s)}
             </span>
             <Acao variante="fantasma" onClick={() => ver(s.slipId)} disabled={pendente}>
               Ver slip
@@ -68,11 +67,14 @@ function SlipAberto({ slip }: { slip: SlipDoOfficer }) {
         Este acesso fica registrado, com você e o horário (D-57).
       </p>
       <p className="text-fg text-sm">
-        {slip.ownerBattletag} · {STATUS_DO_SLIP[slip.status]} · {gold(slip.expectedTotal)}
+        {slip.ownerBattletag} · {STATUS_DO_SLIP[slip.status]}
+        {slip.expectedTotal !== null && <> · {gold(slip.expectedTotal)}</>}
       </p>
       <p className="text-fg-muted text-sm">
-        Elegibilidade: {personagem(slip.eligibilityCharacter)} · depositante:{' '}
-        {personagem(slip.depositCharacter)}
+        Elegibilidade: {personagem(slip.eligibilityCharacter)} ·{' '}
+        {slip.depositCharacter
+          ? `depositante: ${personagem(slip.depositCharacter)}`
+          : 'nunca submetido — o último rascunho salvo'}
       </p>
       <ul className="flex flex-col gap-1">
         {slip.apostas.map((a) => (
@@ -87,4 +89,13 @@ function SlipAberto({ slip }: { slip: SlipDoOfficer }) {
       )}
     </section>
   );
+}
+
+/**
+ * Total e depositante, como o Submeter congelou. Rascunho que chegou ao cutoff
+ * expira sem nunca ter sido submetido, e não tem nenhum dos dois (D-71).
+ */
+function submissao(s: ListaDeSlips['slips'][number]): string {
+  if (s.expectedTotal === null || s.depositCharacter === null) return 'nunca submetido';
+  return `${gold(s.expectedTotal)} por ${personagem(s.depositCharacter)}`;
 }
