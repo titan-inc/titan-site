@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetSaldos1
+createdAt: 2026-09-23T23:00:00.000000
+updatedAt: 2026-09-23T23:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'OfficerGuard. O total por membro na rodada (§8.5): devido agora e já pago. Sem apostas, stake ou escolha.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Saldos por membro (officer)'
+sortPriority: 14000
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas/:roundId/saldos
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

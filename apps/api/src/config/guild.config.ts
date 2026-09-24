@@ -102,6 +102,16 @@ export function loadGuildConfig(env: NodeJS.ProcessEnv = process.env): GuildConf
   };
 }
 
+/**
+ * Só o fuso da guilda, sem exigir o resto da config.
+ *
+ * Para quem precisa do calendário da guilda e não consulta o roster: pedir
+ * `GUILD_NAME` e `GUILD_REALM` ali seria falhar por uma config que não usa.
+ */
+export function loadGuildTimezone(env: NodeJS.ProcessEnv = process.env): string {
+  return parseTimezone(env);
+}
+
 /** Fuso padrão quando `GUILD_TIMEZONE` não está definida. */
 const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
 

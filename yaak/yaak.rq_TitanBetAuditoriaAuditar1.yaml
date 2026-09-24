@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetAuditoriaAuditar1
+createdAt: 2026-09-23T18:00:00.000000
+updatedAt: 2026-09-23T18:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'OfficerGuard. Auditar (D-30): lista os reports da guilda no WCL da semana do cutoff, acha os titanbet* de terça e de quinta e abre uma tentativa nova (a anterior, se aberta, vira substituida). Todos os titanbet* da sessão são fonte, numa timeline só (D-63); sessão sem nenhum → ausente, aguardando_revisao até o officer declarar sem raid (D-60). Cada titanbet* é lido e congelado num snapshot imutável — o que o Calcular vai usar (D-76); falhou a leitura de um, ou a revisão mudou desde a descoberta, nada é gravado. 201 com auditId; 409 antes de quinta 23:30 no fuso da guilda (D-73), sem Ready, com auditoria confirmada ou com o WCL fora. Chama o WCL de verdade.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: POST
+name: 'Auditar (officer)'
+sortPriority: 8000
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas/:roundId/auditar
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

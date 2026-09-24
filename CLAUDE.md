@@ -120,6 +120,19 @@ Por isso existem **três** guards, e o nome mais simples não é o mais permissi
 | `MemberGuard`  | o acima + rank <= `GUILD_RANK_ACCESS_MAX` | o time de raid        |
 | `OfficerGuard` | o acima + ser oficial                     | a liderança           |
 
+Existe um quarto, **específico do Titan Bet**, que **não** substitui o `RosterGuard` em lugar
+nenhum fora dele:
+
+| guard                    | exige                                                         | quem passa                                           |
+| ------------------------ | ------------------------------------------------------------- | ---------------------------------------------------- |
+| `ApostadorDaRodadaGuard` | sessão + (personagem no roster **ou** slip na rodada da rota) | a guilda, e quem saiu dela com aposta naquela rodada |
+
+Serve só às rotas `internal/titan-bet/rodadas/:roundId/*`: quem apostou e saiu da guilda
+continua concorrendo naquela rodada (D-53a/D-65 da spec), e nada além dela — as outras
+rodadas e o resto do site continuam `RosterGuard`/`MemberGuard`. Na lista
+`internal/titan-bet/rodadas`, sem `:roundId`, basta slip em alguma rodada, e a lista só
+traz as dele. Ver `docs/specs/titan-bet.md`.
+
 Endpoint novo continua exigindo guard; a escolha é qual. Ver `docs/specs/mplus-vaga-discord.md`.
 
 ### O processo não pode depender de uma pessoa estar disponível

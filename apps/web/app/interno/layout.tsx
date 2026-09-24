@@ -1,4 +1,4 @@
-import { canManageOfficers } from '@titan/shared';
+import { canManageOfficers, isActingOfficer } from '@titan/shared';
 import Link from 'next/link';
 import { getSessionUser } from '../../lib/api';
 import { Wordmark } from '../_components/ui/wordmark';
@@ -38,6 +38,7 @@ export default async function InternoLayout({ children }: { children: React.Reac
             outras seções o Nest recusaria. Ver Regra 4, o estado do meio. */}
         <SidebarNav
           oficial={user !== null && canManageOfficers(user)}
+          officer={user !== null && isActingOfficer(user)}
           acessoInterno={user?.hasInternalAccess ?? false}
         />
       </aside>

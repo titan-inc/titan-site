@@ -34,6 +34,24 @@ const ITENS_SEM_ACESSO = [{ segment: null, href: '/interno', label: 'Home' }] as
 const ITEM_MPLUS = { segment: 'mplus', href: '/interno/mplus', label: 'M+' } as const;
 
 /**
+ * Titan Bet também é de qualquer um na guilda (D-01): o corte de rank é da
+ * ferramenta do time de raid, não das apostas.
+ */
+const ITEM_BET = { segment: 'bet', href: '/interno/bet', label: 'Titan Bet' } as const;
+
+/**
+ * O Officer Panel do Titan Bet, para quem passa na **precondição** de oficial
+ * (`isActingOfficer`, a do `OfficerGuard`) — não na permissão de gerir
+ * oficiais, que decide outra coisa (CLAUDE.md, Regra 4). Cortesia; quem barra é
+ * o guard (Regra 5).
+ */
+const ITEM_BET_OFFICER = {
+  segment: 'bet-officer',
+  href: '/interno/bet-officer',
+  label: 'Titan Bet (officer)',
+} as const;
+
+/**
  * Seção de liderança. Fora de ITENS porque não é para todo mundo.
  *
  * Esconder o link é cortesia, não proteção: quem digitar a URL é barrado pela
@@ -45,19 +63,31 @@ const ITENS_OFICIAL = [
 
 export function SidebarNav({
   oficial = false,
+  officer = false,
   acessoInterno = true,
 }: {
   oficial?: boolean;
+  /** `isActingOfficer`: o Officer Panel do Titan Bet. */
+  officer?: boolean;
   /** Rank dentro do corte. Falso = membro da guilda sem a área do time de raid. */
   acessoInterno?: boolean;
 }) {
   // Hook de client component: o layout é server component e importa este.
   const atual = useSelectedLayoutSegment();
   const base = acessoInterno ? ITENS : ITENS_SEM_ACESSO;
-  const itens = [...base, ITEM_MPLUS, ...(oficial ? ITENS_OFICIAL : [])];
+  const itens = [
+    ...base,
+    ITEM_MPLUS,
+    ITEM_BET,
+    ...(oficial ? ITENS_OFICIAL : []),
+    ...(officer ? [ITEM_BET_OFFICER] : []),
+  ];
 
   return (
-    <nav aria-label="Área interna" className="flex gap-1 md:flex-col">
+    <nav
+      aria-label="Área interna"
+      className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible"
+    >
       {itens.map((item) => {
         const ativo = item.segment === atual;
 
@@ -68,8 +98,8 @@ export function SidebarNav({
             aria-current={ativo ? 'page' : undefined}
             className={
               ativo
-                ? 'bg-surface text-fg rounded-md px-3 py-2 text-sm font-medium'
-                : 'text-fg-muted hover:bg-surface hover:text-fg rounded-md px-3 py-2 text-sm transition-colors'
+                ? 'bg-surface text-fg shrink-0 rounded-md px-3 py-2 text-sm font-medium'
+                : 'text-fg-muted hover:bg-surface hover:text-fg shrink-0 rounded-md px-3 py-2 text-sm transition-colors'
             }
           >
             {item.label}

@@ -2,6 +2,32 @@ import 'server-only';
 
 import {
   attendanceReportSchema,
+  auditoriaCorrenteSchema,
+  catalogoDeRaidSchema,
+  depositosPendentesSchema,
+  preparacaoDaRodadaSchema,
+  resultadosDaAuditoriaSchema,
+  rodadasDoOfficerSchema,
+  saldosDaRodadaSchema,
+  slipsSubmetidosSchema,
+  type AuditoriaCorrente,
+  type CatalogoDeRaid,
+  type DepositosPendentes,
+  type PreparacaoDaRodada,
+  type ResultadosDaAuditoria,
+  type RodadasDoOfficer,
+  type SaldosDaRodada,
+  type SlipsSubmetidos,
+  closingPublicadoSchema,
+  meuSlipSchema,
+  oddsDaRodadaSchema,
+  rodadaDoMembroSchema,
+  rodadasDoMembroSchema,
+  type ClosingPublicado,
+  type MeuSlip,
+  type OddsDaRodada,
+  type RodadaDoMembro,
+  type RodadasDoMembro,
   lootHistoryFacetsSchema,
   lootHistoryPageSchema,
   lootCouncilPanelSchema,
@@ -411,4 +437,105 @@ export async function getLootCouncilPanel(id: string): Promise<LootCouncilPanel 
   } catch {
     return null;
   }
+}
+
+// ─── Titan Bet ───────────────────────────────────────────────────────────────
+
+/**
+ * Leitura do Titan Bet com o status que a página precisa distinguir: `proibido`
+ * (o guard do Nest recusou — 401/403) não é o mesmo que `inexistente` (404) nem
+ * que `indisponivel` (API fora do ar ou resposta fora do contrato). O parse é
+ * estrito: resposta com campo a mais vira `indisponivel`, nunca tela (D-36).
+ */
+export type LeituraBet<T> =
+  | { tipo: 'ok'; dados: T }
+  | { tipo: 'proibido' }
+  | { tipo: 'inexistente' }
+  | { tipo: 'indisponivel' };
+
+async function lerBet<T>(caminho: string, schema: z.ZodType<T>): Promise<LeituraBet<T>> {
+  try {
+    const res = await fetch(`${API_URL}/internal/titan-bet${caminho}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 401 || res.status === 403) return { tipo: 'proibido' };
+    if (res.status === 404) return { tipo: 'inexistente' };
+    if (!res.ok) return { tipo: 'indisponivel' };
+
+    const parsed = schema.safeParse(await res.json());
+    return parsed.success ? { tipo: 'ok', dados: parsed.data } : { tipo: 'indisponivel' };
+  } catch {
+    return { tipo: 'indisponivel' };
+  }
+}
+
+const rodadaBet = (roundId: string) => `/rodadas/${encodeURIComponent(roundId)}`;
+
+/** As rodadas que a conta pode abrir (T-C01). */
+export function getRodadasBet(): Promise<LeituraBet<RodadasDoMembro>> {
+  return lerBet('/rodadas', rodadasDoMembroSchema);
+}
+
+/** O cardápio da rodada com nomes (T-C02). */
+export function getRodadaBet(roundId: string): Promise<LeituraBet<RodadaDoMembro>> {
+  return lerBet(rodadaBet(roundId), rodadaDoMembroSchema);
+}
+
+/** As odds da rodada — só multiplicadores (§16.10). */
+export function getOddsBet(roundId: string): Promise<LeituraBet<OddsDaRodada>> {
+  return lerBet(`${rodadaBet(roundId)}/odds`, oddsDaRodadaSchema);
+}
+
+/** O próprio slip da conta na rodada; `inexistente` quando não há (D-36). */
+export function getMeuSlipBet(roundId: string): Promise<LeituraBet<MeuSlip>> {
+  return lerBet(`${rodadaBet(roundId)}/slip`, meuSlipSchema);
+}
+
+/** O Round Closing Report publicado; `inexistente` antes da publicação. */
+export function getClosingBet(roundId: string): Promise<LeituraBet<ClosingPublicado>> {
+  return lerBet(`${rodadaBet(roundId)}/closing`, closingPublicadoSchema);
+}
+
+// ─── Titan Bet: Officer Panel ────────────────────────────────────────────────
+// A página chama sem decidir quem é officer: quem responde 403 é o
+// `OfficerGuard` (Regra 5), e `proibido` volta para /interno.
+
+const officerBet = (caminho: string) => `/officer${caminho}`;
+
+export function getRodadasOfficer(): Promise<LeituraBet<RodadasDoOfficer>> {
+  return lerBet(officerBet('/rodadas'), rodadasDoOfficerSchema);
+}
+
+export function getPreparacaoOfficer(roundId: string): Promise<LeituraBet<PreparacaoDaRodada>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/preparacao`), preparacaoDaRodadaSchema);
+}
+
+export function getCatalogoOfficer(): Promise<LeituraBet<CatalogoDeRaid>> {
+  return lerBet(officerBet('/catalogo'), catalogoDeRaidSchema);
+}
+
+export function getDepositosOfficer(roundId: string): Promise<LeituraBet<DepositosPendentes>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/depositos`), depositosPendentesSchema);
+}
+
+export function getSlipsOfficer(roundId: string): Promise<LeituraBet<SlipsSubmetidos>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/slips`), slipsSubmetidosSchema);
+}
+
+/** A tentativa corrente de Auditar; `inexistente` antes do primeiro. */
+export function getAuditoriaOfficer(roundId: string): Promise<LeituraBet<AuditoriaCorrente>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/auditoria`), auditoriaCorrenteSchema);
+}
+
+export function getResultadosOfficer(auditId: string): Promise<LeituraBet<ResultadosDaAuditoria>> {
+  return lerBet(
+    officerBet(`/auditorias/${encodeURIComponent(auditId)}/resultados`),
+    resultadosDaAuditoriaSchema,
+  );
+}
+
+export function getSaldosOfficer(roundId: string): Promise<LeituraBet<SaldosDaRodada>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/saldos`), saldosDaRodadaSchema);
 }

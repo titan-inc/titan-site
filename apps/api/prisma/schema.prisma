@@ -157,6 +157,11 @@ model Character {
   votes          LootSessionVote[]
   awards         LootSessionAward[]
 
+  /// Titan Bet — ver docs/specs/titan-bet.md §16.
+  betBettorSnapshots    BetRoundBettor[]
+  betCandidateSnapshots BetRoundCandidate[]
+  betSlipsDeposit       BetSlip[]           @relation("DepositanteDoSlip")
+
   /// A identidade é o par nome + realm, nunca o nome sozinho.
   @@unique([nameKey, realmKey])
 }
@@ -188,7 +193,6 @@ model OfficerGrant {
   /// de centenas de candidatos não pode ser uma ação anônima.
   grantedBy String
   grantedAt DateTime @default(now())
-
 }
 
 /// Sessão com estado no banco, não JWT.
@@ -825,11 +829,11 @@ model WowDataBuild {
   /// dependência de dev disponível que este modelo existe para remover.
   active Boolean @default(false)
 
-  itens        WowItemData[]
-  bonuses      WowBonus[]
-  contextos    WowItemContextBonus[]
-  escalas      WowItemLevelScaling[]
-  sets         WowItemSet[]
+  itens     WowItemData[]
+  bonuses   WowBonus[]
+  contextos WowItemContextBonus[]
+  escalas   WowItemLevelScaling[]
+  sets      WowItemSet[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1339,7 +1343,7 @@ model LootLine {
   /// `Restrict` mesmo sendo nulável: identidade não se apaga, e se alguém
   /// tentar, o certo é o banco recusar — não anular em silêncio a informação de
   /// quem lootou.
-  looter Character? @relation("LooterDaLinha", fields: [looterCharacterId], references: [id], onDelete: Restrict)
+  looter            Character? @relation("LooterDaLinha", fields: [looterCharacterId], references: [id], onDelete: Restrict)
 
   /// O item. `itemId` para casar com o catálogo, `itemString` cru e inteiro.
   ///
@@ -1858,4 +1862,602 @@ model MplusVaga {
 
   @@index([quando])
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Titan Bet — ver docs/specs/titan-bet.md §16 e titan-bet-test-design.md.
+//
+// As invariantes da §16.4 vivem em dois lugares:
+//
+// - aqui: UNIQUE e FKs compostas — o que o Prisma sabe representar;
+// - só na migration 20260923190000_titan_bet_invariantes: os índices únicos
+//   parciais e os CHECKs, que o Prisma não modela. Precedente: o índice
+//   parcial `WowDataBuild_um_ativo_so`.
+// - só na migration 20260923220000_titan_bet_imutabilidade: os triggers que
+//   congelam a configuração e os snapshots no Ready, as transições do slip,
+//   a edição de apostas e o append-only do ledger (D-39).
+//
+// As FKs compostas existem para que "da mesma rodada" e "na role certa" sejam
+// garantidos pelo banco, não pelo service. Os `@@unique` com `id` servem só de
+// alvo para elas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Tipo de mercado. Todos semanais (D-29), todos escolhidos por officer (D-20).
+enum BetMarketKind {
+  top_dps
+  top_dps_parse
+  top_hps
+  top_hps_parse
+  top_dispels
+  first_death
+  weekly_progression
+}
+
+/// Farm × progressão é do boss na rodada, declarado pelo officer (§6.3).
+enum BetEncounterTrack {
+  farm
+  progressao
+}
+
+/// Role do Titan Roster como o WoWAudit escreve, congelada no Ready (D-33).
+enum BetCandidateRole {
+  Tank
+  Melee
+  Heal
+  Ranged
+}
+
+/// Estado do Bet Slip (§16.5). Ativos: rascunho, aguardando_deposito, valido.
+enum BetSlipStatus {
+  rascunho
+  aguardando_deposito
+  valido
+  recusado
+  expirado
+}
+
+/// Uma semana do Titan Bet — a unidade de aposta e de settlement (D-29).
+///
+/// `readyAt` nulo = PREPARATION. As demais fases são derivadas (§16.5).
+/// CHECK na migration: Ready antes do cutoff, e Ready com officer (D-31).
+model BetRound {
+  id String @id @default(cuid())
+
+  /// Period da Blizzard: uma rodada por reset.
+  period Int @unique
+
+  /// Informativo. Sem FK: a rodada não depende de a season estar gravada.
+  seasonId Int?
+
+  opensAt  DateTime
+  cutoffAt DateTime
+
+  /// Configuration freeze (D-31). Ator sem FK, como no LootSession.
+  readyAt          DateTime?
+  readyByUserId    String?
+  readyByBattletag String?
+
+  /// De quando é o dado externo congelado no Ready.
+  bettorSourceFetchedAt    DateTime?
+  candidateSourceFetchedAt DateTime?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  encounters     BetRoundEncounter[]
+  markets        BetMarket[]
+  bettors        BetRoundBettor[]
+  candidates     BetRoundCandidate[]
+  slips          BetSlip[]
+  bets           Bet[]
+  ledger         GoldLedgerEntry[]
+  events         BetEvent[]
+  audits         BetAudit[]
+  results        BetMarketResult[]
+  closingReports RoundClosingReport[]
+}
+
+/// Um boss na rodada, escolhido do catálogo do WCL (D-22).
+model BetRoundEncounter {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  /// `encounterID` do Warcraft Logs.
+  encounterId   Int
+  encounterName String
+  zoneName      String
+
+  track BetEncounterTrack
+
+  createdByUserId    String
+  createdByBattletag String
+  updatedByUserId    String?
+  updatedByBattletag String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  markets     BetMarket[]
+  resultKills BetMarketResultKill[]
+  weeklyBets  Bet[]                 @relation("AlvoDaWeekly")
+
+  @@unique([roundId, encounterId])
+  /// Alvo da FK do mercado: mesma rodada e mesmo track.
+  @@unique([id, roundId, track])
+  /// Alvo da FK do kill da Weekly: encounter desta rodada.
+  @@unique([id, roundId])
+}
+
+/// Mercado semanal. Sem status: existe = publicado (§16.5).
+///
+/// Índice parcial na migration: uma Weekly Progression por rodada. CHECKs:
+/// Weekly ⇔ sem boss; boss em progressão só tem First Death (R-22/R-24);
+/// `track` presente ⇔ encounter presente, senão a FK composta não confere nada.
+model BetMarket {
+  id      String        @id @default(cuid())
+  roundId String
+  round   BetRound      @relation(fields: [roundId], references: [id])
+  kind    BetMarketKind
+
+  /// Nulo só na Weekly Progression.
+  roundEncounterId String?
+
+  /// Cópia do `track` do encounter, amarrada pela FK composta.
+  track BetEncounterTrack?
+
+  /// Encounter da mesma rodada e com o mesmo track (§16.3, §16.4).
+  roundEncounter BetRoundEncounter? @relation(fields: [roundEncounterId, roundId, track], references: [id, roundId, track])
+
+  createdByUserId    String
+  createdByBattletag String
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  bets    Bet[]
+  ledger  GoldLedgerEntry[]
+  results BetMarketResult[]
+
+  @@unique([roundId, kind, roundEncounterId])
+  /// Alvo da FK da aposta: mesma rodada e mesmo tipo.
+  @@unique([id, roundId, kind])
+  /// Alvo da FK do resultado: mercado desta rodada.
+  @@unique([id, roundId])
+}
+
+/// Snapshot de quem pode apostar: personagens da guilda no Ready (D-32, D-38).
+model BetRoundBettor {
+  id          String    @id @default(cuid())
+  roundId     String
+  round       BetRound  @relation(fields: [roundId], references: [id])
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id])
+
+  /// Rank do personagem no Ready — a evidência da elegibilidade.
+  rank  Int
+  name  String
+  realm String
+
+  slips BetSlip[]
+
+  @@unique([roundId, characterId])
+}
+
+/// Snapshot dos candidatos: Titan Roster no Ready, com a role (D-33).
+model BetRoundCandidate {
+  id          String           @id @default(cuid())
+  roundId     String
+  round       BetRound         @relation(fields: [roundId], references: [id])
+  characterId String
+  character   Character        @relation(fields: [characterId], references: [id])
+  role        BetCandidateRole
+  name        String
+  realm       String
+
+  bets       Bet[]
+  resultWins BetMarketResultWinner[]
+
+  @@unique([roundId, characterId])
+  /// Alvo da FK da aposta: candidato desta rodada, com esta role.
+  @@unique([roundId, characterId, role])
+}
+
+/// O Bet Slip de uma conta numa rodada (D-27, D-34). Dado privado.
+///
+/// Índice parcial na migration: no máximo um slip ATIVO por conta e rodada
+/// (rascunho, aguardando_deposito, valido) — recusados e expirados ficam como
+/// histórico. CHECKs: campos obrigatórios por estado.
+model BetSlip {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  /// A conta dona. Sem FK: registro de dinheiro não some com a conta.
+  ownerUserId    String
+  ownerBattletag String
+
+  /// O personagem do snapshot desta rodada que deu a elegibilidade (D-38).
+  eligibilityCharacterId String
+  eligibility            BetRoundBettor @relation(fields: [roundId, eligibilityCharacterId], references: [roundId, characterId])
+
+  status BetSlipStatus @default(rascunho)
+
+  /// Congelados no "Submeter pagamento".
+  depositCharacterId String?
+  depositCharacter   Character? @relation("DepositanteDoSlip", fields: [depositCharacterId], references: [id])
+  expectedTotal      Int?
+  submittedAt        DateTime?
+
+  validatedByUserId    String?
+  validatedByBattletag String?
+  validatedAt          DateTime?
+
+  rejectedByUserId    String?
+  rejectedByBattletag String?
+  rejectedAt          DateTime?
+  rejectionReason     String?
+
+  expiredAt DateTime?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  bets   Bet[]
+  ledger GoldLedgerEntry[]
+
+  /// Alvo da FK da aposta: slip desta rodada.
+  @@unique([id, roundId])
+}
+
+/// Uma aposta num mercado (D-28). Dado privado.
+///
+/// CHECKs na migration: stake 200–1.000; escolha simples com exatamente um
+/// alvo e Weekly sem alvo; role do alvo compatível com o tipo do mercado.
+model Bet {
+  id      String   @id @default(cuid())
+  slipId  String
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  /// Slip da mesma rodada.
+  slip BetSlip @relation(fields: [slipId, roundId], references: [id, roundId])
+
+  marketId   String
+  marketKind BetMarketKind
+
+  /// Mercado da mesma rodada, e o tipo copiado para os CHECKs.
+  market BetMarket @relation(fields: [marketId, roundId, marketKind], references: [id, roundId, kind])
+
+  /// Um stake por aposta, em gold inteiro.
+  stake Int
+
+  /// Alvo das escolhas simples. Nulos na Weekly Progression.
+  targetCharacterId String?
+  targetRole        BetCandidateRole?
+
+  /// Candidato do snapshot desta rodada, com a role congelada (D-33).
+  target BetRoundCandidate? @relation(fields: [roundId, targetCharacterId, targetRole], references: [roundId, characterId, role])
+
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  ledger               GoldLedgerEntry[]
+  /// Weekly Progression (D-54): o boss de progressão apostado. Nulo nos
+  /// mercados de personagem.
+  targetEncounterId    String?
+  targetEncounterTrack BetEncounterTrack?
+  /// Só boss de progressão desta rodada é alvo da Weekly (T-W14).
+  targetEncounter      BetRoundEncounter? @relation("AlvoDaWeekly", fields: [targetEncounterId, roundId, targetEncounterTrack], references: [id, roundId, track])
+
+  @@unique([slipId, marketId])
+  /// Alvo da FK da seleção: aposta desta rodada, deste tipo.
+  @@unique([id, roundId, marketKind])
+}
+
+/// Conta de um lançamento: o membro (pela conta do slip) ou o Guild Bank.
+enum GoldLedgerAccount {
+  membro
+  guild_bank
+}
+
+/// O que um lançamento é (§16.6).
+enum GoldLedgerKind {
+  deposito_validado
+  premio
+  restituicao_anulado
+  receita_guilda
+  residuo_guilda
+  /// Não é mais lançável (D-67, CHECK `GoldLedgerEntry_sem_restituicao_expirado`):
+  /// slip que nunca chegou a `valido` não tem restituição no ledger. Fica no
+  /// enum pelo histórico.
+  restituicao_expirado
+  ajuste
+  pagamento
+  /// Rodada sem nenhum mercado premiável (D-74): o órfão devolve o próprio `P`
+  /// (90%) aos apostadores válidos do mercado, pelo stake. Não é o VOID.
+  restituicao_sem_premiavel
+}
+
+/// A ÚNICA fonte financeira do Titan Bet (§16.6). Append-only.
+///
+/// Append-only, CHECKs e índices parciais de idempotência vivem na migration
+/// 20260923220000_titan_bet_imutabilidade (o Prisma não os representa).
+/// `resultId` ainda sem FK: o `BetMarketResult` nasce no milestone do Auditar.
+model GoldLedgerEntry {
+  /// Sequencial: dá a ordem total dos lançamentos.
+  id BigInt @id @default(autoincrement())
+
+  roundId String
+  round   BetRound          @relation(fields: [roundId], references: [id])
+  account GoldLedgerAccount
+
+  /// A conta do membro na rodada. Obrigatório em `membro`.
+  slipId String?
+  slip   BetSlip? @relation(fields: [slipId], references: [id])
+
+  kind   GoldLedgerKind
+  /// Gold inteiro.
+  amount Int
+
+  marketId String?
+  market   BetMarket? @relation(fields: [marketId], references: [id])
+  betId    String?
+  bet      Bet?       @relation(fields: [betId], references: [id])
+  resultId String?
+
+  /// `ajuste`: o lançamento corrigido e o motivo.
+  correctsEntryId BigInt?
+  corrects        GoldLedgerEntry?  @relation("CorrecaoDoLancamento", fields: [correctsEntryId], references: [id])
+  correctedBy     GoldLedgerEntry[] @relation("CorrecaoDoLancamento")
+  reason          String?
+
+  /// `pagamento`: até qual lançamento este pagamento quita (a composição).
+  coversThroughEntryId BigInt?
+  coversThrough        GoldLedgerEntry?  @relation("QuitacaoDoPagamento", fields: [coversThroughEntryId], references: [id])
+  coveredBy            GoldLedgerEntry[] @relation("QuitacaoDoPagamento")
+
+  actorUserId    String?
+  actorBattletag String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+}
+
+/// O que um BetEvent registra (§16.8). Só o que nenhuma estrutura imutável já
+/// registra: por ora, a tentativa de Ready que falhou — que, por ser atômica,
+/// não deixa nenhum outro rastro.
+enum BetEventType {
+  ready_falhou
+  /// Rodada criada pelo officer (D-45) — a rodada não tem coluna de autor.
+  rodada_criada
+  /// Preparação da semana salva (D-45): o que foi criado, alterado e removido.
+  configuracao_salva
+  /// "Ver slip" do Officer Panel (D-57): quem abriu qual slip, e quando.
+  slip_visualizado
+}
+
+/// Trilha de auditoria do Titan Bet (§16.8), no molde do LootSessionEvent.
+/// Lado privado: pode carregar dado de aposta. Append-only no banco.
+model BetEvent {
+  id BigInt @id @default(autoincrement())
+
+  roundId String?
+  round   BetRound? @relation(fields: [roundId], references: [id])
+
+  type BetEventType
+
+  /// Quem fez. Sem FK — registro não some com a conta.
+  actorUserId    String
+  actorBattletag String
+
+  /// O que aconteceu, na forma do tipo.
+  payload Json
+
+  /// Id gerado pelo cliente, para reenvio não duplicar.
+  clientEventId String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([roundId, id])
+}
+
+// ─── Titan Bet: Auditar (§7.2, §16.2) ────────────────────────────────────────
+
+/// Estados da auditoria (§16.5): aguardando_revisao ⇄ pronta → calculada →
+/// confirmada; qualquer não confirmada → substituida quando outra começa.
+enum BetAuditStatus {
+  aguardando_revisao
+  pronta
+  calculada
+  confirmada
+  substituida
+}
+
+/// As duas sessões de evidência da rodada (D-19, D-23). Não existe outra.
+enum BetAuditSession {
+  terca
+  quinta
+}
+
+/// Como a sessão foi resolvida. `automatica`: um ou mais `titanbet*` achados, todos
+/// usados (D-63). `ausente`: nenhum — pede o officer; a ausência sozinha nunca
+/// resolve (D-24, D-60). `sem_raid`: o officer declarou, com motivo, que não
+/// houve raid oficial — sessão resolvida, sem pulls (D-60).
+enum BetSourceResolution {
+  automatica
+  ausente
+  sem_raid
+}
+
+/// Cada Auditar é uma tentativa (D-30). Refazer cria outra; a anterior fica
+/// `substituida`, intacta. No máximo uma `confirmada` por rodada.
+model BetAudit {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+
+  attempt Int
+  status  BetAuditStatus
+
+  startedByUserId    String
+  startedByBattletag String
+  startedAt          DateTime @default(now())
+
+  calculatedAt DateTime?
+
+  confirmedByUserId    String?
+  confirmedByBattletag String?
+  confirmedAt          DateTime?
+
+  /// A tentativa que substituiu esta. Sem FK: é trilha, não estrutura.
+  supersededByAuditId String?
+
+  sources        BetAuditSource[]
+  results        BetMarketResult[]
+  closingReports RoundClosingReport[]
+
+  @@unique([roundId, attempt])
+  /// Alvo da FK do resultado: auditoria desta rodada.
+  @@unique([id, roundId])
+}
+
+/// A fonte de uma sessão numa tentativa de Auditar. Todos os `titanbet*` válidos
+/// da sessão são usados (D-63): a referência de cada um, como foi lida, fica em
+/// `BetAuditSourceReport` — é ela, e não uma leitura nova do WCL, que o cálculo
+/// usa (§15.10).
+model BetAuditSource {
+  id      String   @id @default(cuid())
+  auditId String
+  audit   BetAudit @relation(fields: [auditId], references: [id])
+
+  session    BetAuditSession
+  resolution BetSourceResolution
+
+  /// `sem_raid`: por que não houve raid oficial (D-60).
+  noRaidReason String?
+
+  resolvedByUserId    String?
+  resolvedByBattletag String?
+  resolvedAt          DateTime?
+
+  reports BetAuditSourceReport[]
+
+  /// Uma fonte por sessão por tentativa (T-A11).
+  @@unique([auditId, session])
+}
+
+/// Um `titanbet*` usado pela sessão, com a referência congelada no Auditar.
+model BetAuditSourceReport {
+  id       String         @id @default(cuid())
+  sourceId String
+  source   BetAuditSource @relation(fields: [sourceId], references: [id])
+
+  reportCode      String
+  reportTitle     String
+  reportRevision  Int
+  reportStartTime DateTime
+
+  /// Os dados externos do report, congelados no Auditar (D-76): o que o
+  /// Calcular lê, no lugar do WCL. JSON versionado (`snapshot.ts`), imutável e
+  /// amarrado a `reportCode`/`reportRevision` no banco. Nulo só em auditorias
+  /// anteriores à revisão 15 — histórico, nunca fabricado.
+  snapshot Json?
+
+  /// Cada `titanbet*` uma vez por fonte (T-A16).
+  @@unique([sourceId, reportCode])
+}
+
+// ─── Titan Bet: resultado da auditoria (§7.3, §16.2) ──────────────────────────
+
+/// O desfecho calculado de um mercado. `anulado` é a proposta de VOID (D-06,
+/// D-16): só vale quando o officer confirma a auditoria.
+enum BetResultOutcome {
+  vencedores
+  /// Resultado válido, sem vencedor premiável (D-61): o P é redistribuído.
+  sem_vencedor
+  anulado
+}
+
+/// O resultado de um mercado numa tentativa de Auditar. Imutável: recalcular é
+/// outra tentativa (D-30). V/P/W explicam o cálculo; o dinheiro é do ledger.
+model BetMarketResult {
+  id       String    @id @default(cuid())
+  auditId  String
+  /// Auditoria, mercado e resultado da mesma rodada (T-X02).
+  audit    BetAudit  @relation(fields: [auditId, roundId], references: [id, roundId])
+  marketId String
+  market   BetMarket @relation(fields: [marketId, roundId], references: [id, roundId])
+  roundId  String
+  round    BetRound  @relation(fields: [roundId], references: [id])
+
+  outcome    BetResultOutcome
+  voidReason String?
+
+  /// V, P e W da §8.1. P e W nulos quando anulado.
+  validPool    Int
+  prizePool    Int?
+  winningStake Int?
+
+  /// O que foi lido e usado, versionado (§15.10). Congelado: o parse do Auditar
+  /// é o que vale, não o de hoje (D-43).
+  evidence         Json
+  algorithmVersion String
+  computedAt       DateTime @default(now())
+
+  winners BetMarketResultWinner[]
+  kills   BetMarketResultKill[]
+
+  /// Um resultado por mercado por tentativa (T-X01).
+  @@unique([auditId, marketId])
+  /// Alvo das FKs de vencedor e kill: resultado desta rodada.
+  @@unique([id, roundId])
+}
+
+/// Personagem vencedor de um resultado — sempre candidato do snapshot (D-13).
+model BetMarketResultWinner {
+  resultId    String
+  result      BetMarketResult   @relation(fields: [resultId, roundId], references: [id, roundId])
+  roundId     String
+  characterId String
+  /// Só candidato do snapshot vence (D-13, T-X04).
+  candidate   BetRoundCandidate @relation(fields: [roundId, characterId], references: [roundId, characterId])
+
+  @@id([resultId, characterId])
+}
+
+/// `K` da Weekly Progression: um encounter morto por linha. Zero linhas com
+/// `vencedores` é `K = {}` (D-15).
+model BetMarketResultKill {
+  resultId         String
+  result           BetMarketResult   @relation(fields: [resultId, roundId], references: [id, roundId])
+  roundId          String
+  roundEncounterId String
+  roundEncounter   BetRoundEncounter @relation(fields: [roundEncounterId, roundId], references: [id, roundId])
+
+  @@id([resultId, roundEncounterId])
+}
+
+// ─── Titan Bet: Round Closing Report (§8.5, §16.7) ───────────────────────────
+
+/// O documento publicado da rodada — não é fonte contábil: é gerado do
+/// resultado confirmado e do ledger, com a marca d'água do último lançamento
+/// que ele cobre. Republicar é uma versão nova; nenhuma muda depois.
+model RoundClosingReport {
+  id      String   @id @default(cuid())
+  roundId String
+  round   BetRound @relation(fields: [roundId], references: [id])
+  version Int
+
+  auditId String
+  /// A auditoria confirmada desta rodada.
+  audit   BetAudit @relation(fields: [auditId, roundId], references: [id, roundId])
+
+  /// Até onde o ledger foi lido para gerar este documento.
+  ledgerThroughEntryId BigInt
+
+  /// Validado pelo schema **publicado** do shared antes de gravar.
+  content Json
+
+  publishedByUserId    String
+  publishedByBattletag String
+  publishedAt          DateTime @default(now())
+
+  /// Republicar é versão nova (T-C02).
+  @@unique([roundId, version])
 }

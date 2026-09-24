@@ -12,6 +12,7 @@ import {
   type RaidCatalog,
   type RaidPull,
 } from '../warcraftlogs/warcraftlogs.service';
+import { zonaDaAtividadeMaisRecente } from './zona-atual';
 
 /** Quantas seasons aparecem no seletor. Mesmo número do relatório de M+. */
 const SEASONS_NO_SELETOR = 6;
@@ -64,8 +65,14 @@ interface Agregado {
 export class RaidProgressService {
   private readonly logger = new Logger(RaidProgressService.name);
 
-  /** Um relatório pronto por season. */
-  private readonly cache = new Map<number, { report: RaidProgressReport; fetchedAt: number }>();
+  /**
+   * Um relatório pronto por season, com as pulls de que saiu — o conteúdo atual
+   * (`zonaAtual`) lê as mesmas, sem ir de novo ao WCL.
+   */
+  private readonly cache = new Map<
+    number,
+    { report: RaidProgressReport; pulls: RaidPull[]; fetchedAt: number }
+  >();
 
   constructor(
     private readonly repo: SnapshotsRepository,
@@ -119,6 +126,34 @@ export class RaidProgressService {
     return maisRecente;
   }
 
+  /**
+   * O conteúdo atual da guilda: a zone da atividade de raid real mais recente
+   * (`zonaDaAtividadeMaisRecente`), pela mesma descoberta da progressão — a
+   * janela da season e as pulls do WCL, com o mesmo cache — e a mesma
+   * caminhada: a season mais recente **com atividade**.
+   *
+   * `null` quando não dá para dizer — sem season, sem atividade válida, ou WCL
+   * fora do ar sem dado bom anterior. Quem pergunta mostra tudo; ninguém chuta.
+   */
+  async zonaAtual(): Promise<number | null> {
+    try {
+      const seasons = await this.repo.listSeasons(SEASONS_NO_SELETOR);
+      if (seasons.length === 0) return null;
+      const catalogo = await this.wcl.getRaidCatalog();
+
+      for (const season of seasons) {
+        await this.relatorioDaSeason(season, seasons);
+        const zona = zonaDaAtividadeMaisRecente(this.cache.get(season.id)?.pulls ?? [], catalogo);
+        if (zona !== null) return zona;
+      }
+      return null;
+    } catch (err: unknown) {
+      const motivo = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Conteúdo atual indeterminado: ${motivo}`);
+      return null;
+    }
+  }
+
   /** Monta — ou reaproveita do cache — o relatório de uma season específica. */
   private async relatorioDaSeason(
     escolhida: SeasonRow,
@@ -164,7 +199,7 @@ export class RaidProgressService {
         stale: false,
       };
 
-      this.cache.set(escolhida.id, { report, fetchedAt: Date.now() });
+      this.cache.set(escolhida.id, { report, pulls, fetchedAt: Date.now() });
       this.logger.log(
         `Progressão da season ${escolhida.id}: ${pulls.length} pulls em ${report.raids.length} raids`,
       );
