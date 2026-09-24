@@ -12,6 +12,7 @@ import {
   type LeituraDoReport,
 } from './leitura-wcl';
 import {
+  consolidarPulls,
   killDaSemana,
   motivoDaEvidencia,
   resultadoFirstDeathFarm,
@@ -78,30 +79,42 @@ export class CalculoService {
     const origem = new Map<PullDaSemana, Origem>();
     const fontes: Prisma.InputJsonObject[] = [];
     for (const f of a.sources) {
-      if (!f.reportCode) throw new AuditoriaRecusada(`a sessão ${f.session} está sem fonte`);
-      let report: LeituraDoReport;
-      try {
-        report = await this.wcl.getTitanBetReport(f.reportCode, [...encounters.keys()]);
-      } catch (erro: unknown) {
-        const motivo = erro instanceof Error ? erro.message : String(erro);
-        throw new AuditoriaRecusada(`o Warcraft Logs não respondeu: ${motivo}`);
+      // Sessão declarada sem raid (D-60): resolvida, sem pulls.
+      if (f.resolution === 'sem_raid') {
+        fontes.push({ session: f.session, semRaid: true });
+        continue;
       }
-      const doReport = pullsDoReport(report, f.session, encounters, candidatos);
-      const fights = report.fights.filter((x) => encounters.has(x.encounterID));
-      doReport.forEach((p, i) => origem.set(p, { report, fight: fights[i]! }));
-      pulls.push(...doReport);
-      fontes.push({
-        session: f.session,
-        code: f.reportCode,
-        title: f.reportTitle,
-        revision: f.reportRevision,
-        startTime: f.reportStartTime?.toISOString() ?? null,
-      });
+      if (f.reports.length === 0) {
+        throw new AuditoriaRecusada(`a sessão ${f.session} está sem fonte`);
+      }
+      // Todos os `titanbet*` da sessão, lidos como foram congelados (D-63, §15.10).
+      for (const r of f.reports) {
+        let report: LeituraDoReport;
+        try {
+          report = await this.wcl.getTitanBetReport(r.reportCode, [...encounters.keys()]);
+        } catch (erro: unknown) {
+          const motivo = erro instanceof Error ? erro.message : String(erro);
+          throw new AuditoriaRecusada(`o Warcraft Logs não respondeu: ${motivo}`);
+        }
+        const doReport = pullsDoReport(report, f.session, encounters, candidatos);
+        const fights = report.fights.filter((x) => encounters.has(x.encounterID));
+        doReport.forEach((p, i) => origem.set(p, { report, fight: fights[i]! }));
+        pulls.push(...doReport);
+        fontes.push({
+          session: f.session,
+          code: r.reportCode,
+          title: r.reportTitle,
+          revision: r.reportRevision,
+          startTime: r.reportStartTime.toISOString(),
+        });
+      }
     }
+    // Uma timeline só: a mesma pull em dois reports conta uma vez (D-63).
+    const timeline = consolidarPulls(pulls);
 
     const apostas = await this.repo.apostasValidasDaRodada(a.roundId);
     const resultados = a.round.markets.map((m) => {
-      const r = this.resultadoDoMercado(m, a, pulls, origem, candidatos);
+      const r = this.resultadoDoMercado(m, a, timeline, origem, candidatos);
       return this.paraGravar(m, r, apostas, fontes);
     });
 
@@ -172,9 +185,6 @@ export class CalculoService {
     }
 
     const kill = killDaSemana(pulls, m.roundEncounterId!);
-    if (kill.tipo === 'revisao') {
-      throw new AuditoriaRecusada(`pede revisão do officer: ${kill.motivo} (§7.2, OQ-40)`);
-    }
     if (m.kind === 'first_death') {
       return { resultado: resultadoFirstDeathFarm(kill, elegiveis), kills: [] };
     }

@@ -71,18 +71,20 @@ export function classificarReports(
 }
 
 export type ResolucaoAutomatica =
-  | { resolution: 'automatica'; report: ReportDaGuilda }
-  | { resolution: 'ausente' | 'ambigua'; report: null };
+  { resolution: 'automatica'; reports: ReportDaGuilda[] } | { resolution: 'ausente'; reports: [] };
 
 /**
- * Inequívoco usa sozinho; ausente e ambíguo param e pedem o officer (D-24,
- * D-25, D-30). Ausente não é "sem raid", nem zero kills, nem `{}`.
+ * Todos os `titanbet*` da sessão são fonte, em ordem de início (D-63) — uma
+ * timeline, não um report escolhido. Nenhum → ausente: pede o officer, e só a
+ * declaração dele resolve (D-24, D-60). Ausente não é "sem raid", nem zero
+ * kills, nem `{}`.
  */
 export function resolverSessao(candidatos: ReportDaGuilda[]): ResolucaoAutomatica {
-  const [unico, ...outros] = candidatos;
-  if (!unico) return { resolution: 'ausente', report: null };
-  if (outros.length > 0) return { resolution: 'ambigua', report: null };
-  return { resolution: 'automatica', report: unico };
+  if (candidatos.length === 0) return { resolution: 'ausente', reports: [] };
+  return {
+    resolution: 'automatica',
+    reports: [...candidatos].sort((a, b) => a.startTime - b.startTime),
+  };
 }
 
 /** `YYYY-MM-DD` de um instante no fuso dado. */

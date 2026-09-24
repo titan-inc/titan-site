@@ -52,8 +52,8 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/officer/rodadas/r1/auditoria'],
   [
     'post',
-    '/internal/titan-bet/officer/auditorias/a1/fontes/terca/escolher',
-    { reportCode: 'AbC123' },
+    '/internal/titan-bet/officer/auditorias/a1/fontes/terca/sem-raid',
+    { motivo: 'raid cancelada' },
   ],
 ];
 
@@ -79,7 +79,7 @@ describe('Titan Bet — autorização das rotas', () => {
   const ready = { ready: jest.fn() };
   const apostas = { meuSlip: jest.fn(), salvar: jest.fn(), submeter: jest.fn() };
   const odds = { daRodada: jest.fn() };
-  const auditoria = { auditar: jest.fn(), corrente: jest.fn(), escolherFonte: jest.fn() };
+  const auditoria = { auditar: jest.fn(), corrente: jest.fn(), declararSemRaid: jest.fn() };
   const preparacao = { criar: jest.fn(), catalogo: jest.fn(), ver: jest.fn(), salvar: jest.fn() };
   const calculo = { calcular: jest.fn(), resultados: jest.fn() };
   const settlement = { confirmar: jest.fn() };
@@ -136,7 +136,7 @@ describe('Titan Bet — autorização das rotas', () => {
     odds.daRodada.mockResolvedValue({ roundId: 'r1', mercados: [] });
     auditoria.auditar.mockResolvedValue({ auditId: 'a1' });
     auditoria.corrente.mockResolvedValue(null);
-    auditoria.escolherFonte.mockResolvedValue(undefined);
+    auditoria.declararSemRaid.mockResolvedValue(undefined);
     preparacao.criar.mockResolvedValue({ roundId: 'r1' });
     preparacao.catalogo.mockResolvedValue({ zonas: [] });
     preparacao.ver.mockResolvedValue(null);
@@ -247,7 +247,8 @@ describe('Titan Bet — autorização das rotas', () => {
       expect(deposito.recusar).toHaveBeenCalledWith('s1', officer, 'valor diferente');
     });
 
-    it('Auditar, ver a auditoria e escolher fonte, com o officer da sessão (D-25, D-30)', async () => {
+    // Mudança de produto (D-63, D-60): "escolher fonte" deu lugar a "declarar sem raid".
+    it('Auditar, ver a auditoria e declarar sem raid, com o officer da sessão (D-30, D-60)', async () => {
       comSessao('officer');
       const officer = { userId: 'u1', battletag: 'Conta#1234' };
 
@@ -261,23 +262,28 @@ describe('Titan Bet — autorização das rotas', () => {
       expect(auditoria.corrente).toHaveBeenCalledWith('r1');
 
       await request(server)
-        .post('/internal/titan-bet/officer/auditorias/a1/fontes/quinta/escolher')
-        .send({ reportCode: 'AbC123' })
+        .post('/internal/titan-bet/officer/auditorias/a1/fontes/quinta/sem-raid')
+        .send({ motivo: 'raid cancelada' })
         .expect(204);
-      expect(auditoria.escolherFonte).toHaveBeenCalledWith('a1', 'quinta', 'AbC123', officer);
+      expect(auditoria.declararSemRaid).toHaveBeenCalledWith(
+        'a1',
+        'quinta',
+        'raid cancelada',
+        officer,
+      );
     });
 
-    it('sessão fora de terça/quinta e escolha sem report são 400 antes do service', async () => {
+    it('sessão fora de terça/quinta e sem raid sem motivo são 400 antes do service', async () => {
       comSessao('officer');
       await request(server)
-        .post('/internal/titan-bet/officer/auditorias/a1/fontes/quarta/escolher')
-        .send({ reportCode: 'AbC123' })
+        .post('/internal/titan-bet/officer/auditorias/a1/fontes/quarta/sem-raid')
+        .send({ motivo: 'x' })
         .expect(400);
       await request(server)
-        .post('/internal/titan-bet/officer/auditorias/a1/fontes/terca/escolher')
+        .post('/internal/titan-bet/officer/auditorias/a1/fontes/terca/sem-raid')
         .send({})
         .expect(400);
-      expect(auditoria.escolherFonte).not.toHaveBeenCalled();
+      expect(auditoria.declararSemRaid).not.toHaveBeenCalled();
     });
 
     it('calcular e ver os resultados da auditoria (§7.3)', async () => {

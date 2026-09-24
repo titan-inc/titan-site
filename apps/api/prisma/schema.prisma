@@ -2267,13 +2267,14 @@ enum BetAuditSession {
   quinta
 }
 
-/// Como a fonte da sessão foi resolvida (D-24, D-25, D-30). `ausente` e
-/// `ambigua` param a auditoria; o que resolve a ausência é a OQ-45.
+/// Como a sessão foi resolvida. `automatica`: um ou mais `titanbet*` achados, todos
+/// usados (D-63). `ausente`: nenhum — pede o officer; a ausência sozinha nunca
+/// resolve (D-24, D-60). `sem_raid`: o officer declarou, com motivo, que não
+/// houve raid oficial — sessão resolvida, sem pulls (D-60).
 enum BetSourceResolution {
   automatica
-  escolha_officer
   ausente
-  ambigua
+  sem_raid
 }
 
 /// Cada Auditar é uma tentativa (D-30). Refazer cria outra; a anterior fica
@@ -2308,9 +2309,10 @@ model BetAudit {
   @@unique([id, roundId])
 }
 
-/// A fonte de uma sessão: qual report oficial `titanbet*` e como foi escolhido.
-/// A referência lida (code, title, revision, startTime) fica congelada aqui —
-/// é ela, e não uma nova consulta ao WCL, que o cálculo usa (§15.10).
+/// A fonte de uma sessão numa tentativa de Auditar. Todos os `titanbet*` válidos
+/// da sessão são usados (D-63): a referência de cada um, como foi lida, fica em
+/// `BetAuditSourceReport` — é ela, e não uma leitura nova do WCL, que o cálculo
+/// usa (§15.10).
 model BetAuditSource {
   id      String   @id @default(cuid())
   auditId String
@@ -2319,20 +2321,32 @@ model BetAuditSource {
   session    BetAuditSession
   resolution BetSourceResolution
 
-  reportCode      String?
-  reportTitle     String?
-  reportRevision  Int?
-  reportStartTime DateTime?
-
-  /// Evidência: os `titanbet*` achados para a sessão, como o WCL respondeu.
-  candidates Json
+  /// `sem_raid`: por que não houve raid oficial (D-60).
+  noRaidReason String?
 
   resolvedByUserId    String?
   resolvedByBattletag String?
   resolvedAt          DateTime?
 
+  reports BetAuditSourceReport[]
+
   /// Uma fonte por sessão por tentativa (T-A11).
   @@unique([auditId, session])
+}
+
+/// Um `titanbet*` usado pela sessão, com a referência congelada no Auditar.
+model BetAuditSourceReport {
+  id       String         @id @default(cuid())
+  sourceId String
+  source   BetAuditSource @relation(fields: [sourceId], references: [id])
+
+  reportCode      String
+  reportTitle     String
+  reportRevision  Int
+  reportStartTime DateTime
+
+  /// Cada `titanbet*` uma vez por fonte (T-A16).
+  @@unique([sourceId, reportCode])
 }
 
 // ─── Titan Bet: resultado da auditoria (§7.3, §16.2) ──────────────────────────

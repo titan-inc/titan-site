@@ -6,8 +6,8 @@ import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository'
 import { Fabrica } from './fabrica';
 
 /**
- * Auditar — o fluxo (D-24, D-25, D-30; spec §7.2): T-A04, T-A05, T-A06, T-A09,
- * T-A12. titan-bet-test-design.md §3.7.
+ * Auditar — o fluxo (D-24, D-30, D-60, D-63; spec §7.2): T-A04, T-A05, T-A09,
+ * T-A12, T-A16, T-A19. titan-bet-test-design.md §3.7, §3.18.
  *
  * O WCL é falso — a fonte é o que está sob teste, não a rede. Os horários são
  * de uma semana real: cutoff na terça 22/09/2026, 12:00 BRT (15:00 UTC).
@@ -64,7 +64,11 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
   }
 
   const fontesDe = (auditId: string) =>
-    db.betAuditSource.findMany({ where: { auditId }, orderBy: { session: 'asc' } });
+    db.betAuditSource.findMany({
+      where: { auditId },
+      orderBy: { session: 'asc' },
+      include: { reports: { orderBy: { reportStartTime: 'asc' } } },
+    });
 
   describe('T-A04 — caminho feliz: um `titanbet*` por sessão, sem seleção manual (D-30)', () => {
     it('duas fontes automáticas, auditoria pronta, officer e horário registrados', async () => {
@@ -90,18 +94,18 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
       expect(terca).toMatchObject({
         session: 'terca',
         resolution: 'automatica',
-        reportCode: 'Terca1',
-        reportTitle: 'TitanBet Tuesday',
-        reportRevision: 7,
-        reportStartTime: new Date(TERCA),
         resolvedByUserId: null,
       });
-      expect(quinta).toMatchObject({
-        session: 'quinta',
-        resolution: 'automatica',
-        reportCode: 'Quinta1',
-        reportRevision: 12,
-      });
+      expect(terca!.reports).toMatchObject([
+        {
+          reportCode: 'Terca1',
+          reportTitle: 'TitanBet Tuesday',
+          reportRevision: 7,
+          reportStartTime: new Date(TERCA),
+        },
+      ]);
+      expect(quinta).toMatchObject({ session: 'quinta', resolution: 'automatica' });
+      expect(quinta!.reports).toMatchObject([{ reportCode: 'Quinta1', reportRevision: 12 }]);
     });
 
     it('a janela pedida ao WCL começa no cutoff e cobre a quinta inteira', async () => {
@@ -129,7 +133,7 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
       expect(a.status).toBe('aguardando_revisao');
       expect(a.calculatedAt).toBeNull();
       const [, quinta] = await fontesDe(auditId);
-      expect(quinta).toMatchObject({ resolution: 'ausente', reportCode: null, candidates: [] });
+      expect(quinta).toMatchObject({ resolution: 'ausente', noRaidReason: null, reports: [] });
     });
 
     it('WCL fora do ar não vira auditoria nenhuma — lacuna não é resultado (§7.4)', async () => {
@@ -140,74 +144,93 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
     });
   });
 
-  describe('T-A06 — vários candidatos: o officer escolhe e fica registrado (D-25)', () => {
-    async function ambigua() {
+  // Mudança de produto (D-63, D-60): substitui o T-A06 ("vários candidatos: o
+  // officer escolhe"). Vários `titanbet*` na sessão são todos fonte; a ação do
+  // officer passa a ser declarar que não houve raid oficial.
+  describe('T-A16 — todos os `titanbet*` da sessão são fonte (D-63)', () => {
+    it('dois na terça → os dois usados, congelados, auditoria pronta — ninguém escolhe', async () => {
       const rodada = await rodadaFechada();
       wcl.listGuildReports.mockResolvedValue([
-        report('TercaA', TERCA, { title: 'titanbet', revision: 3 }),
         report('TercaB', TERCA + 60_000, { title: 'titanbet 2', revision: 5 }),
+        report('TercaA', TERCA, { revision: 3 }),
         report('Quinta1', QUINTA),
       ]);
+      const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
+
+      const a = await db.betAudit.findUniqueOrThrow({ where: { id: auditId } });
+      expect(a.status).toBe('pronta');
+      const [terca] = await fontesDe(auditId);
+      expect(terca).toMatchObject({ resolution: 'automatica', resolvedByUserId: null });
+      expect(terca!.reports.map((r) => [r.reportCode, r.reportRevision])).toEqual([
+        ['TercaA', 3],
+        ['TercaB', 5],
+      ]);
+    });
+
+    it('o Officer Panel vê a tentativa com os reports, no contrato do shared', async () => {
+      const rodada = await rodadaFechada();
+      wcl.listGuildReports.mockResolvedValue([
+        report('TercaA', TERCA),
+        report('TercaB', TERCA + 60_000),
+      ]);
+      const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
+      const vista = await auditoria.corrente(rodada.id);
+      expect(auditoriaCorrenteSchema.parse(vista)).toEqual(vista);
+      expect(vista).toMatchObject({ auditId, attempt: 1, status: 'aguardando_revisao' });
+      expect(vista?.fontes.map((f) => [f.session, f.resolution, f.reports.length])).toEqual([
+        ['terca', 'automatica', 2],
+        ['quinta', 'ausente', 0],
+      ]);
+    });
+  });
+
+  describe('T-A19 — o officer declara "não houve raid oficial" (D-60)', () => {
+    async function quintaAusente() {
+      const rodada = await rodadaFechada();
+      wcl.listGuildReports.mockResolvedValue([report('Terca1', TERCA)]);
       const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
       return { rodada, auditId };
     }
 
-    it('dois na terça → `ambigua`, com os candidatos como evidência; o sistema não escolhe', async () => {
-      const { auditId } = await ambigua();
-      const a = await db.betAudit.findUniqueOrThrow({ where: { id: auditId } });
-      expect(a.status).toBe('aguardando_revisao');
-      const [terca] = await fontesDe(auditId);
-      expect(terca).toMatchObject({ resolution: 'ambigua', reportCode: null });
-      expect((terca!.candidates as Array<{ code: string }>).map((c) => c.code).sort()).toEqual([
-        'TercaA',
-        'TercaB',
-      ]);
-    });
+    it('sessão ausente → sem raid, com motivo, officer e horário; auditoria pronta', async () => {
+      const { auditId } = await quintaAusente();
+      await auditoria.declararSemRaid(auditId, 'quinta', 'raid cancelada', OUTRO_OFFICER);
 
-    it('o officer escolhe: `escolha_officer`, com officer, horário e a referência do candidato', async () => {
-      const { auditId } = await ambigua();
-      await auditoria.escolherFonte(auditId, 'terca', 'TercaB', OUTRO_OFFICER);
-
-      const [terca] = await fontesDe(auditId);
-      expect(terca).toMatchObject({
-        resolution: 'escolha_officer',
-        reportCode: 'TercaB',
-        reportTitle: 'titanbet 2',
-        reportRevision: 5,
+      const [, quinta] = await fontesDe(auditId);
+      expect(quinta).toMatchObject({
+        resolution: 'sem_raid',
+        noRaidReason: 'raid cancelada',
         resolvedByUserId: OUTRO_OFFICER.userId,
         resolvedByBattletag: OUTRO_OFFICER.battletag,
+        reports: [],
       });
-      expect(terca!.resolvedAt).toBeInstanceOf(Date);
-      // Resolvida a única pendência, a auditoria fica pronta.
+      expect(quinta!.resolvedAt).toBeInstanceOf(Date);
       const a = await db.betAudit.findUniqueOrThrow({ where: { id: auditId } });
       expect(a.status).toBe('pronta');
     });
 
-    it('o Officer Panel vê a tentativa com os candidatos, no contrato do shared', async () => {
-      const { rodada, auditId } = await ambigua();
-      const vista = await auditoria.corrente(rodada.id);
-      expect(auditoriaCorrenteSchema.parse(vista)).toEqual(vista);
-      expect(vista).toMatchObject({ auditId, attempt: 1, status: 'aguardando_revisao' });
-      expect(vista?.fontes.map((f) => [f.session, f.resolution, f.candidatos.length])).toEqual([
-        ['terca', 'ambigua', 2],
-        ['quinta', 'automatica', 1],
-      ]);
+    it('a ausência sozinha nunca resolve: a auditoria espera a declaração', async () => {
+      const { auditId } = await quintaAusente();
+      const a = await db.betAudit.findUniqueOrThrow({ where: { id: auditId } });
+      expect(a.status).toBe('aguardando_revisao');
     });
 
-    it('report fora dos candidatos → recusado, nada muda', async () => {
-      const { auditId } = await ambigua();
+    it('sessão que tem report não se declara sem raid', async () => {
+      const { auditId } = await quintaAusente();
       await expect(
-        auditoria.escolherFonte(auditId, 'terca', 'Comum1', OFFICER),
+        auditoria.declararSemRaid(auditId, 'terca', 'engano', OFFICER),
       ).rejects.toBeInstanceOf(AuditoriaRecusada);
       const [terca] = await fontesDe(auditId);
-      expect(terca?.resolution).toBe('ambigua');
+      expect(terca?.resolution).toBe('automatica');
     });
 
-    it('sessão que não está ambígua não se escolhe — nem a automática, nem a ausente', async () => {
-      const { auditId } = await ambigua();
+    it('motivo vazio → recusado, nada muda', async () => {
+      const { auditId } = await quintaAusente();
       await expect(
-        auditoria.escolherFonte(auditId, 'quinta', 'Quinta1', OFFICER),
+        auditoria.declararSemRaid(auditId, 'quinta', '   ', OFFICER),
       ).rejects.toBeInstanceOf(AuditoriaRecusada);
+      const [, quinta] = await fontesDe(auditId);
+      expect(quinta?.resolution).toBe('ausente');
     });
   });
 
@@ -249,22 +272,19 @@ describe('Titan Bet — Auditar (serviço + banco)', () => {
     });
   });
 
-  describe('T-A12 — as referências usadas ficam congeladas (D-30, §15.10)', () => {
-    it('a escolha do officer usa o candidato gravado, não uma leitura nova do WCL', async () => {
+  // Mudança de produto (D-63): o T-A12 aqui testava a escolha do officer sobre o
+  // candidato gravado. O congelamento continua: a referência lida fica nos
+  // reports da fonte, e refazer o Auditar é outra tentativa (T-A09). Que o
+  // cálculo lê exatamente esses reports é o T-A12 em calculo.db-spec.ts.
+  describe('T-A12 — a referência lida fica congelada na fonte (D-30, §15.10)', () => {
+    it('o WCL mudar a revisão depois não muda a fonte gravada', async () => {
       const rodada = await rodadaFechada();
-      wcl.listGuildReports.mockResolvedValue([
-        report('TercaA', TERCA, { revision: 3 }),
-        report('TercaB', TERCA + 60_000, { revision: 5 }),
-      ]);
+      wcl.listGuildReports.mockResolvedValue([report('Terca1', TERCA, { revision: 3 })]);
       const { auditId } = await auditoria.auditar(rodada.id, OFFICER);
 
-      // O report recebeu upload depois do Auditar: o WCL agora responde outra revisão.
-      wcl.listGuildReports.mockResolvedValue([report('TercaB', TERCA + 60_000, { revision: 99 })]);
-      await auditoria.escolherFonte(auditId, 'terca', 'TercaB', OFFICER);
-
+      wcl.listGuildReports.mockResolvedValue([report('Terca1', TERCA, { revision: 99 })]);
       const [terca] = await fontesDe(auditId);
-      expect(terca?.reportRevision).toBe(5);
-      expect(wcl.listGuildReports).toHaveBeenCalledTimes(1);
+      expect(terca?.reports.map((r) => r.reportRevision)).toEqual([3]);
     });
   });
 

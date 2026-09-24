@@ -4,11 +4,7 @@ import { loadGuildTimezone } from '../config/guild.config';
 import { WarcraftLogsService } from '../warcraftlogs/warcraftlogs.service';
 import { classificarReports, resolverSessao, type ReportDaGuilda, type Sessao } from './auditoria';
 import { podeAuditar } from './fases';
-import {
-  TitanBetRepository,
-  type FonteParaGravar,
-  type ReportGravado,
-} from './titan-bet.repository';
+import { TitanBetRepository, type FonteParaGravar } from './titan-bet.repository';
 
 /** O Auditar foi recusado; nada foi gravado. */
 export class AuditoriaRecusada extends Error {
@@ -74,11 +70,12 @@ export class AuditoriaService {
     }
 
     const porSessao = classificarReports(reports, janela);
-    const fontes: FonteParaGravar[] = (['terca', 'quinta'] as const).map((session) => {
-      const candidatos = porSessao[session].map(gravavel);
-      const { resolution, report } = resolverSessao(candidatos);
-      return { session, resolution, report, candidatos };
-    });
+    // Todos os `titanbet*` da sessão são fonte (D-63); nenhum → ausente, e só a
+    // declaração do officer resolve (D-60).
+    const fontes: FonteParaGravar[] = (['terca', 'quinta'] as const).map((session) => ({
+      session,
+      ...resolverSessao(porSessao[session].map(gravavel)),
+    }));
     const status = fontes.every((f) => f.resolution === 'automatica')
       ? 'pronta'
       : 'aguardando_revisao';
@@ -106,19 +103,13 @@ export class AuditoriaService {
       fontes: a.sources.map((f) => ({
         session: f.session,
         resolution: f.resolution,
-        report:
-          f.reportCode === null
-            ? null
-            : {
-                code: f.reportCode,
-                title: f.reportTitle!,
-                revision: f.reportRevision!,
-                startTime: f.reportStartTime!.toISOString(),
-              },
-        candidatos: (f.candidates as unknown as ReportGravado[]).map((c) => ({
-          ...c,
-          startTime: new Date(c.startTime).toISOString(),
+        reports: f.reports.map((r) => ({
+          code: r.reportCode,
+          title: r.reportTitle,
+          revision: r.reportRevision,
+          startTime: r.reportStartTime.toISOString(),
         })),
+        motivoSemRaid: f.noRaidReason,
         resolvedByBattletag: f.resolvedByBattletag,
         resolvedAt: f.resolvedAt?.toISOString() ?? null,
       })),
@@ -126,28 +117,23 @@ export class AuditoriaService {
   }
 
   /**
-   * A escolha do officer numa sessão ambígua (D-25): só entre os candidatos que
-   * o Auditar gravou, com a referência como foi lida (T-A12).
+   * "Não houve raid oficial nesta sessão" (D-60): o officer resolve a sessão
+   * ausente, com motivo. Ela fica sem pulls; a outra sessão segue normal.
    */
-  async escolherFonte(
+  async declararSemRaid(
     auditId: string,
     session: Sessao,
-    reportCode: string,
+    motivo: string,
     officer: Officer,
   ): Promise<void> {
-    const r = await this.repo.escolherFonte({
+    const texto = motivo.trim();
+    if (!texto) throw new AuditoriaRecusada('declarar sem raid exige motivo (D-60)');
+    const r = await this.repo.declararSemRaid({
       auditId,
       session,
+      motivo: texto,
       officer,
       agora: new Date(),
-      escolher: ({ resolution, candidatos }) => {
-        if (resolution !== 'ambigua') {
-          return { recusa: `a fonte de ${session} está ${resolution} — só se escolhe na ambígua` };
-        }
-        const report = candidatos.find((c) => c.code === reportCode);
-        if (!report) return { recusa: `${reportCode} não é candidato de ${session}` };
-        return { report };
-      },
     });
     if (r.tipo === 'recusado') throw new AuditoriaRecusada(r.motivo);
   }

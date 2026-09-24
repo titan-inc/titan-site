@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { auditoriaCorrenteSchema, escolherFonteSchema } from './auditoria.js';
+import { auditoriaCorrenteSchema, declararSemRaidSchema } from './auditoria.js';
 
 /**
- * Contrato do Auditar no Officer Panel (D-25, D-30; spec §7.2).
- * O officer vê as fontes e os candidatos, e escolhe entre eles.
+ * Contrato do Auditar no Officer Panel (D-30, D-60, D-63; spec §7.2).
+ *
+ * Mudança de produto (D-63): a sessão não tem mais "report escolhido" nem
+ * "candidatos" para o officer escolher — todos os `titanbet*` da sessão são
+ * fonte. O que o officer faz é declarar "sem raid oficial" (D-60). Substitui o
+ * contrato de `escolherFonteSchema`.
  */
 
 const report = {
@@ -22,17 +26,17 @@ const auditoria = {
   fontes: [
     {
       session: 'terca',
-      resolution: 'ambigua',
-      report: null,
-      candidatos: [report, { ...report, code: 'XyZ789' }],
+      resolution: 'automatica',
+      reports: [report, { ...report, code: 'XyZ789' }],
+      motivoSemRaid: null,
       resolvedByBattletag: null,
       resolvedAt: null,
     },
     {
       session: 'quinta',
-      resolution: 'automatica',
-      report,
-      candidatos: [report],
+      resolution: 'ausente',
+      reports: [],
+      motivoSemRaid: null,
       resolvedByBattletag: null,
       resolvedAt: null,
     },
@@ -40,17 +44,35 @@ const auditoria = {
 };
 
 describe('auditoriaCorrenteSchema', () => {
-  it('aceita a tentativa com as duas fontes e os candidatos', () => {
+  it('T-A16: a sessão com todos os reports usados; a ausente pedindo o officer', () => {
     expect(auditoriaCorrenteSchema.parse(auditoria)).toEqual(auditoria);
   });
 
-  it('só as sessões e resoluções da D-19/D-30', () => {
+  it('T-A19: sessão declarada sem raid, com motivo e officer', () => {
+    const semRaid = {
+      ...auditoria.fontes[1],
+      resolution: 'sem_raid',
+      motivoSemRaid: 'raid cancelada',
+      resolvedByBattletag: 'Officer#2',
+      resolvedAt: '2026-09-25T03:00:00.000Z',
+    };
+    expect(auditoriaCorrenteSchema.safeParse({ ...auditoria, fontes: [semRaid] }).success).toBe(
+      true,
+    );
+  });
+
+  it('as resoluções antigas não existem mais', () => {
+    for (const resolution of ['ambigua', 'escolha_officer']) {
+      const fonte = { ...auditoria.fontes[0], resolution };
+      expect(auditoriaCorrenteSchema.safeParse({ ...auditoria, fontes: [fonte] }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it('só as sessões da D-19', () => {
     const quarta = { ...auditoria.fontes[0], session: 'quarta' };
     expect(auditoriaCorrenteSchema.safeParse({ ...auditoria, fontes: [quarta] }).success).toBe(
-      false,
-    );
-    const inventada = { ...auditoria.fontes[0], resolution: 'sem_raid' };
-    expect(auditoriaCorrenteSchema.safeParse({ ...auditoria, fontes: [inventada] }).success).toBe(
       false,
     );
   });
@@ -62,10 +84,10 @@ describe('auditoriaCorrenteSchema', () => {
   });
 });
 
-describe('escolherFonteSchema', () => {
-  it('o código do report escolhido, obrigatório', () => {
-    expect(escolherFonteSchema.safeParse({ reportCode: 'AbC123' }).success).toBe(true);
-    expect(escolherFonteSchema.safeParse({ reportCode: '' }).success).toBe(false);
-    expect(escolherFonteSchema.safeParse({}).success).toBe(false);
+describe('declararSemRaidSchema — "não houve raid oficial nesta sessão" (D-60)', () => {
+  it('o motivo é obrigatório', () => {
+    expect(declararSemRaidSchema.safeParse({ motivo: 'raid cancelada' }).success).toBe(true);
+    expect(declararSemRaidSchema.safeParse({ motivo: '  ' }).success).toBe(false);
+    expect(declararSemRaidSchema.safeParse({}).success).toBe(false);
   });
 });

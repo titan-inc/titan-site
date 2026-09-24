@@ -12,15 +12,15 @@ import {
 } from '@nestjs/common';
 import {
   ajustarSchema,
-  escolherFonteSchema,
+  declararSemRaidSchema,
   prepararRodadaSchema,
   recusarDepositoSchema,
   sessaoDaAuditoriaSchema,
   type Ajustar,
   type AuditoriaCorrente,
   type CatalogoDeRaid,
+  type DeclararSemRaid,
   type DepositosPendentes,
-  type EscolherFonte,
   type PreparacaoDaRodada,
   type ResultadosDaAuditoria,
   type SaldosDaRodada,
@@ -216,18 +216,18 @@ export class TitanBetOfficerController {
     return a;
   }
 
-  /** A escolha do officer numa sessão ambígua (D-25). */
-  @Post('auditorias/:auditId/fontes/:session/escolher')
+  /** "Não houve raid oficial nesta sessão", com motivo (D-60). */
+  @Post('auditorias/:auditId/fontes/:session/sem-raid')
   @HttpCode(204)
-  async escolherFonte(
+  async declararSemRaid(
     @Param('auditId') auditId: string,
     @Param('session', new ZodValidationPipe(sessaoDaAuditoriaSchema, 'Sessão'))
     session: SessaoDaAuditoria,
-    @Body(new ZodValidationPipe(escolherFonteSchema)) body: EscolherFonte,
+    @Body(new ZodValidationPipe(declararSemRaidSchema)) body: DeclararSemRaid,
     @Req() req: Request,
   ): Promise<void> {
     await comoHttp(() =>
-      this.auditoria.escolherFonte(auditId, session, body.reportCode, contaDe(req)),
+      this.auditoria.declararSemRaid(auditId, session, body.motivo, contaDe(req)),
     );
   }
 }

@@ -94,20 +94,21 @@ describe('classificarReports — só `titanbet*` de terça e quinta, por sessão
   });
 });
 
-describe('resolverSessao — inequívoco usa, ausente e ambíguo param (D-24, D-25, D-30)', () => {
-  it('um candidato → automática, com o report', () => {
+// Mudança de produto (D-63): vários `titanbet*` na sessão não são mais ambiguidade
+// para o officer resolver — todos são fonte. Substitui "dois ou mais → ambígua".
+describe('resolverSessao — todos os `titanbet*` da sessão são fonte (D-24, D-63)', () => {
+  it('um report → automática, com ele', () => {
     const r = report();
-    expect(resolverSessao([r])).toEqual({ resolution: 'automatica', report: r });
+    expect(resolverSessao([r])).toEqual({ resolution: 'automatica', reports: [r] });
   });
 
-  it('nenhum → ausente: não é "sem raid", não é `{}`', () => {
-    expect(resolverSessao([])).toEqual({ resolution: 'ausente', report: null });
+  it('nenhum → ausente: não é "sem raid", não é `{}` — pede o officer (D-60)', () => {
+    expect(resolverSessao([])).toEqual({ resolution: 'ausente', reports: [] });
   });
 
-  it('dois ou mais → ambígua: o sistema não escolhe', () => {
-    expect(resolverSessao([report({ code: 'A' }), report({ code: 'B' })])).toEqual({
-      resolution: 'ambigua',
-      report: null,
-    });
+  it('T-A16: dois ou mais → automática com todos, em ordem de início', () => {
+    const b = report({ code: 'B', startTime: brt('2026-09-29', '22:00') });
+    const a = report({ code: 'A', startTime: brt('2026-09-29', '21:00') });
+    expect(resolverSessao([b, a])).toEqual({ resolution: 'automatica', reports: [a, b] });
   });
 });

@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. A tentativa corrente de Auditar da rodada: fontes de terça e quinta, com a resolução, o report usado e os candidatos titanbet* achados. 404 antes do primeiro Auditar.'
+description: 'OfficerGuard. A tentativa corrente de Auditar da rodada: fontes de terça e quinta, cada uma com a resolução (automatica, ausente ou sem_raid), todos os reports titanbet* usados (D-63) e o motivo de "sem raid" quando declarado (D-60). 404 antes do primeiro Auditar.'
 headers:
 - enabled: true
   name: Cookie

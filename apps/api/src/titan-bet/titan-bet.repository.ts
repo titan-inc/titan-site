@@ -7,7 +7,6 @@ import type {
   BetEventType,
   BetMarketKind,
   BetSlipStatus,
-  BetSourceResolution,
   GoldLedgerKind,
   Prisma,
 } from '@prisma/client';
@@ -471,15 +470,22 @@ export class TitanBetRepository {
         select: { id: true },
       });
       for (const f of g.fontes) {
-        await tx.betAuditSource.create({
-          data: {
-            auditId: nova.id,
-            session: f.session,
-            resolution: f.resolution,
-            ...referenciaDoReport(f.report),
-            candidates: f.candidatos as unknown as Prisma.InputJsonValue,
-          },
+        const fonte = await tx.betAuditSource.create({
+          data: { auditId: nova.id, session: f.session, resolution: f.resolution },
+          select: { id: true },
         });
+        // Todos os `titanbet*` da sessão, com a referência como foi lida (D-63).
+        if (f.reports.length > 0) {
+          await tx.betAuditSourceReport.createMany({
+            data: f.reports.map((r) => ({
+              sourceId: fonte.id,
+              reportCode: r.code,
+              reportTitle: r.title,
+              reportRevision: r.revision,
+              reportStartTime: new Date(r.startTime),
+            })),
+          });
+        }
       }
       await tx.betAudit.updateMany({
         where: {
@@ -494,20 +500,16 @@ export class TitanBetRepository {
   }
 
   /**
-   * A escolha do officer numa sessão ambígua (D-25). A auditoria fica travada
-   * (`FOR UPDATE`) durante a transação; quem decide se a escolha vale é o
-   * service, com a fonte gravada — nunca uma leitura nova do WCL (T-A12).
-   * Resolvida a última pendência, a auditoria fica `pronta`.
+   * "Não houve raid oficial nesta sessão" (D-60): só na sessão ausente, com a
+   * auditoria em revisão e travada (`FOR UPDATE`). A sessão fica resolvida, sem
+   * pulls; resolvida a última pendência, a auditoria fica `pronta`.
    */
-  async escolherFonte(r: {
+  async declararSemRaid(r: {
     auditId: string;
     session: BetAuditSession;
+    motivo: string;
     officer: { userId: string; battletag: string };
     agora: Date;
-    escolher: (fonte: {
-      resolution: BetSourceResolution;
-      candidatos: ReportGravado[];
-    }) => { report: ReportGravado } | { recusa: string };
   }): Promise<{ tipo: 'ok' } | { tipo: 'recusado'; motivo: string }> {
     return this.prisma.$transaction(async (tx) => {
       const [auditoria] = await tx.$queryRaw<Array<{ status: BetAuditStatus }>>`
@@ -516,38 +518,35 @@ export class TitanBetRepository {
       if (auditoria.status !== 'aguardando_revisao') {
         return {
           tipo: 'recusado' as const,
-          motivo: `a auditoria está ${auditoria.status} — só se escolhe fonte em revisão`,
+          motivo: `a auditoria está ${auditoria.status} — só se declara sem raid em revisão`,
         };
       }
 
       const fontes = await tx.betAuditSource.findMany({
         where: { auditId: r.auditId },
-        select: { id: true, session: true, resolution: true, candidates: true },
+        select: { id: true, session: true, resolution: true },
       });
       const fonte = fontes.find((f) => f.session === r.session);
       if (!fonte) return { tipo: 'recusado' as const, motivo: 'a sessão não tem fonte' };
-
-      const decisao = r.escolher({
-        resolution: fonte.resolution,
-        candidatos: fonte.candidates as unknown as ReportGravado[],
-      });
-      if ('recusa' in decisao) return { tipo: 'recusado' as const, motivo: decisao.recusa };
+      if (fonte.resolution !== 'ausente') {
+        return {
+          tipo: 'recusado' as const,
+          motivo: `a sessão de ${r.session} está ${fonte.resolution} — só a ausente se declara sem raid`,
+        };
+      }
 
       await tx.betAuditSource.update({
         where: { id: fonte.id },
         data: {
-          resolution: 'escolha_officer',
-          ...referenciaDoReport(decisao.report),
+          resolution: 'sem_raid',
+          noRaidReason: r.motivo,
           resolvedByUserId: r.officer.userId,
           resolvedByBattletag: r.officer.battletag,
           resolvedAt: r.agora,
         },
       });
 
-      const pendentes = fontes.filter(
-        (f) => f.id !== fonte.id && !['automatica', 'escolha_officer'].includes(f.resolution),
-      );
-      if (pendentes.length === 0) {
+      if (fontes.every((f) => f.id === fonte.id || f.resolution !== 'ausente')) {
         await tx.betAudit.update({ where: { id: r.auditId }, data: { status: 'pronta' } });
       }
       return { tipo: 'ok' as const };
@@ -570,13 +569,18 @@ export class TitanBetRepository {
           select: {
             session: true,
             resolution: true,
-            reportCode: true,
-            reportTitle: true,
-            reportRevision: true,
-            reportStartTime: true,
-            candidates: true,
+            noRaidReason: true,
             resolvedByBattletag: true,
             resolvedAt: true,
+            reports: {
+              orderBy: { reportStartTime: 'asc' },
+              select: {
+                reportCode: true,
+                reportTitle: true,
+                reportRevision: true,
+                reportStartTime: true,
+              },
+            },
           },
         },
       },
@@ -727,10 +731,15 @@ export class TitanBetRepository {
           select: {
             session: true,
             resolution: true,
-            reportCode: true,
-            reportTitle: true,
-            reportRevision: true,
-            reportStartTime: true,
+            reports: {
+              orderBy: { reportStartTime: 'asc' },
+              select: {
+                reportCode: true,
+                reportTitle: true,
+                reportRevision: true,
+                reportStartTime: true,
+              },
+            },
           },
         },
         round: {
@@ -1024,22 +1033,11 @@ export interface ReportGravado {
   startTime: number;
 }
 
-/** A fonte de uma sessão, pronta para gravar. */
+/** A fonte de uma sessão, pronta para gravar: todos os `titanbet*` achados (D-63). */
 export interface FonteParaGravar {
   session: BetAuditSession;
-  resolution: 'automatica' | 'ausente' | 'ambigua';
-  report: ReportGravado | null;
-  candidatos: ReportGravado[];
-}
-
-/** As colunas da referência do report — todas, ou nenhuma (CHECK do banco). */
-function referenciaDoReport(report: ReportGravado | null) {
-  return {
-    reportCode: report?.code ?? null,
-    reportTitle: report?.title ?? null,
-    reportRevision: report?.revision ?? null,
-    reportStartTime: report ? new Date(report.startTime) : null,
-  };
+  resolution: 'automatica' | 'ausente';
+  reports: ReportGravado[];
 }
 
 /** O que a preparação da semana muda, já decidido pelo service (D-45). */

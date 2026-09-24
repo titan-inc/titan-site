@@ -30,8 +30,7 @@ export interface PullDaSemana {
   deaths: MorteNaPull[];
 }
 
-export type KillDaSemana =
-  { tipo: 'kill'; pull: PullDaSemana } | { tipo: 'sem_kill' } | { tipo: 'revisao'; motivo: string };
+export type KillDaSemana = { tipo: 'kill'; pull: PullDaSemana } | { tipo: 'sem_kill' };
 
 /** Por que um mercado ficou sem vencedor premiável (D-61). */
 export type MotivoSemVencedor = 'sem_kill' | 'sem_vencedor' | 'sem_pull';
@@ -46,18 +45,40 @@ function valida(p: PullDaSemana): p is PullDaSemana & { session: Sessao } {
 }
 
 /**
- * A kill do boss na semana: terça, ou quinta se não morreu na terça (D-29).
- * Duas kills contrariam o lockout — a auditoria não escolhe, pede revisão
- * (§7.2; o tratamento é a OQ-40).
+ * A kill do boss na semana: a **primeira**, cronologicamente (D-62) — terça, ou
+ * quinta se não morreu na terça (D-29). As outras não produzem resultado.
  */
 export function killDaSemana(pulls: PullDaSemana[], encounterId: string): KillDaSemana {
-  const kills = pulls.filter((p) => p.encounterId === encounterId && p.kill && valida(p));
-  const [kill, ...outras] = kills;
-  if (!kill) return { tipo: 'sem_kill' };
-  if (outras.length > 0) {
-    return { tipo: 'revisao', motivo: `${kills.length} kills do mesmo boss na semana` };
+  const [primeira] = pulls
+    .filter((p) => p.encounterId === encounterId && p.kill && valida(p))
+    .sort((a, b) => a.startTime - b.startTime);
+  return primeira ? { tipo: 'kill', pull: primeira } : { tipo: 'sem_kill' };
+}
+
+/**
+ * Janela em que duas pulls do mesmo boss, vindas de reports diferentes, são a
+ * **mesma** try (D-63). No M0 (§15.8), as cópias diferiram 0,3–3,7 s no início, e
+ * pulls diferentes do mesmo boss estiveram a no mínimo 46 s uma da outra.
+ */
+export const JANELA_DE_DUPLICATA_MS = 10_000;
+
+/**
+ * A timeline consolidada dos `titanbet*` da semana (D-63): cada try uma vez,
+ * pela identidade **mesmo encounter + início absoluto** a menos de
+ * `JANELA_DE_DUPLICATA_MS` — nunca pela hora do dia. Fica a primeira cópia
+ * (o início mais cedo); a ordem da saída é a do tempo.
+ */
+export function consolidarPulls(pulls: PullDaSemana[]): PullDaSemana[] {
+  const unicas: PullDaSemana[] = [];
+  for (const p of [...pulls].sort((a, b) => a.startTime - b.startTime)) {
+    const copia = unicas.some(
+      (u) =>
+        u.encounterId === p.encounterId &&
+        Math.abs(u.startTime - p.startTime) < JANELA_DE_DUPLICATA_MS,
+    );
+    if (!copia) unicas.push(p);
   }
-  return { tipo: 'kill', pull: kill };
+  return unicas;
 }
 
 export interface EvidenciaDeMetrica {

@@ -1522,3 +1522,48 @@ fixtures de VOID do settlement e do closing trocaram o motivo `sem_kill` por
 
 `pnpm test:db` **280/280**; `pnpm test`: shared **365**, api **897**, web 147; lint,
 typecheck e build OK; banco de dev com o mesmo hash.
+
+## 31. Revisão 11, milestone 2 — fontes da sessão (24/09/2026)
+
+**Status: GREEN.** D-60, D-62, D-63 — **mudança de produto**, não correção.
+
+### 31.1 RED
+
+| Camada  | Onde                                                                   | RED                                                                                                                                                                                                                                                                                                                                              |
+| ------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| banco   | `test/db/titan-bet/auditoria.db-spec.ts` — 17 (T-A16, T-A19, T-A08/11) | **RED real** contra `20260924020000_titan_bet_fontes_estrutura`: **7** × "recebido `aceito`" (report duplicado na fonte, report em fonte ausente/sem raid, sem raid sem motivo/officer, motivo fora de sem raid, report de fonte congelada). Uma 8ª falha era a fixture ainda usando a coluna `candidates`, removida — corrigida antes de contar |
+| domínio | `auditoria.spec.ts`, `resultados.spec.ts` — 57                         | **RED** — 9 falhas: `resolverSessao` ainda devolvia `ambigua`; `consolidarPulls` ausente; `killDaSemana` ainda pedia revisão na 2ª kill                                                                                                                                                                                                          |
+| HTTP    | `titan-bet.controller.spec.ts` — 84                                    | **RED** — 5 falhas: a rota `fontes/:session/sem-raid` não existia                                                                                                                                                                                                                                                                                |
+| serviço | `auditar-fluxo.db-spec.ts`, `calculo.db-spec.ts` — 29                  | **RED** — 25 falhas: Auditar gravando uma referência por fonte, sem `declararSemRaid`, cálculo lendo um report só                                                                                                                                                                                                                                |
+
+### 31.2 O que mudou
+
+- **Banco:** `BetSourceResolution` = `automatica | ausente | sem_raid` (saíram `ambigua` e
+  `escolha_officer`); a referência do report saiu da fonte para `BetAuditSourceReport`
+  (uma linha por `titanbet*`, única por fonte); `candidates` removida; `noRaidReason`
+  com CHECKs (sem raid exige motivo e officer; motivo só em sem raid). Trigger
+  `titanbet_report_da_fonte`: report só em fonte automática, e imutável com a auditoria
+  confirmada ou substituída.
+- **Contratos:** fonte `{ session, resolution, reports[], motivoSemRaid,
+resolvedByBattletag, resolvedAt }`; `declararSemRaidSchema { motivo }` no lugar de
+  `escolherFonteSchema`.
+- **Domínio:** `resolverSessao` — todos os `titanbet*` da sessão, por início; nenhum →
+  ausente. `consolidarPulls` — mesma pull em dois reports (mesmo encounter, início
+  absoluto a menos de `JANELA_DE_DUPLICATA_MS` = 10 s) conta uma vez; a janela vem do
+  M0 §15.8 (cópias a 0,3–3,7 s; pulls legítimas a ≥ 46 s). `killDaSemana` — a primeira
+  kill, em ordem cronológica (D-62).
+- **Serviços:** Auditar grava todos os reports; `declararSemRaid` (só na ausente, com a
+  auditoria em revisão; resolvida a última, `pronta`); cálculo lê todos os reports
+  congelados, pula a sessão sem raid e consolida a timeline antes dos resultados.
+- **HTTP/Yaak:** `POST …/auditorias/:auditId/fontes/:session/sem-raid` (204) no lugar de
+  `…/escolher`.
+
+**Testes substituídos, registrados no próprio teste:** T-A06 (unitário, banco e fluxo),
+T-A12 do fluxo (escolha do officer) e o "dois ou mais → ambígua" do `resolverSessao`.
+
+### 31.3 Resultado
+
+`pnpm test:db` **284/284**; `pnpm test`: shared **367**, api **902**, web 147; format,
+lint, typecheck e build OK; banco de dev com o mesmo hash. (O build do web só passou
+depois de apagar `apps/web/.next/dev/types`, cache ignorado de um `next dev` antigo que
+ainda apontava para `app/oauth/callback`, removida na TIT-148 — nada do Titan Bet.)

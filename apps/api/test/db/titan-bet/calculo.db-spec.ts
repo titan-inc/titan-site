@@ -24,6 +24,9 @@ const PROG = 880002;
 const FORA = 880003; // boss que não está na rodada
 const SEM_WEEKLY = 880004; // boss farm da rodada: fora da Weekly (D-54)
 const PROG2 = 880005; // segundo boss de progressão, que não morre
+/** Os reports começam em noites diferentes, como numa semana real. */
+const TERCA_21H = 1_000_000;
+const QUINTA_21H = TERCA_21H + 2 * 24 * 60 * 60 * 1000;
 
 describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
   let db: PrismaService;
@@ -139,7 +142,11 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
   type Cenario = Awaited<ReturnType<typeof cenario>>;
 
   /** Depois do cutoff: a auditoria `pronta` com as duas fontes congeladas. */
-  async function auditoriaPronta(c: Cenario) {
+  /** Os `titanbet*` de cada sessão, congelados na fonte (D-63). */
+  async function auditoriaPronta(
+    c: Cenario,
+    reports: Record<'terca' | 'quinta', string[]> = { terca: ['Terca1'], quinta: ['Quinta1'] },
+  ) {
     await esperarPassar(db, c.rodada.cutoffAt);
     const auditoria = await db.betAudit.create({
       data: {
@@ -150,22 +157,21 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
         startedByBattletag: OFFICER.battletag,
       },
     });
-    for (const [session, code] of [
-      ['terca', 'Terca1'],
-      ['quinta', 'Quinta1'],
-    ] as const) {
-      await db.betAuditSource.create({
-        data: {
-          auditId: auditoria.id,
-          session,
-          resolution: 'automatica',
-          reportCode: code,
-          reportTitle: 'titanbet',
-          reportRevision: 3,
-          reportStartTime: new Date(),
-          candidates: [],
-        },
+    for (const session of ['terca', 'quinta'] as const) {
+      const fonte = await db.betAuditSource.create({
+        data: { auditId: auditoria.id, session, resolution: 'automatica' },
       });
+      for (const code of reports[session]) {
+        await db.betAuditSourceReport.create({
+          data: {
+            sourceId: fonte.id,
+            reportCode: code,
+            reportTitle: 'titanbet',
+            reportRevision: 3,
+            reportStartTime: new Date(),
+          },
+        });
+      }
     }
     return auditoria;
   }
@@ -185,10 +191,11 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
     fights: LeituraDoReport['fights'],
     deaths: LeituraDoReport['deaths'],
     kills: LeituraDoReport['kills'] = {},
+    startTime = TERCA_21H,
   ): LeituraDoReport {
     return {
       code,
-      startTime: 1_000_000,
+      startTime,
       fights,
       actors: [
         ...Object.values(c.pessoas).map((p) => ({ id: p.actor, name: p.name, server: 'Azralon' })),
@@ -293,6 +300,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
         { fight: 2, targetID: 11, timestamp: 90_000 },
       ],
       { 2: semKill() },
+      QUINTA_21H,
     );
     return { Terca1: terca, Quinta1: quinta };
   }
@@ -484,24 +492,29 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
       expect(await db.betMarketResult.count({ where: { auditId: a.id } })).toBe(0);
     });
 
-    it('duas kills do mesmo boss na semana → revisão (§7.2, OQ-40)', async () => {
+    // Mudança de produto (D-62): substitui "duas kills do mesmo boss → revisão".
+    it('T-F08: duas kills do mesmo boss → vale a primeira; o cálculo segue', async () => {
       const c = await cenario();
+      await c.apostar(c.m.topDps!.id, 'top_dps', 500, c.pessoas.A);
       const a = await auditoriaPronta(c);
       const semana = semanaPadrao(c);
+      // Uma segunda kill do farm na quinta, em que B teria o maior dano.
       semana.Quinta1.fights.push({
         id: 9,
         encounterID: FARM,
         difficulty: 5,
         kill: true,
         startTime: 400_000,
-        endTime: 600_000,
+        endTime: 700_000,
       });
-      semana.Quinta1.kills[9] = semKill();
-      await expect(new CalculoService(repo, wcl(semana).porta).calcular(a.id)).rejects.toThrow(
-        /kills do mesmo boss/,
-      );
-      expect(await db.betMarketResult.count({ where: { auditId: a.id } })).toBe(0);
-      expect((await db.betAudit.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('pronta');
+      semana.Quinta1.kills[9] = {
+        ...semKill(),
+        damage: [{ id: 11, name: c.pessoas.B.name, total: 99_000_000 }],
+      };
+      await new CalculoService(repo, wcl(semana).porta).calcular(a.id);
+
+      const top = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.topDps!.id)!;
+      expect(top.winners.map((w) => w.characterId)).toEqual([c.pessoas.A.characterId]);
     });
 
     // Mudança de produto (D-54): o T-W05 da D-49 (K ∩ Weekly) perdeu o objeto.
@@ -529,6 +542,27 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
 
       const w = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.weekly!.id)!;
       expect(w.kills.map((k) => k.roundEncounterId)).toEqual([c.prog.id]);
+    });
+
+    it('T-A17/T-A18: dois reports da terça com as mesmas pulls contam uma vez', async () => {
+      const c = await cenario();
+      const a = await auditoriaPronta(c, { terca: ['Terca1', 'Terca2'], quinta: ['Quinta1'] });
+      const semana = semanaPadrao(c);
+      // O segundo logger começou 2 s depois: as mesmas fights, deslocadas.
+      const copia = {
+        ...semana.Terca1,
+        code: 'Terca2',
+        startTime: semana.Terca1.startTime + 2_000,
+      };
+      await new CalculoService(repo, wcl({ ...semana, Terca2: copia }).porta).calcular(a.id);
+
+      const prog = (await resultadosDe(a.id)).find((r) => r.marketId === c.m.fdProg!.id)!;
+      const ev = prog.evidence as { resultado: { somas: Record<string, number> } };
+      // As mesmas somas do report único (T-Q02): nenhuma try contada duas vezes.
+      expect(ev.resultado.somas).toEqual({
+        [c.pessoas.A.characterId]: 1,
+        [c.pessoas.B.characterId]: 3,
+      });
     });
 
     it('lê do WCL exatamente os reports congelados no Auditar (T-A12)', async () => {

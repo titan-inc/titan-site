@@ -1,4 +1,5 @@
 import {
+  consolidarPulls,
   killDaSemana,
   resultadoFirstDeathFarm,
   resultadoFirstDeathProgressao,
@@ -62,9 +63,51 @@ describe('killDaSemana — a kill do boss farm, de terça ou de quinta', () => {
     });
   });
 
-  it('duas kills do mesmo boss contrariam o lockout: pede revisão, não escolhe (OQ-40)', () => {
-    const r = killDaSemana([pull({ kill: true }), pull({ kill: true, session: 'quinta' })], BOSS);
-    expect(r.tipo).toBe('revisao');
+  // Mudança de produto (D-62): substitui "duas kills → pede revisão".
+  it('T-F08: duas kills do mesmo boss → vale a primeira, cronologicamente', () => {
+    const quinta = pull({ kill: true, session: 'quinta' });
+    const terca = pull({ kill: true, startTime: quinta.startTime - 2 * 24 * 60 * 60 * 1000 });
+    expect(killDaSemana([quinta, terca], BOSS)).toEqual({ tipo: 'kill', pull: terca });
+  });
+});
+
+describe('consolidarPulls — a timeline dos vários reports (D-63)', () => {
+  const t0 = 50_000_000;
+
+  it('T-A17: a mesma try em dois reports conta uma vez (mesmo boss, início < 10 s)', () => {
+    const r1 = pull({ encounterId: PROG, startTime: t0 });
+    const r2 = pull({ encounterId: PROG, startTime: t0 + 3_700 });
+    expect(consolidarPulls([r1, r2])).toEqual([r1]);
+  });
+
+  it('pulls legítimas diferentes do mesmo boss continuam separadas (≥ 46 s no M0)', () => {
+    const a = pull({ encounterId: PROG, startTime: t0 });
+    const b = pull({ encounterId: PROG, startTime: t0 + 46_000 });
+    expect(consolidarPulls([b, a])).toEqual([a, b]);
+  });
+
+  it('bosses diferentes no mesmo instante não são duplicata', () => {
+    const a = pull({ encounterId: PROG, startTime: t0 });
+    const b = pull({ encounterId: BOSS, startTime: t0 + 1_000 });
+    expect(consolidarPulls([a, b])).toHaveLength(2);
+  });
+
+  it('a identidade é o instante, não a hora do dia: 21:00 de terça ≠ 21:00 de quinta', () => {
+    const terca = pull({ encounterId: PROG, startTime: t0 });
+    const quinta = pull({
+      encounterId: PROG,
+      session: 'quinta',
+      startTime: t0 + 2 * 24 * 60 * 60 * 1000,
+    });
+    expect(consolidarPulls([terca, quinta])).toHaveLength(2);
+  });
+
+  it('T-A18: kill em dois reports → uma kill; a primeira cópia fica', () => {
+    const k1 = pull({ kill: true, startTime: t0 + 500 });
+    const k2 = pull({ kill: true, startTime: t0 });
+    const unicas = consolidarPulls([k1, k2]);
+    expect(unicas).toEqual([k2]);
+    expect(killDaSemana(unicas, BOSS)).toEqual({ tipo: 'kill', pull: k2 });
   });
 });
 

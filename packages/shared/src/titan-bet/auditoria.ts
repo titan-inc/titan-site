@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 /**
- * Titan Bet — Auditar no Officer Panel (D-25, D-30; spec §7.2).
+ * Titan Bet — Auditar no Officer Panel (D-30, D-60, D-63; spec §7.2).
  *
- * Lado de officer: fontes, candidatos e a escolha. Não carrega aposta nenhuma.
+ * Lado de officer: as fontes de cada sessão (todos os `titanbet*`) e a
+ * declaração de "sem raid oficial". Não carrega aposta nenhuma.
  */
 
 /** As duas sessões de evidência da rodada (D-19, D-23) — não existe outra. */
@@ -23,10 +24,15 @@ const reportDaAuditoriaSchema = z
 const fonteDaAuditoriaSchema = z
   .object({
     session: sessaoDaAuditoriaSchema,
-    /** `ausente` e `ambigua` param a auditoria e pedem o officer (D-24, D-25). */
-    resolution: z.enum(['automatica', 'escolha_officer', 'ausente', 'ambigua']),
-    report: reportDaAuditoriaSchema.nullable(),
-    candidatos: z.array(reportDaAuditoriaSchema),
+    /**
+     * `automatica`: os `titanbet*` achados, todos usados (D-63). `ausente`:
+     * nenhum — pede o officer. `sem_raid`: o officer declarou que não houve raid
+     * oficial (D-60).
+     */
+    resolution: z.enum(['automatica', 'ausente', 'sem_raid']),
+    /** Os reports usados, com a referência congelada no Auditar. */
+    reports: z.array(reportDaAuditoriaSchema),
+    motivoSemRaid: z.string().nullable(),
     resolvedByBattletag: z.string().nullable(),
     resolvedAt: z.string().datetime().nullable(),
   })
@@ -45,6 +51,6 @@ export const auditoriaCorrenteSchema = z
   .strict();
 export type AuditoriaCorrente = z.infer<typeof auditoriaCorrenteSchema>;
 
-/** A escolha do officer numa sessão ambígua (D-25): um dos candidatos. */
-export const escolherFonteSchema = z.object({ reportCode: z.string().min(1) }).strict();
-export type EscolherFonte = z.infer<typeof escolherFonteSchema>;
+/** "Não houve raid oficial nesta sessão" (D-60): o motivo é obrigatório. */
+export const declararSemRaidSchema = z.object({ motivo: z.string().trim().min(1) }).strict();
+export type DeclararSemRaid = z.infer<typeof declararSemRaidSchema>;
