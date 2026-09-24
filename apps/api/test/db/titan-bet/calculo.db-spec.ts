@@ -197,6 +197,7 @@ describe('Titan Bet — cálculo do Auditar (serviço + banco)', () => {
     return {
       code,
       startTime,
+      revision: 3,
       fights,
       actors: [
         ...Object.values(c.pessoas).map((p) => ({ id: p.actor, name: p.name, server: 'Azralon' })),

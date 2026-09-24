@@ -72,6 +72,8 @@ export interface LeituraDoReport {
   code: string;
   /** Epoch ms do início do report. */
   startTime: number;
+  /** A revisão do report quando foi lido — a proveniência do snapshot (D-76). */
+  revision: number;
   fights: FightDoReport[];
   actors: Array<{ id: number; name: string; server: string }>;
   /** `events(dataType: Deaths)`; `timestamp` é offset dentro do report. */

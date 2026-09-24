@@ -421,6 +421,7 @@ export class WarcraftLogsService {
       reportData: {
         report: {
           startTime: number;
+          revision: number;
           fights: FightDoReport[];
           masterData: { actors: Array<{ id: number; name: string; server: string }> };
         };
@@ -428,6 +429,7 @@ export class WarcraftLogsService {
     }>(
       `query($c: String!) { reportData { report(code: $c) {
         startTime
+        revision
         fights { id encounterID difficulty kill startTime endTime }
         masterData { actors(type: "Player") { id name server } }
       } } }`,
@@ -446,6 +448,7 @@ export class WarcraftLogsService {
       return {
         code,
         startTime: rel.startTime,
+        revision: rel.revision,
         fights,
         actors: rel.masterData.actors,
         deaths: [],
@@ -507,6 +510,7 @@ export class WarcraftLogsService {
     return {
       code,
       startTime: rel.startTime,
+      revision: rel.revision,
       fights,
       actors: rel.masterData.actors,
       deaths,

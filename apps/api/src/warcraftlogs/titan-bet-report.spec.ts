@@ -24,6 +24,7 @@ describe('WarcraftLogsService.getTitanBetReport', () => {
     reportData: {
       report: {
         startTime: 1_000_000,
+        revision: 7,
         fights: [
           { id: 1, encounterID: 501, difficulty: 5, kill: false, startTime: 0, endTime: 60_000 },
           {
@@ -124,6 +125,18 @@ describe('WarcraftLogsService.getTitanBetReport', () => {
     expect(consulta).toContain('timeframe: Today');
     expect(consulta).toContain('dataType: Dispels');
     expect(consulta).toContain('hostilityType: Friendlies');
+  });
+
+  it('D-76: traz a revisão do report, lida na mesma consulta das fights — a proveniência do snapshot', async () => {
+    query.mockResolvedValueOnce(meta).mockResolvedValueOnce(detalhe);
+    const r = await wcl.getTitanBetReport('AbC123', [501]);
+    expect(r.revision).toBe(7);
+    expect(query.mock.calls[0]![0]).toMatch(/revision/);
+  });
+
+  it('D-76: report sem fight relevante também traz a revisão', async () => {
+    query.mockResolvedValueOnce(meta);
+    expect((await wcl.getTitanBetReport('AbC123', [999])).revision).toBe(7);
   });
 
   it('pagina as mortes até o fim', async () => {

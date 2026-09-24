@@ -23,6 +23,7 @@ const CANDIDATOS: CandidatoIdentificavel[] = [
 const REPORT: LeituraDoReport = {
   code: 'AbC123',
   startTime: 1_000_000,
+  revision: 1,
   fights: [
     { id: 1, encounterID: 501, difficulty: 5, kill: false, startTime: 0, endTime: 60_000 },
     { id: 2, encounterID: 501, difficulty: 5, kill: false, startTime: 90_000, endTime: 150_000 },

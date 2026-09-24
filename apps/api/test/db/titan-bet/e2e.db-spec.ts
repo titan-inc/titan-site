@@ -183,6 +183,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
       E2ETerca: {
         code: 'E2ETerca',
         startTime: terca,
+        revision: 4,
         fights: [
           { id: 1, encounterID: BOSS, difficulty: 5, kill: true, startTime: 0, endTime: 300_000 },
           {
@@ -221,6 +222,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
       },
       E2EQuinta: {
         code: 'E2EQuinta',
+        revision: 2,
         startTime: quinta,
         fights: [],
         actors: [],
