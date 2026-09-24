@@ -119,6 +119,7 @@ export function pullsDoReport(
       difficulty: f.difficulty ?? 0,
       kill: f.kill === true,
       startTime: report.startTime + f.startTime,
+      report: report.code,
       deaths: report.deaths
         .filter((d) => d.fight === f.id)
         .map((d) => ({

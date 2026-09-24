@@ -129,6 +129,10 @@ describe('pullsDoReport — pulls do report oficial, na sessão do report (D-26)
     ]);
   });
 
+  it('cada pull sabe de que report veio — é o que a consolidação usa (D-63)', () => {
+    expect(new Set(pulls.map((p) => p.report))).toEqual(new Set([REPORT.code]));
+  });
+
   it('morte de quem não é candidato continua na lista, fora do snapshot (D-13)', () => {
     expect(pulls[0]!.deaths).toEqual([
       { characterId: 'fora:11', timestamp: 1_030_000 },

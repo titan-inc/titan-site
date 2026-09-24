@@ -29,6 +29,7 @@ const pull = (over: Partial<PullDaSemana> = {}): PullDaSemana => ({
   difficulty: 5,
   kill: false,
   startTime: (relogio += 60_000),
+  report: 'R1',
   deaths: [],
   ...over,
 });
@@ -75,8 +76,8 @@ describe('consolidarPulls — a timeline dos vários reports (D-63)', () => {
   const t0 = 50_000_000;
 
   it('T-A17: a mesma try em dois reports conta uma vez (mesmo boss, início < 10 s)', () => {
-    const r1 = pull({ encounterId: PROG, startTime: t0 });
-    const r2 = pull({ encounterId: PROG, startTime: t0 + 3_700 });
+    const r1 = pull({ encounterId: PROG, startTime: t0, report: 'R1' });
+    const r2 = pull({ encounterId: PROG, startTime: t0 + 3_700, report: 'R2' });
     expect(consolidarPulls([r1, r2])).toEqual([r1]);
   });
 
@@ -84,6 +85,32 @@ describe('consolidarPulls — a timeline dos vários reports (D-63)', () => {
     const a = pull({ encounterId: PROG, startTime: t0 });
     const b = pull({ encounterId: PROG, startTime: t0 + 46_000 });
     expect(consolidarPulls([b, a])).toEqual([a, b]);
+  });
+
+  // A janela é heurística técnica (M0 §15.8: cópias a 0,3–3,7 s; pulls
+  // diferentes a ≥ 46 s), não regra de produto. Cópia só existe entre reports
+  // diferentes — dentro de um report, cada fight é uma pull, por mais perto que
+  // esteja da anterior.
+  it('T-A20: duas pulls do MESMO report, a menos de 10 s, nunca são fundidas', () => {
+    const a = pull({ encounterId: PROG, startTime: t0, report: 'R1' });
+    const b = pull({ encounterId: PROG, startTime: t0 + 2_000, report: 'R1' });
+    expect(consolidarPulls([a, b])).toEqual([a, b]);
+  });
+
+  it('T-A20: a borda da janela — 9,999 s entre reports funde; 10 s não', () => {
+    const a = pull({ encounterId: PROG, startTime: t0, report: 'R1' });
+    const quase = pull({ encounterId: PROG, startTime: t0 + 9_999, report: 'R2' });
+    const fora = pull({ encounterId: PROG, startTime: t0 + 10_000, report: 'R2' });
+    expect(consolidarPulls([a, quase])).toEqual([a]);
+    expect(consolidarPulls([a, fora])).toEqual([a, fora]);
+  });
+
+  it('T-A20: uma pull legítima entre duas cópias não some', () => {
+    // R1 e R2 gravaram a mesma try; R1 tem outra pull, dele mesmo, 5 s depois.
+    const tryR1 = pull({ encounterId: PROG, startTime: t0, report: 'R1' });
+    const tryR2 = pull({ encounterId: PROG, startTime: t0 + 1_000, report: 'R2' });
+    const outraR1 = pull({ encounterId: PROG, startTime: t0 + 5_000, report: 'R1' });
+    expect(consolidarPulls([tryR1, tryR2, outraR1])).toEqual([tryR1, outraR1]);
   });
 
   it('bosses diferentes no mesmo instante não são duplicata', () => {
@@ -103,8 +130,8 @@ describe('consolidarPulls — a timeline dos vários reports (D-63)', () => {
   });
 
   it('T-A18: kill em dois reports → uma kill; a primeira cópia fica', () => {
-    const k1 = pull({ kill: true, startTime: t0 + 500 });
-    const k2 = pull({ kill: true, startTime: t0 });
+    const k1 = pull({ kill: true, startTime: t0 + 500, report: 'R1' });
+    const k2 = pull({ kill: true, startTime: t0, report: 'R2' });
     const unicas = consolidarPulls([k1, k2]);
     expect(unicas).toEqual([k2]);
     expect(killDaSemana(unicas, BOSS)).toEqual({ tipo: 'kill', pull: k2 });

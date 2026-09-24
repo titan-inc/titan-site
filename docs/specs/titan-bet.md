@@ -333,6 +333,19 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
 
+### Revisão 12 (24/09/2026) — pendências da revisão 11
+
+| D    | Resolve           | Decisão                                                                                                                                                                                                                                                                                                                             |
+| ---- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-67 | D-07 × D-59       | **Política única para slip que nunca chegou a `valido`.** Recusado ou expirado, o sistema **só encerra o slip**; devolver gold depositado é responsabilidade operacional dos officers, fora do Titan Bet. `restituicao_expirado` deixa de ser lançável — de forma aditiva: o valor continua no enum e o saldo ainda lê o histórico. |
+| D-68 | leitura 4 (D-53a) | **A limitação da D-53a está aceita.** Quem saiu da guilda antes de criar qualquer slip não ganha acesso para começar uma aposta; o login não muda por isso. Quem já tem slip segue o ciclo daquela rodada normalmente — editar, submeter e, quando as regras permitem, começar outro depois de um recusado.                         |
+| D-69 | leitura 5 (D-55)  | **Identidade de personagem é nome + realm sem remover diacrítico.** `Shrëwd` e `Shrewd` são pessoas diferentes; `toSlug` (lossy) nunca determina identidade. A `Character` criada numa tentativa depois recusada pode ficar sem vínculo — sem cleanup.                                                                              |
+| —    | leitura 3 (D-63)  | A janela de 10 s é **heurística técnica**, não regra de produto, e só funde pulls de **reports diferentes**: dentro de um report cada fight é uma pull (T-A20).                                                                                                                                                                     |
+
+A D-07 continua valendo no que diz — sem hard delete, expirado é terminal, nunca
+confirmado depois, fora de pool e de odds; só a frase "dá para registrar gold devido de
+volta" foi substituída pela D-67.
+
 ### Revisão 11 (23/09/2026) — as OQs restantes e a nova Weekly Progression
 
 | D    | Resolve | Decisão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -361,11 +374,8 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 5. **D-55:** o personagem depositante é informado por **nome + realm**, resolvido para a identidade `Character` (Regra 6) e congelado no slip.
 6. **D-56:** "reconhecido como do apostador" = personagens ligados à conta (`GuildCharacter`), o personagem de elegibilidade do slip e, no Submeter, o depositante informado.
 
-**Inconsistência para decisão — D-07 × D-59.** A D-07 permite registrar restituição de slip
-**expirado** com depósito real (`restituicao_expirado` existe no ledger e no saldo, mas
-nenhuma rota o lança). A D-59 manda resolver o **recusado** fora do Titan Bet. Os dois são
-"gold depositado num slip que nunca foi confirmado"; as políticas divergem. Nada foi
-alterado.
+**Inconsistência D-07 × D-59** — resolvida na revisão 12 (D-67): o expirado segue a mesma
+política do recusado.
 
 ### Revisão 10 (23/09/2026) — identidade pública, `K`, saldo negativo e role
 
@@ -989,8 +999,8 @@ OQ-46), OQ-18 (→ OQ-45 e OQ-25).
 
 ### Abertas
 
-**Nenhuma OQ aberta** desde a revisão 11. Pendente de decisão: a inconsistência D-07 × D-59
-(restituição de slip expirado × recusado), registrada na revisão 11.
+**Nenhuma OQ aberta** desde a revisão 11, e nenhuma pendência de decisão desde a revisão 12
+(D-67 resolveu a inconsistência D-07 × D-59).
 
 **Gates, não OQs:** M0 #1 e #2 **validados** em 23/09/2026 (§15.0). O #6 deixou de ser
 gate (D-46).
@@ -1768,7 +1778,7 @@ linha do ledger, e nenhuma outra tabela guarda esses valores:
 | `restituicao_anulado`  | membro     | `VOID` confirmado; uma por aposta válida           |
 | `receita_guilda`       | guild_bank | confirmação; `G₀` por mercado                      |
 | `residuo_guilda`       | guild_bank | confirmação; resíduo do `floor`                    |
-| `restituicao_expirado` | membro     | officer, com motivo (D-07)                         |
+| `restituicao_expirado` | membro     | **não é mais lançável** (D-67); só histórico       |
 | `ajuste`               | qualquer   | officer, com motivo, sinal e referência (D-11)     |
 | `pagamento`            | membro     | officer marca pago; valor = saldo                  |
 

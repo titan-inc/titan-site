@@ -27,6 +27,8 @@ export interface PullDaSemana {
   difficulty: number;
   kill: boolean;
   startTime: number;
+  /** O código do report de onde a pull veio: cópia só existe entre reports (D-63). */
+  report: string;
   deaths: MorteNaPull[];
 }
 
@@ -57,16 +59,20 @@ export function killDaSemana(pulls: PullDaSemana[], encounterId: string): KillDa
 
 /**
  * Janela em que duas pulls do mesmo boss, vindas de reports diferentes, são a
- * **mesma** try (D-63). No M0 (§15.8), as cópias diferiram 0,3–3,7 s no início, e
- * pulls diferentes do mesmo boss estiveram a no mínimo 46 s uma da outra.
+ * **mesma** try (D-63). **Heurística técnica, não regra de produto:** no M0
+ * (§15.8) as cópias diferiram 0,3–3,7 s no início, e pulls diferentes do mesmo
+ * boss estiveram a no mínimo 46 s uma da outra. Se um dia isso deixar de valer,
+ * muda o número aqui, não a decisão.
  */
 export const JANELA_DE_DUPLICATA_MS = 10_000;
 
 /**
  * A timeline consolidada dos `titanbet*` da semana (D-63): cada try uma vez,
  * pela identidade **mesmo encounter + início absoluto** a menos de
- * `JANELA_DE_DUPLICATA_MS` — nunca pela hora do dia. Fica a primeira cópia
- * (o início mais cedo); a ordem da saída é a do tempo.
+ * `JANELA_DE_DUPLICATA_MS` — nunca pela hora do dia —, e só entre **reports
+ * diferentes**: dentro de um report cada fight é uma pull, por mais perto que
+ * esteja da anterior. Fica a primeira cópia (o início mais cedo); a ordem da
+ * saída é a do tempo.
  */
 export function consolidarPulls(pulls: PullDaSemana[]): PullDaSemana[] {
   const unicas: PullDaSemana[] = [];
@@ -74,6 +80,7 @@ export function consolidarPulls(pulls: PullDaSemana[]): PullDaSemana[] {
     const copia = unicas.some(
       (u) =>
         u.encounterId === p.encounterId &&
+        u.report !== p.report &&
         Math.abs(u.startTime - p.startTime) < JANELA_DE_DUPLICATA_MS,
     );
     if (!copia) unicas.push(p);

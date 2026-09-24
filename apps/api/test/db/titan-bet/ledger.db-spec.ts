@@ -125,8 +125,16 @@ describe('Titan Bet — ledger (banco)', () => {
     });
 
     it('recusa pagamento sem officer ou sem o que ele quita', async () => {
-      const { r, slip } = await cenario();
-      const credito = await doMembro(r, slip.id, { kind: 'restituicao_expirado', reason: 'x' });
+      const { r, slip, aposta } = await cenario();
+      // Mudança de produto (D-67): o crédito deste caso era uma
+      // `restituicao_expirado`, que deixou de ser lançável. Qualquer crédito
+      // serve para o que o teste mede — o pagamento sem officer ou sem alvo.
+      const credito = await doMembro(r, slip.id, {
+        kind: 'premio',
+        amount: 900,
+        betId: aposta.id,
+        marketId: r.topDispels.id,
+      });
       const pagamento = { kind: 'pagamento' as const, coversThroughEntryId: credito.id };
 
       expect(
@@ -137,6 +145,29 @@ describe('Titan Bet — ledger (banco)', () => {
       expect(
         await escrita(doMembro(r, slip.id, { ...pagamento, coversThroughEntryId: null })),
       ).toBe('check');
+    });
+  });
+
+  describe('T-L12 — slip que nunca chegou a válido não tem restituição no ledger (D-67)', () => {
+    it('`restituicao_expirado` novo → recusado: devolução física é dos officers, fora do Titan Bet', async () => {
+      const { r, slip } = await cenario();
+      expect(
+        await escrita(doMembro(r, slip.id, { kind: 'restituicao_expirado', reason: 'x' })),
+      ).toBe('check');
+    });
+
+    it('controle: a restituição de mercado anulado continua lançável', async () => {
+      const { r, slip, aposta } = await cenario();
+      expect(
+        await escrita(
+          doMembro(r, slip.id, {
+            kind: 'restituicao_anulado',
+            amount: 300,
+            betId: aposta.id,
+            marketId: r.topDispels.id,
+          }),
+        ),
+      ).toBe('aceito');
     });
   });
 

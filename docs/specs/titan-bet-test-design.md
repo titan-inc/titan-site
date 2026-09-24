@@ -1721,3 +1721,23 @@ contrato é o do shared.
 F0 (T-C01–T-C05, API, com Yaak) → F1 → F2. Cada item F1/F2 é uma leitura dos contratos
 F0 e dos existentes; nenhum inventa campo que o shared não tenha (Regra 2). Antes de
 escrever a primeira tela: ler `node_modules/next/dist/docs/` (CLAUDE.md, aviso do Next 16).
+
+## 35. Revisão 12 — pendências fechadas antes do F0 (24/09/2026)
+
+**Status: GREEN.** D-67 a D-69 e a janela de deduplicação.
+
+| Camada  | Onde                                                | RED                                                                                                                                                                        |
+| ------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| banco   | `ledger.db-spec.ts` — T-L12                         | **RED real**: `restituicao_expirado` novo "recebido `aceito`". GREEN: CHECK `GoldLedgerEntry_sem_restituicao_expirado` **NOT VALID** (aditivo — enum e histórico intactos) |
+| domínio | `resultados.spec.ts`, `leitura-wcl.spec.ts` — T-A20 | **RED real**, 3 falhas: duas pulls do mesmo report a 2 s fundidas; pull legítima entre duas cópias engolida; a pull não sabia de que report veio                           |
+
+**Caracterização (passou antes, fica como guarda):** a borda da janela — 9,999 s entre
+reports funde, 10 s não. **Controle:** `restituicao_anulado` continua lançável.
+
+**Substituído (D-67):** o crédito usado no teste de pagamento sem officer era uma
+`restituicao_expirado`; virou um `premio` — o que o teste mede não muda.
+
+**Registrado sem teste novo:** D-68 (limite da D-53a aceito — o T-Z10 "limite" já cobre),
+D-69 (identidade com diacrítico — o T-S26 "o acento distingue pessoas" já cobre; a
+`Character` órfã fica, sem cleanup). `ApostadorDaRodadaGuard` documentado no CLAUDE.md
+como específico do Titan Bet.

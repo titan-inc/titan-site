@@ -2164,6 +2164,9 @@ enum GoldLedgerKind {
   restituicao_anulado
   receita_guilda
   residuo_guilda
+  /// Não é mais lançável (D-67, CHECK `GoldLedgerEntry_sem_restituicao_expirado`):
+  /// slip que nunca chegou a `valido` não tem restituição no ledger. Fica no
+  /// enum pelo histórico.
   restituicao_expirado
   ajuste
   pagamento

@@ -68,6 +68,7 @@ export function restituirMercado(apostas: ApostaNoRateio[]): {
 const CREDITOS: ReadonlySet<GoldLedgerKind> = new Set([
   'premio',
   'restituicao_anulado',
+  // Só histórico: não é mais lançável (D-67), mas o saldo lê o que existir.
   'restituicao_expirado',
   'ajuste',
 ]);
