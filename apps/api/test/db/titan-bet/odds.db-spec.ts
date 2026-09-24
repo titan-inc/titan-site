@@ -1,4 +1,4 @@
-import { oddsDaRodadaSchema } from '@titan/shared';
+import { oddsDaRodadaSchema, type OddsDaRodada } from '@titan/shared';
 import { randomUUID } from 'node:crypto';
 import { CharactersRepository } from '../../../src/characters/characters.repository';
 import { PrismaService } from '../../../src/prisma/prisma.service';
@@ -113,9 +113,9 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     if (destino === 'recusado') await deposito.recusar(slipId, OFFICER, 'não achado');
   }
 
-  const opcoesDe = (resposta: Awaited<ReturnType<OddsService['daRodada']>>, marketId: string) =>
+  const opcoesDe = (resposta: OddsDaRodada | null, marketId: string) =>
     Object.fromEntries(
-      resposta.mercados
+      resposta!.mercados
         .find((m) => m.marketId === marketId)!
         .opcoes.map((o) => [
           'characterId' in o ? o.characterId : o.roundEncounterId,
@@ -162,7 +162,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       // Quem vê não precisa ter apostado.
       const resposta = await odds.daRodada(c.rodada.id);
 
-      expect(resposta.roundId).toBe(c.rodada.id);
+      expect(resposta!.roundId).toBe(c.rodada.id);
       expect(opcoesDe(resposta, c.topDps.id)).toEqual({
         [c.melee.id]: 0.9,
         [c.ranged.id]: null,
@@ -216,7 +216,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       const c = await cenario();
       await apostar(c, 0, c.melee.id, 300, 'valido');
       const vista = await odds.daRodada(c.rodada.id);
-      expect(vista.mercados.map((m) => m.marketId).sort()).toEqual(
+      expect(vista!.mercados.map((m) => m.marketId).sort()).toEqual(
         [c.topDps.id, c.firstDeath.id, c.weekly.id].sort(),
       );
       expect(opcoesDe(vista, c.topDps.id)[c.melee.id]).toEqual(expect.any(Number));
@@ -242,6 +242,33 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       expect(
         await db.betSlip.count({ where: { roundId: c.rodada.id, ownerUserId: fora.id } }),
       ).toBe(0);
+    });
+  });
+
+  describe('T-O05 — as odds seguem a publicação da rodada (D-75)', () => {
+    it('rodada em preparação, sem Ready: null, como a leitura da rodada', async () => {
+      const rodada = await f.rodada({ cutoffAt: new Date(Date.now() + 48 * 60 * 60 * 1000) });
+      const boss = await f.encounter(rodada.id);
+      await f.mercadoDeBoss(boss, 'top_dps');
+      const pj = await f.personagem();
+      await f.candidato(rodada.id, pj.id, 'Melee');
+
+      expect(await odds.daRodada(rodada.id)).toBeNull();
+    });
+
+    it('rodada inexistente: null', async () => {
+      expect(await odds.daRodada('nao-existe')).toBeNull();
+    });
+
+    it('com Ready: as odds', async () => {
+      const rodada = await f.rodada({ cutoffAt: new Date(Date.now() + 48 * 60 * 60 * 1000) });
+      const boss = await f.encounter(rodada.id);
+      const topDps = await f.mercadoDeBoss(boss, 'top_dps');
+      await f.pronta(rodada.id);
+      expect(await odds.daRodada(rodada.id)).toEqual({
+        roundId: rodada.id,
+        mercados: [{ marketId: topDps.id, opcoes: [] }],
+      });
     });
   });
 

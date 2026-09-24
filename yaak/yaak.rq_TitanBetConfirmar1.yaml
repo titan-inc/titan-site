@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Confirma a auditoria calculada — inclusive os mercados sem vencedor, redistribuídos (D-61), e o VOID onde houver restituição — e lança o settlement no ledger na mesma transação: prêmios, restituições de VOID, receita e resíduo da guilda, com a redistribuição do mercado sem aposta vencedora (D-44). 204; 409 se a auditoria não está calculada ou se não há mercado premiável para receber (consultar a liderança). MEXE EM DINHEIRO.'
+description: 'OfficerGuard. Confirma a auditoria calculada — inclusive os mercados sem vencedor, redistribuídos (D-61), e o VOID onde houver restituição — e lança o settlement no ledger na mesma transação: prêmios, restituições de VOID, receita e resíduo da guilda, com a redistribuição do mercado sem aposta vencedora (D-44). 204; 409 antes de quinta 23:30 no fuso da guilda (D-73), se a auditoria não está calculada ou se não há mercado premiável para receber (consultar a liderança). MEXE EM DINHEIRO.'
 headers:
 - enabled: true
   name: Cookie

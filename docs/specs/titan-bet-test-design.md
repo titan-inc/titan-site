@@ -2190,3 +2190,23 @@ janela de qualquer rodada dos testes); nenhuma asserção mudou. Duas exceções
   do sistema (o cutoff é daqui a 1 h) e agora confere também o motivo.
 
 O harness do WCL real (`test/wcl-real`) não muda: as rodadas dele são de semanas passadas.
+
+### 42.4 Achado 7 — odds antes do Ready (D-75)
+
+Reproduzido: `GET /rodadas/:roundId/odds` numa rodada em `PREPARATION` devolvia 200 com os
+mercados da preparação, e numa rodada inexistente 200 com `mercados: []` — enquanto a
+leitura da rodada devolvia 404.
+
+| Onde                                   | RED                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
+| `odds.db-spec.ts` — T-O05, preparação  | **RED real**: recebeu `{ mercados: [{ … opcoes: [{ multiplicador: null }] }] }` |
+| `odds.db-spec.ts` — T-O05, inexistente | **RED real**: recebeu `{ roundId: 'nao-existe', mercados: [] }`                 |
+| `odds.db-spec.ts` — T-O05, com Ready   | guarda — passava                                                                |
+| `titan-bet.controller.spec.ts` — D-75  | **RED real**: 200 em vez de 404                                                 |
+
+GREEN: `OddsService.daRodada` devolve `null` sem `rodadaPublicada` (existe e teve Ready),
+e a rota responde 404 com a mesma mensagem da leitura da rodada. Sem cookie continua 401
+(`MEMBRO_ROTAS`); as rotas de preparação do officer não mudaram (T-Z07). Os tipos dos
+testes de odds existentes ganharam `!` pelo retorno anulável — nenhuma asserção mudou.
+Collection Yaak: odds (D-75) e as requests de Auditar, sem raid, Calcular, Confirmar e
+rodadas do officer (D-73).

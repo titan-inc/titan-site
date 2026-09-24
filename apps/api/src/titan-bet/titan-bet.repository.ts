@@ -322,6 +322,15 @@ export class TitanBetRepository {
   }
 
   /** O que a rodada oferece para apostar: mercados, encounters e o snapshot de candidatos. */
+  /** A rodada foi publicada — existe e teve Ready (D-36, D-75)? */
+  async rodadaPublicada(roundId: string): Promise<boolean> {
+    const r = await this.prisma.betRound.findUnique({
+      where: { id: roundId },
+      select: { readyAt: true },
+    });
+    return r !== null && r.readyAt !== null;
+  }
+
   async cardapio(roundId: string): Promise<Cardapio> {
     const [markets, encounters, candidatos] = await Promise.all([
       this.prisma.betMarket.findMany({

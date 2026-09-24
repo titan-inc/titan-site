@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'ApostadorDaRodadaGuard (membro da guilda, ou quem saiu dela com slip nesta rodada — D-53a). Qualquer um que passe a porta vê, inclusive membro fora do snapshot de bettors (D-53b). Projected payout de todos os mercados publicados: um multiplicador por candidato, e na Weekly um por boss de progressão (roundEncounterId, D-54) — floor(9V/10)/S(o) sobre apostas VÁLIDAS; null é "—". Nunca conta, slip ou stake (§16.10).'
+description: 'ApostadorDaRodadaGuard (membro da guilda, ou quem saiu dela com slip nesta rodada — D-53a). Qualquer um que passe a porta vê, inclusive membro fora do snapshot de bettors (D-53b). Projected payout de todos os mercados publicados: um multiplicador por candidato, e na Weekly um por boss de progressão (roundEncounterId, D-54) — floor(9V/10)/S(o) sobre apostas VÁLIDAS; null é "—". Nunca conta, slip ou stake (§16.10). 404 se a rodada não existe ou ainda está em preparação, como a leitura da rodada (D-75).'
 headers:
 - enabled: true
   name: Cookie

@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Auditar (D-30): lista os reports da guilda no WCL da semana do cutoff, acha os titanbet* de terça e de quinta e abre uma tentativa nova (a anterior, se aberta, vira substituida). Todos os titanbet* da sessão são fonte, numa timeline só (D-63); sessão sem nenhum → ausente, aguardando_revisao até o officer declarar sem raid (D-60). 201 com auditId; 409 antes do cutoff, sem Ready, com auditoria confirmada ou com o WCL fora. Chama o WCL de verdade.'
+description: 'OfficerGuard. Auditar (D-30): lista os reports da guilda no WCL da semana do cutoff, acha os titanbet* de terça e de quinta e abre uma tentativa nova (a anterior, se aberta, vira substituida). Todos os titanbet* da sessão são fonte, numa timeline só (D-63); sessão sem nenhum → ausente, aguardando_revisao até o officer declarar sem raid (D-60). 201 com auditId; 409 antes de quinta 23:30 no fuso da guilda (D-73), sem Ready, com auditoria confirmada ou com o WCL fora. Chama o WCL de verdade.'
 headers:
 - enabled: true
   name: Cookie

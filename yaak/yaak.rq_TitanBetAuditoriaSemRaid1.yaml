@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: '{"motivo": ""}'
 bodyType: application/json
-description: 'OfficerGuard. "Não houve raid oficial nesta sessão" (D-60): só na sessão ausente (nenhum titanbet*), com motivo obrigatório. :session é terca ou quinta. Fica registrado quem declarou e quando; resolvida a última ausente, a auditoria fica pronta. 204; 409 se a sessão não está ausente ou a auditoria não está em revisão.'
+description: 'OfficerGuard. "Não houve raid oficial nesta sessão" (D-60): só na sessão ausente (nenhum titanbet*), com motivo obrigatório. :session é terca ou quinta. Fica registrado quem declarou e quando; resolvida a última ausente, a auditoria fica pronta. 204; 409 antes de quinta 23:30 no fuso da guilda (D-73), se a sessão não está ausente ou se a auditoria não está em revisão.'
 headers:
 - enabled: true
   name: Cookie

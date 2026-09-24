@@ -60,8 +60,10 @@ export class TitanBetMemberController {
 
   /** Projected payout de todos os mercados publicados — só multiplicadores (§16.10). */
   @Get('odds')
-  oddsDaRodada(@Param('roundId') roundId: string): Promise<OddsDaRodada> {
-    return comoHttp(() => this.odds.daRodada(roundId));
+  async oddsDaRodada(@Param('roundId') roundId: string): Promise<OddsDaRodada> {
+    const odds = await comoHttp(() => this.odds.daRodada(roundId));
+    if (!odds) throw new NotFoundException('A rodada não existe ou ainda não foi publicada');
+    return odds;
   }
 
   @Get('slip')

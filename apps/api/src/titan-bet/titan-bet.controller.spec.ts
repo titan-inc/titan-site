@@ -530,6 +530,13 @@ describe('Titan Bet — autorização das rotas', () => {
       expect(odds.daRodada).toHaveBeenCalledWith('r1');
     });
 
+    it('D-75 — odds de rodada não publicada: 404, como a leitura da rodada', async () => {
+      comSessao('social');
+      odds.daRodada.mockResolvedValue(null);
+      const r = await request(server).get('/internal/titan-bet/rodadas/r1/odds').expect(404);
+      expect(r.body).not.toHaveProperty('mercados');
+    });
+
     it('o Closing Report publicado é de qualquer membro da guilda (RosterGuard, D-21)', async () => {
       comSessao('social');
       await request(server).get('/internal/titan-bet/rodadas/r1/closing').expect(200);

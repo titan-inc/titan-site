@@ -20,7 +20,12 @@ import { TitanBetRepository } from './titan-bet.repository';
 export class OddsService {
   constructor(private readonly repo: TitanBetRepository) {}
 
-  async daRodada(roundId: string): Promise<OddsDaRodada> {
+  /**
+   * `null` quando a rodada não existe ou ainda não teve Ready: as odds seguem a
+   * publicação, como a leitura da rodada (D-75) — preparação não é publicada.
+   */
+  async daRodada(roundId: string): Promise<OddsDaRodada | null> {
+    if (!(await this.repo.rodadaPublicada(roundId))) return null;
     const [cardapio, somas] = await Promise.all([
       this.repo.cardapio(roundId),
       this.repo.somasValidasPorOpcao(roundId),
