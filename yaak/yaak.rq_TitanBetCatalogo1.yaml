@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. As zonas de raid do catálogo do WCL e os bosses de cada uma (D-22) — de onde saem os encounterId da preparação. Chama o WCL de verdade (cache de 12h).'
+description: 'OfficerGuard. As zonas de raid do catálogo do WCL e os bosses de cada uma (D-22) — de onde saem os encounterId da preparação — e zonaAtual: a zone da atividade de raid real mais recente da guilda (pull Mythic fora de espelho de Beta/PTR, pela descoberta da progressão), ou null quando não dá para dizer (B2). O catálogo vem inteiro; filtrar é da tela. Chama o WCL de verdade (catálogo com cache de 12h; pulls com o cache da progressão).'
 headers:
 - enabled: true
   name: Cookie

@@ -11,6 +11,7 @@ import { Depositos } from './depositos';
 import {
   AUDITORIA,
   CATALOGO,
+  CATALOGO_COM_TIER,
   DEPOSITOS,
   OFFICER_BT,
   PREPARACAO,
@@ -462,5 +463,62 @@ describe('achados do navegador — Officer Panel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Lançar ajuste' }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'Lançar ajuste' })).toBeNull();
+  });
+});
+
+/**
+ * B2 (decisão de 24/09/2026, titan-bet-test-design.md §41): a preparação mostra
+ * por padrão só o conteúdo atual da guilda — a zone da atividade de raid real
+ * mais recente —, com "Mostrar todas" como ação secundária.
+ */
+describe('B2 — preparação com o conteúdo atual', () => {
+  const zonasNaTela = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+
+  it('mostra por padrão só a zone atual', () => {
+    render(<Preparacao preparacao={PREPARACAO} catalogo={CATALOGO_COM_TIER} editavel />);
+    expect(zonasNaTela()).toEqual(['Tier Atual']);
+    expect(screen.queryByRole('group', { name: 'Boss Antigo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Mostrar todas' })).toBeTruthy();
+  });
+
+  it('"Mostrar todas" dá acesso aos demais conteúdos, e dá para voltar', async () => {
+    render(<Preparacao preparacao={PREPARACAO} catalogo={CATALOGO_COM_TIER} editavel />);
+    await userEvent.click(screen.getByRole('button', { name: 'Mostrar todas' }));
+    expect(zonasNaTela()).toEqual(['Tier Anterior', 'Tier Atual', 'Tier Atual (Beta)']);
+    expect(screen.getByRole('group', { name: 'Boss Antigo' })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Mostrar só o conteúdo atual' }));
+    expect(zonasNaTela()).toEqual(['Tier Atual']);
+  });
+
+  it('sem conteúdo atual determinado: o catálogo completo e o aviso', () => {
+    render(<Preparacao preparacao={PREPARACAO} catalogo={CATALOGO} editavel />);
+    expect(screen.getByText(/conteúdo atual ainda não pôde ser determinado/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Mostrar todas' })).toBeNull();
+  });
+
+  it('encounter já escolhido fora do conteúdo atual continua visível e é salvo', async () => {
+    fetchMock.mockResolvedValueOnce(resposta(PREPARACAO));
+    const comAntigo = {
+      ...PREPARACAO,
+      encounters: [
+        {
+          roundEncounterId: 'e-antigo',
+          encounterId: 3176,
+          encounterName: 'Boss Antigo',
+          zoneName: 'Tier Anterior',
+          track: 'farm' as const,
+          mercados: [{ marketId: 'm-antigo', kind: 'top_dps' as const }],
+        },
+      ],
+    };
+    render(<Preparacao preparacao={comAntigo} catalogo={CATALOGO_COM_TIER} editavel />);
+    expect(screen.getByRole('group', { name: 'Boss Antigo' })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar preparação' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(chamada(0).corpo).toMatchObject({
+      encounters: [{ encounterId: 3176, track: 'farm', mercados: ['top_dps'] }],
+    });
   });
 });

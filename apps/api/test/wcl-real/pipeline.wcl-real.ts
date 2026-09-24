@@ -75,7 +75,10 @@ describe('Titan Bet — pipeline com o WCL real (§40)', () => {
 
     // 1. Rodada com cutoff logo à frente: Ready e apostas pelo caminho normal.
     const rodada = await f.rodada({ cutoffAt: new Date(Date.now() + 150_000) });
-    const prep = new PreparacaoService(repo, blizzard, wcl);
+    const prep = new PreparacaoService(repo, blizzard, wcl, {
+      // O harness não lê o catálogo da tela; o conteúdo atual não entra aqui.
+      zonaAtual: () => Promise.resolve(null),
+    });
     const vista = await prep.salvar(
       rodada.id,
       {

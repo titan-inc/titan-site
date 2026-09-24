@@ -71,6 +71,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
       repo,
       { getCurrentSeason: () => Promise.resolve({ currentPeriod: randomInt(1, 1_000_000) }) },
       { getRaidCatalog: () => Promise.resolve(CATALOGO) },
+      { zonaAtual: () => Promise.resolve(null) },
     );
     const vista = await prep.salvar(
       rodada.id,

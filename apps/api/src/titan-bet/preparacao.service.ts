@@ -4,6 +4,7 @@ import type { CatalogoDeRaid, PreparacaoDaRodada, PrepararRodada } from '@titan/
 import { BlizzardService, type CurrentSeason } from '../blizzard/blizzard.service';
 import { loadGuildTimezone } from '../config/guild.config';
 import { WarcraftLogsService, type RaidCatalog } from '../warcraftlogs/warcraftlogs.service';
+import { RaidProgressService } from '../raidprogress/raidprogress.service';
 import { proximaRodada } from './calendario';
 import { faseDaRodada } from './fases';
 import { TitanBetRepository, type PlanoDePreparacao } from './titan-bet.repository';
@@ -32,6 +33,12 @@ export interface PeriodoCorrente {
 /** O pedaço do WCL que a preparação usa: o catálogo de raid (D-22). */
 export type CatalogoDoWcl = Pick<WarcraftLogsService, 'getRaidCatalog'>;
 
+/**
+ * O conteúdo atual da guilda (B2): a zone da atividade de raid real mais
+ * recente, pela mesma descoberta da progressão de raid.
+ */
+export type ConteudoAtual = Pick<RaidProgressService, 'zonaAtual'>;
+
 interface Officer {
   userId: string;
   battletag: string;
@@ -58,6 +65,7 @@ export class PreparacaoService {
     private readonly repo: TitanBetRepository,
     @Inject(BlizzardService) private readonly blizzard: PeriodoCorrente,
     @Inject(WarcraftLogsService) private readonly wcl: CatalogoDoWcl,
+    @Inject(RaidProgressService) private readonly atividade: ConteudoAtual,
   ) {}
 
   /**
@@ -81,8 +89,12 @@ export class PreparacaoService {
   }
 
   async catalogo(): Promise<CatalogoDeRaid> {
-    const catalogo = await this.wcl.getRaidCatalog();
+    const [catalogo, zonaAtual] = await Promise.all([
+      this.wcl.getRaidCatalog(),
+      this.atividade.zonaAtual(),
+    ]);
     return {
+      zonaAtual,
       zonas: [...catalogo.zones.entries()].map(([zoneId, bosses]) => ({
         zoneId,
         zoneName: bosses[0]?.zoneName ?? '',

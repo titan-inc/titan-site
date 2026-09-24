@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preparacaoDaRodadaSchema, prepararRodadaSchema } from './config.js';
+import { catalogoDeRaidSchema, preparacaoDaRodadaSchema, prepararRodadaSchema } from './config.js';
 
 /**
  * Contrato da preparação da semana no Officer Panel (D-45; spec §16.2).
@@ -123,5 +123,33 @@ describe('preparacaoDaRodadaSchema', () => {
       ],
     };
     expect(preparacaoDaRodadaSchema.parse(vista)).toEqual(vista);
+  });
+});
+
+/**
+ * B2 (titan-bet-test-design.md §41): o catálogo diz qual é o conteúdo atual da
+ * guilda — a zone da atividade de raid real mais recente —, ou `null` quando não
+ * dá para dizer. Quem mostra decide filtrar; o catálogo inteiro continua vindo.
+ */
+describe('catalogoDeRaidSchema — o conteúdo atual', () => {
+  const zonas = [
+    { zoneId: 46, zoneName: 'VS / DR / MQD', encounters: [{ encounterId: 3176, name: 'Boss' }] },
+    {
+      zoneId: 53,
+      zoneName: 'The Venomous Abyss',
+      encounters: [{ encounterId: 3470, name: 'Boss' }],
+    },
+  ];
+
+  it('com a zone atual inferida', () => {
+    expect(catalogoDeRaidSchema.parse({ zonas, zonaAtual: 53 })).toEqual({ zonas, zonaAtual: 53 });
+  });
+
+  it('sem conteúdo atual determinado: null, e o catálogo inteiro', () => {
+    expect(catalogoDeRaidSchema.parse({ zonas, zonaAtual: null }).zonaAtual).toBeNull();
+  });
+
+  it('o campo é obrigatório: quem lê precisa saber se houve inferência', () => {
+    expect(catalogoDeRaidSchema.safeParse({ zonas }).success).toBe(false);
   });
 });

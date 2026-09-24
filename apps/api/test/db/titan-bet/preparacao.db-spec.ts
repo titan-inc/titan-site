@@ -64,7 +64,10 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
       getCurrentSeason: () => Promise.resolve({ currentPeriod: periodoCorrente }),
     };
     const wcl = { getRaidCatalog: () => Promise.resolve(CATALOGO) };
-    return { periodoCorrente, prep: new PreparacaoService(repo, blizzard, wcl) };
+    return {
+      periodoCorrente,
+      prep: new PreparacaoService(repo, blizzard, wcl, { zonaAtual: () => Promise.resolve(null) }),
+    };
   }
 
   /** Rodada em PREPARATION, criada direto — para os testes que não são da criação. */

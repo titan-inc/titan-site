@@ -27,6 +27,25 @@ interface Incluido {
   mercados: MercadoDeBoss[];
 }
 
+/**
+ * O que a preparação mostra (B2): por padrão, só o conteúdo atual da guilda — a
+ * zone da atividade de raid real mais recente, que vem da API. De fora dele, só
+ * os encounters já escolhidos, para ninguém perder de vista o que está na
+ * semana. "Mostrar todas", ou nenhum conteúdo atual determinado: tudo.
+ */
+function zonasVisiveis(
+  catalogo: CatalogoDeRaid,
+  mostrarTodas: boolean,
+  incluidos: Partial<Record<number, Incluido>>,
+): CatalogoDeRaid['zonas'] {
+  if (mostrarTodas || catalogo.zonaAtual === null) return catalogo.zonas;
+  return catalogo.zonas.flatMap((z) => {
+    if (z.zoneId === catalogo.zonaAtual) return [z];
+    const escolhidos = z.encounters.filter((e) => incluidos[e.encounterId] !== undefined);
+    return escolhidos.length > 0 ? [{ ...z, encounters: escolhidos }] : [];
+  });
+}
+
 /** Boss em progressão só tem First Death (D-29) — o mesmo refine do contrato. */
 function mercadosDoTrack(track: TrackDoEncounter): MercadoDeBoss[] {
   return track === 'farm' ? MERCADOS_DE_FARM : ['first_death'];
@@ -51,6 +70,7 @@ export function Preparacao({
 }) {
   const router = useRouter();
   const [weekly, setWeekly] = useState(preparacao.weekly !== null);
+  const [mostrarTodas, setMostrarTodas] = useState(false);
   const [incluidos, setIncluidos] = useState<Partial<Record<number, Incluido>>>(() =>
     Object.fromEntries(
       preparacao.encounters.map((e) => [
@@ -147,7 +167,20 @@ export function Preparacao({
         As opções da Weekly são os bosses marcados como progressão — cada um com a própria odd.
       </p>
 
-      {catalogo.zonas.map((zona) => (
+      {catalogo.zonaAtual === null ? (
+        <p className="text-fg-muted text-sm">
+          O conteúdo atual ainda não pôde ser determinado — nenhuma atividade de raid Mythic da
+          guilda no Warcraft Logs. Mostrando o catálogo completo.
+        </p>
+      ) : (
+        <div>
+          <Acao variante="fantasma" onClick={() => setMostrarTodas((m) => !m)}>
+            {mostrarTodas ? 'Mostrar só o conteúdo atual' : 'Mostrar todas'}
+          </Acao>
+        </div>
+      )}
+
+      {zonasVisiveis(catalogo, mostrarTodas, incluidos).map((zona) => (
         <div key={zona.zoneId} className="flex flex-col gap-3">
           <h3 className="text-fg-subtle font-mono text-xs tracking-widest uppercase">
             {zona.zoneName}

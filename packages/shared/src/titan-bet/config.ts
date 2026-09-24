@@ -84,8 +84,16 @@ export const preparacaoDaRodadaSchema = z
   .strict();
 export type PreparacaoDaRodada = z.infer<typeof preparacaoDaRodadaSchema>;
 
-/** O catálogo de raid do WCL, para o officer escolher os encounters (D-22). */
+/**
+ * O catálogo de raid do WCL, para o officer escolher os encounters (D-22).
+ *
+ * `zonaAtual` é o conteúdo atual da guilda — a zone da atividade de raid real
+ * mais recente (decisão B2) — ou `null` quando não dá para dizer. O catálogo vem
+ * inteiro de qualquer jeito: filtrar é da tela, e "Mostrar todas" continua
+ * valendo.
+ */
 export const catalogoDeRaidSchema = z.object({
+  zonaAtual: z.number().int().nullable(),
   zonas: z.array(
     z.object({
       zoneId: z.number().int(),

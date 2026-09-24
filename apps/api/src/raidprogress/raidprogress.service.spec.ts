@@ -300,3 +300,67 @@ describe('RaidProgressService', () => {
     await expect(service.getReport()).rejects.toThrow('Warcraft Logs');
   });
 });
+
+/**
+ * O conteúdo atual (B2, titan-bet-test-design.md §41): a zone da atividade de
+ * raid real mais recente, pela mesma descoberta da progressão — janela da
+ * season e pulls do WCL — e com a mesma caminhada "season mais recente com
+ * atividade".
+ */
+describe('RaidProgressService.zonaAtual', () => {
+  const repo = { listSeasons: jest.fn(), findSeason: jest.fn() };
+  const wcl = { getRaidCatalog: jest.fn(), getRaidPulls: jest.fn() };
+  const nova = season({ id: 18, startedAt: new Date('2026-09-01T15:00:00Z') });
+  const velha = season({ id: 17, startedAt: new Date('2026-03-17T15:00:00Z') });
+
+  const criar = () =>
+    new RaidProgressService(
+      repo as unknown as SnapshotsRepository,
+      wcl as unknown as WarcraftLogsService,
+    );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo.listSeasons.mockResolvedValue([nova, velha]);
+    wcl.getRaidCatalog.mockResolvedValue(catalogo);
+  });
+
+  it('a zone da pull Mythic mais recente da season corrente', async () => {
+    wcl.getRaidPulls.mockResolvedValue([pull({ startedAt: Date.parse('2026-09-15T23:00:00Z') })]);
+    await expect(criar().zonaAtual()).resolves.toBe(46);
+    // A janela é a da season, como na progressão: da season mais nova até agora.
+    expect(wcl.getRaidPulls).toHaveBeenCalledWith(nova.startedAt, null);
+  });
+
+  it('season nova sem atividade ainda → o tier da anterior continua (consequência aceita)', async () => {
+    wcl.getRaidPulls.mockImplementation((de: Date) =>
+      Promise.resolve(de.getTime() === nova.startedAt.getTime() ? [] : [pull()]),
+    );
+    await expect(criar().zonaAtual()).resolves.toBe(46);
+    expect(wcl.getRaidPulls).toHaveBeenCalledWith(velha.startedAt, nova.startedAt);
+  });
+
+  it('nenhuma atividade válida em season nenhuma → null', async () => {
+    wcl.getRaidPulls.mockResolvedValue([pull({ difficulty: 4 })]);
+    await expect(criar().zonaAtual()).resolves.toBeNull();
+  });
+
+  it('sem season gravada → null', async () => {
+    repo.listSeasons.mockResolvedValue([]);
+    await expect(criar().zonaAtual()).resolves.toBeNull();
+  });
+
+  it('WCL fora do ar → null: não se inventa tier', async () => {
+    wcl.getRaidPulls.mockRejectedValue(new Error('WCL fora'));
+    await expect(criar().zonaAtual()).resolves.toBeNull();
+  });
+
+  it('reusa as pulls que a progressão já leu (mesmo cache)', async () => {
+    wcl.getRaidPulls.mockResolvedValue([pull()]);
+    repo.findSeason.mockResolvedValue(nova);
+    const service = criar();
+    await service.getReport(18);
+    await service.zonaAtual();
+    expect(wcl.getRaidPulls).toHaveBeenCalledTimes(1);
+  });
+});

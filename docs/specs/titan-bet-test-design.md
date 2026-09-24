@@ -2060,3 +2060,58 @@ do repositório.
 `Character` (login grava o slug; WoWAudit, a grafia de exibição). É **dívida da camada
 global de identidade**, não do Titan Bet, que continua na Regra 6 sem canonicalização
 própria.
+
+## 41. B2 — o conteúdo atual na preparação (24/09/2026)
+
+**Status: GREEN.** Decisão D-70 (spec, revisão 13).
+
+### 41.1 A fonte
+
+Não havia fonte de verdade de tier/zone atual (§40 do relatório de B2): a `GameSeason` é
+season, não raid; a progressão de raid **deduz** os tiers das pulls da janela da season; o
+catálogo de loot não liga raid a season. A regra nova reaproveita a descoberta da
+progressão em vez de duplicá-la:
+
+- `ehEspelhoDeTeste` saiu do gerador do catálogo de loot para o módulo do WCL, e os dois
+  usam a mesma regra (regressão: as suítes do gerador passaram inalteradas);
+- `zonaDaAtividadeMaisRecente(pulls, catalogo)` — função pura, `raidprogress/zona-atual.ts`;
+- `RaidProgressService.zonaAtual()` — a mesma janela, as mesmas pulls (o cache da
+  progressão agora guarda as pulls junto do relatório) e a mesma caminhada pela season
+  mais recente com atividade; WCL fora do ar sem dado bom → `null`;
+- `catalogoDeRaidSchema.zonaAtual` (obrigatório, `number | null`); a preparação do Titan
+  Bet recebe a progressão por injeção (`ConteudoAtual`).
+
+### 41.2 RED
+
+| Onde                                                  | RED                                                                                                                                                   |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `raidprogress/zona-atual.spec.ts` — 7                 | **awaiting seam** (`./zona-atual` inexistente)                                                                                                        |
+| `raidprogress.service.spec.ts` — `zonaAtual`, 6       | **RED real**: `zonaAtual is not a function`                                                                                                           |
+| `shared/titan-bet/config.spec.ts` — 3                 | **RED real**: o schema não trazia `zonaAtual`                                                                                                         |
+| `titan-bet/preparacao-catalogo.spec.ts` — 2           | **RED real**: `zonaAtual` indefinido                                                                                                                  |
+| `web/bet-officer/_components/painel.spec.tsx` — B2, 4 | **RED real**: 3 falhas; o 4º (encounter já escolhido fora do tier continua visível e salvo) passava porque tudo aparecia — fica como guarda do filtro |
+
+Casos cobertos: 53 inferida dos logs; 46 antes e 53 depois → 53; pull no espelho de Beta
+(54), mesmo mais recente, não vira atual; 54 no catálogo sem atividade → nada; dummy e
+delve ignorados; só Heroic/Normal → nada; season nova sem atividade → a anterior; WCL fora
+→ `null`; reuso do cache da progressão; "Mostrar todas" e volta; catálogo completo com
+aviso quando `null`.
+
+### 41.3 No navegador (dev, WCL real)
+
+- O catálogo real infere **zone 53, The Venomous Abyss** (10 bosses, com Nymrissa — o
+  espelho 54 não tem), entre 46 zones; primeira leitura em 1,9 s, depois o cache.
+- Preparação (rodada local `teste-local-1084`): por padrão só The Venomous Abyss;
+  "Mostrar todas" abre as 46 (a 46 e as duas Venomous) e volta. Um boss da 46 escolhido
+  por "Mostrar todas" continua visível no modo filtrado, e salvar persiste os três
+  encounters (Nek'zali farm Top DPS, The Lost Explorers progressão First Death, Imperator
+  Averzian farm Top DPS) e a Weekly.
+- Regressão nas demais telas: `/interno/bet` (lista, rodada aberta com slip e odd 0,90×,
+  rodada encerrada com o Closing), `/interno/bet-officer` (preparação só leitura, slips,
+  "ver slip", saldos; rodada liquidada com auditoria, resultados com o boss e Closing).
+- Console sem erro; rede toda 2xx; 390 px sem rolagem horizontal e alvos ≥ 40 px.
+
+### 41.4 Resultado
+
+`pnpm test`: shared **398**, api **954**, web **217**; `pnpm test:db` **318**; format, lint,
+typecheck e build OK; a suíte não alterou o banco de dev (mesmo hash antes e depois).

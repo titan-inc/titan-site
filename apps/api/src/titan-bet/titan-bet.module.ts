@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { BlizzardModule } from '../blizzard/blizzard.module';
 import { CharactersModule } from '../characters/characters.module';
+import { RaidProgressModule } from '../raidprogress/raidprogress.module';
 import { WarcraftLogsModule } from '../warcraftlogs/warcraftlogs.module';
 import { WowAuditModule } from '../wowaudit/wowaudit.module';
 import { ApostasService } from './apostas.service';
@@ -30,7 +31,14 @@ import { TitanBetRepository } from './titan-bet.repository';
  * (`OfficerGuard`), em controllers separados.
  */
 @Module({
-  imports: [AuthModule, BlizzardModule, CharactersModule, WarcraftLogsModule, WowAuditModule],
+  imports: [
+    AuthModule,
+    BlizzardModule,
+    CharactersModule,
+    RaidProgressModule,
+    WarcraftLogsModule,
+    WowAuditModule,
+  ],
   controllers: [
     TitanBetMemberController,
     TitanBetOfficerController,

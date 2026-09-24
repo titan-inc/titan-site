@@ -30,6 +30,29 @@ export interface RaidCatalog {
   difficultyNames: Map<number, string>;
 }
 
+/** Quanto o WCL soma no id para espelhar uma zona de teste (PTR/Beta). */
+export const OFFSET_ZONA_DE_TESTE = 50_000;
+
+/**
+ * O boss é o espelho de PTR/Beta de um boss ao vivo?
+ *
+ * Enquanto uma raid está em teste o WCL a publica **duas vezes**: a zona ao vivo
+ * e uma de PTR/Beta, cujos encounters repetem o mesmo nome com o id somado de
+ * 50000. O critério **não** é "id alto", é ter um gêmeo exato em `id - 50000`
+ * com o mesmo nome — assim um encounter ao vivo que um dia nasça com id alto
+ * continua passando, em vez de sumir em silêncio.
+ *
+ * O nome da zona não serve de critério: em 09/08/2026 as zonas 53 e 54 se
+ * chamavam as duas "The Venomous Abyss", sem sufixo que as distinga.
+ */
+export function ehEspelhoDeTeste(
+  boss: RaidEncounter,
+  encounters: Map<number, RaidEncounter>,
+): boolean {
+  if (boss.id < OFFSET_ZONA_DE_TESTE) return false;
+  return encounters.get(boss.id - OFFSET_ZONA_DE_TESTE)?.name === boss.name;
+}
+
 /** Uma pull de boss num log da guilda. */
 export interface RaidPull {
   encounterId: number;

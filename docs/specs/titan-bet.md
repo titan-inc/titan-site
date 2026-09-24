@@ -333,6 +333,29 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
 
+### Revisão 13 (24/09/2026) — o conteúdo atual na preparação
+
+| D    | Resolve | Decisão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D-70 | B2      | **O conteúdo atual é o da atividade de raid real mais recente da guilda.** A preparação mostra por padrão só essa zone do catálogo do WCL, com **"Mostrar todas"** como ação secundária. A zone vem da **mesma descoberta da progressão de raid** (janela da `GameSeason` e pulls do WCL, com o mesmo cache e a mesma caminhada "season mais recente com atividade"): a zone da pull **Mythic** mais recente de boss do catálogo, fora de espelho de PTR/Beta (gêmeo exato em `id - 50000`). Dummy Dome (só Normal), Delves (dificuldades próprias) e espelhos de Beta nunca viram "atual", e zone que só aparece no catálogo, sem pull da guilda, também não. Sem atividade válida: nenhum tier inferido — o catálogo completo e um aviso. **Nunca** maior id, posição, nome ou data do catálogo. Sem configuração manual e sem variável de ambiente. |
+
+**Consequência aceita:** quando sai um tier novo, até a primeira pull Mythic real da Titan
+nele, o tier anterior continua aparecendo como atual; o officer usa "Mostrar todas". Na
+primeira atividade válida, a seleção passa sozinha para o tier novo.
+
+**Risco residual registrado:** uma pull Mythic de raid antiga logada pela guilda depois da
+noite de raid (run de transmog, por exemplo) viraria o "atual" até a próxima noite do tier
+corrente. É só o padrão da tela — "Mostrar todas" continua valendo, e nada no cálculo
+depende disto.
+
+**Dívida global, fora do Titan Bet (B4):** a grafia do realm na `Character` varia com a
+fonte (`azralon`/`Azralon`, `area-52`). O Titan Bet segue a Regra 6 sem canonicalização
+própria.
+
+**Pendência operacional:** nenhum report da guilda tem ainda o prefixo `titanbet`. Todo o
+resto do pipeline foi exercitado com o WCL real (test-design §40), e o caminho normal
+provou recusar os reports sem prefixo; falta só o primeiro `titanbet*` de verdade.
+
 ### Revisão 12 (24/09/2026) — pendências da revisão 11
 
 | D    | Resolve           | Decisão                                                                                                                                                                                                                                                                                                                             |

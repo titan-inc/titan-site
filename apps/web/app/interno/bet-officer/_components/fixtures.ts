@@ -14,6 +14,8 @@ import type {
 export const OFFICER_BT = 'Officer#0001';
 
 export const CATALOGO: CatalogoDeRaid = {
+  // Sem conteúdo atual inferido: a tela mostra o catálogo inteiro.
+  zonaAtual: null,
   zonas: [
     {
       zoneId: 1,
@@ -22,6 +24,34 @@ export const CATALOGO: CatalogoDeRaid = {
         { encounterId: 101, name: 'Boss Farm' },
         { encounterId: 102, name: 'Boss Novo' },
       ],
+    },
+  ],
+};
+
+/**
+ * Catálogo com tiers e espelho, como o real (B2): 46 é o tier anterior, 53 o
+ * atual (inferido da atividade real), 54 o espelho de Beta da 53.
+ */
+export const CATALOGO_COM_TIER: CatalogoDeRaid = {
+  zonaAtual: 53,
+  zonas: [
+    {
+      zoneId: 46,
+      zoneName: 'Tier Anterior',
+      encounters: [{ encounterId: 3176, name: 'Boss Antigo' }],
+    },
+    {
+      zoneId: 53,
+      zoneName: 'Tier Atual',
+      encounters: [
+        { encounterId: 101, name: 'Boss Farm' },
+        { encounterId: 102, name: 'Boss Novo' },
+      ],
+    },
+    {
+      zoneId: 54,
+      zoneName: 'Tier Atual (Beta)',
+      encounters: [{ encounterId: 50101, name: 'Boss Farm' }],
     },
   ],
 };
