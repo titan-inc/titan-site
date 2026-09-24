@@ -1841,3 +1841,34 @@ saldos só trazem devido e pago. Entrou pelo mesmo TDD do F0:
 a chamada), banco 2 (`ledger.lancamentos is not a function`). **GREEN:** o lançamento sai
 com `entryId` em texto (BigInt), tipo, valor, motivo, quem e quando — sem aposta nem
 mercado; o id devolvido é aceito pelo ajuste (testado ponta a ponta). Yaak incluído.
+
+### 38.2 F2 — as telas
+
+**Status: GREEN.** T-UI20–T-UI28 da §34.3.
+
+**RED:** _awaiting seam_ no `painel.spec.tsx` (nenhum componente existia) e **RED real** no
+menu — o link do Officer Panel não existia (1 falha).
+
+- **Rota própria**, `/interno/bet-officer` e `/interno/bet-officer/[roundId]`: segmento
+  distinto do `/interno/bet`, para o menu não marcar os dois como ativos.
+- **Acesso (T-UI20):** a página e o item de menu usam `isActingOfficer` — a precondição
+  do `OfficerGuard`, não `canManageOfficers` (CLAUDE.md, Regra 4); o layout ganhou a prop
+  `officer` separada de `oficial`. `proibido` da API volta para `/interno`.
+- **Uma seção por etapa**, cada uma lendo no servidor e escrevendo direto no Nest com
+  `router.refresh()` depois: criar rodada; preparação (farm/progressão, mercados, Weekly
+  sem marcação de boss — D-54; progressão só com First Death — D-29) e Ready com a
+  recusa do backend como veio (T-UI21, T-UI22); depósitos com recusa exigindo motivo e o
+  próprio depósito confirmável (T-UI23, D-58); slips submetidos, com o "ver slip" como
+  ação explícita que avisa o registro (T-UI24, D-57); Auditar, fontes com todos os
+  `titanbet*` e a declaração de "sem raid" com motivo (T-UI25, D-60, D-63); calcular,
+  resultados com motivo e liquidar em **dois passos** (T-UI26, D-61); saldos, pagar e
+  ajuste escolhendo o lançamento do T-C06 (T-UI27, D-11); publicar o Closing (T-UI28).
+
+**Não verificado no navegador**, pelo mesmo motivo do F1 (§37.2): o banco de dev não
+recebeu as migrations da revisão 11–12.
+
+### 38.3 Resultado
+
+`pnpm test`: shared 395, api 935, web **204**; `pnpm test:db` 316; format, lint, typecheck e
+build OK; banco de dev com o mesmo hash. A matriz da §34 está completa: F0 (T-C01–T-C05,
+mais o T-C06), F1 (T-UI01–T-UI11) e F2 (T-UI20–T-UI28).

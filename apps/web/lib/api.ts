@@ -2,6 +2,22 @@ import 'server-only';
 
 import {
   attendanceReportSchema,
+  auditoriaCorrenteSchema,
+  catalogoDeRaidSchema,
+  depositosPendentesSchema,
+  preparacaoDaRodadaSchema,
+  resultadosDaAuditoriaSchema,
+  rodadasDoOfficerSchema,
+  saldosDaRodadaSchema,
+  slipsSubmetidosSchema,
+  type AuditoriaCorrente,
+  type CatalogoDeRaid,
+  type DepositosPendentes,
+  type PreparacaoDaRodada,
+  type ResultadosDaAuditoria,
+  type RodadasDoOfficer,
+  type SaldosDaRodada,
+  type SlipsSubmetidos,
   closingPublicadoSchema,
   meuSlipSchema,
   oddsDaRodadaSchema,
@@ -480,4 +496,46 @@ export function getMeuSlipBet(roundId: string): Promise<LeituraBet<MeuSlip>> {
 /** O Round Closing Report publicado; `inexistente` antes da publicação. */
 export function getClosingBet(roundId: string): Promise<LeituraBet<ClosingPublicado>> {
   return lerBet(`${rodadaBet(roundId)}/closing`, closingPublicadoSchema);
+}
+
+// ─── Titan Bet: Officer Panel ────────────────────────────────────────────────
+// A página chama sem decidir quem é officer: quem responde 403 é o
+// `OfficerGuard` (Regra 5), e `proibido` volta para /interno.
+
+const officerBet = (caminho: string) => `/officer${caminho}`;
+
+export function getRodadasOfficer(): Promise<LeituraBet<RodadasDoOfficer>> {
+  return lerBet(officerBet('/rodadas'), rodadasDoOfficerSchema);
+}
+
+export function getPreparacaoOfficer(roundId: string): Promise<LeituraBet<PreparacaoDaRodada>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/preparacao`), preparacaoDaRodadaSchema);
+}
+
+export function getCatalogoOfficer(): Promise<LeituraBet<CatalogoDeRaid>> {
+  return lerBet(officerBet('/catalogo'), catalogoDeRaidSchema);
+}
+
+export function getDepositosOfficer(roundId: string): Promise<LeituraBet<DepositosPendentes>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/depositos`), depositosPendentesSchema);
+}
+
+export function getSlipsOfficer(roundId: string): Promise<LeituraBet<SlipsSubmetidos>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/slips`), slipsSubmetidosSchema);
+}
+
+/** A tentativa corrente de Auditar; `inexistente` antes do primeiro. */
+export function getAuditoriaOfficer(roundId: string): Promise<LeituraBet<AuditoriaCorrente>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/auditoria`), auditoriaCorrenteSchema);
+}
+
+export function getResultadosOfficer(auditId: string): Promise<LeituraBet<ResultadosDaAuditoria>> {
+  return lerBet(
+    officerBet(`/auditorias/${encodeURIComponent(auditId)}/resultados`),
+    resultadosDaAuditoriaSchema,
+  );
+}
+
+export function getSaldosOfficer(roundId: string): Promise<LeituraBet<SaldosDaRodada>> {
+  return lerBet(officerBet(`${rodadaBet(roundId)}/saldos`), saldosDaRodadaSchema);
 }

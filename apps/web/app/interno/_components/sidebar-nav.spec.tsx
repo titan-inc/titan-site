@@ -21,3 +21,19 @@ describe('SidebarNav — Titan Bet (D-01)', () => {
     expect(screen.getByRole('link', { name: 'Titan Bet' })).toBeTruthy();
   });
 });
+
+describe('SidebarNav — Officer Panel do Titan Bet (D-36)', () => {
+  afterEach(cleanup);
+
+  it('aparece para officer', () => {
+    render(<SidebarNav officer />);
+    expect(screen.getByRole('link', { name: 'Titan Bet (officer)' }).getAttribute('href')).toBe(
+      '/interno/bet-officer',
+    );
+  });
+
+  it('some para quem não é — é cortesia; quem barra é o OfficerGuard (Regra 5)', () => {
+    render(<SidebarNav />);
+    expect(screen.queryByRole('link', { name: 'Titan Bet (officer)' })).toBeNull();
+  });
+});
