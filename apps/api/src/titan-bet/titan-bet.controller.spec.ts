@@ -15,6 +15,8 @@ import { DepositoRecusado, DepositoService } from './deposito.service';
 import { OddsService } from './odds.service';
 import { PreparacaoRecusada, PreparacaoService } from './preparacao.service';
 import { ReadyRecusado, ReadyService } from './ready.service';
+import { RodadasService } from './rodadas.service';
+import { TitanBetRodadasController } from './titan-bet-rodadas.controller';
 import { TitanBetMemberController } from './titan-bet-member.controller';
 import { TitanBetOfficerController } from './titan-bet-officer.controller';
 import { TitanBetRepository } from './titan-bet.repository';
@@ -52,6 +54,8 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
   ],
   ['get', '/internal/titan-bet/officer/rodadas/r1/auditoria'],
   ['get', '/internal/titan-bet/officer/slips/s1'],
+  ['get', '/internal/titan-bet/officer/rodadas'],
+  ['get', '/internal/titan-bet/officer/rodadas/r1/slips'],
   [
     'post',
     '/internal/titan-bet/officer/auditorias/a1/fontes/terca/sem-raid',
@@ -60,6 +64,7 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
 ];
 
 const MEMBRO_ROTAS: Array<[Verbo, string, object?]> = [
+  ['get', '/internal/titan-bet/rodadas/r1'],
   ['get', '/internal/titan-bet/rodadas/r1/slip'],
   ['get', '/internal/titan-bet/rodadas/r1/odds'],
   ['get', '/internal/titan-bet/rodadas/r1/closing'],
@@ -96,13 +101,20 @@ describe('Titan Bet — autorização das rotas', () => {
     confirmar: jest.fn(),
     recusar: jest.fn(),
     verSlip: jest.fn(),
+    submetidos: jest.fn(),
   };
+  const rodadas = { visiveis: jest.fn(), daRodada: jest.fn(), doOfficer: jest.fn() };
   // O guard do apostador pergunta ao banco se a conta tem slip na rodada (D-53a).
-  const repo = { contaTemSlipNaRodada: jest.fn() };
+  const repo = { contaTemSlipNaRodada: jest.fn(), contaTemAlgumSlip: jest.fn() };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      controllers: [TitanBetMemberController, TitanBetOfficerController, TitanBetResultsController],
+      controllers: [
+        TitanBetMemberController,
+        TitanBetOfficerController,
+        TitanBetResultsController,
+        TitanBetRodadasController,
+      ],
       providers: [
         RosterGuard,
         OfficerGuard,
@@ -118,6 +130,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: LedgerService, useValue: ledger },
         { provide: ClosingService, useValue: closing },
         { provide: TitanBetRepository, useValue: repo },
+        { provide: RodadasService, useValue: rodadas },
       ],
     }).compile();
 
@@ -163,6 +176,11 @@ describe('Titan Bet — autorização das rotas', () => {
     deposito.recusar.mockResolvedValue(undefined);
     deposito.verSlip.mockResolvedValue({ slipId: 's1' });
     repo.contaTemSlipNaRodada.mockResolvedValue(false);
+    repo.contaTemAlgumSlip.mockResolvedValue(false);
+    deposito.submetidos.mockResolvedValue({ slips: [] });
+    rodadas.visiveis.mockResolvedValue({ rodadas: [] });
+    rodadas.daRodada.mockResolvedValue({ roundId: 'r1' });
+    rodadas.doOfficer.mockResolvedValue({ rodadas: [] });
   });
 
   function comSessao(sessao: keyof typeof SESSAO) {
@@ -179,6 +197,7 @@ describe('Titan Bet — autorização das rotas', () => {
     for (const fake of [
       ready,
       apostas,
+      rodadas,
       deposito,
       odds,
       auditoria,
@@ -552,6 +571,60 @@ describe('Titan Bet — autorização das rotas', () => {
         .send({ depositCharacter: { name: 'Qualquer', realm: 'Azralon' } })
         .expect(422);
       expect(JSON.stringify(r.body)).toContain('o slip não tem nenhuma aposta');
+    });
+  });
+
+  describe('F0 — T-C01: as rodadas visíveis à conta', () => {
+    const ROTA = '/internal/titan-bet/rodadas';
+
+    it('sem cookie → 401', async () => {
+      auth.resolveSession.mockResolvedValue(null);
+      await request(server).get(ROTA).expect(401);
+      nenhumServiceChamado();
+    });
+
+    it('membro da guilda: todas as rodadas publicadas, sem consultar slip', async () => {
+      comSessao('social');
+      await request(server).get(ROTA).expect(200);
+      expect(rodadas.visiveis).toHaveBeenCalledWith('u1', true);
+      expect(repo.contaTemAlgumSlip).not.toHaveBeenCalled();
+    });
+
+    it('fora da guilda com slip em alguma rodada: passa, e só vê as dele (D-53a)', async () => {
+      comSessao('semRoster');
+      repo.contaTemAlgumSlip.mockResolvedValue(true);
+      await request(server).get(ROTA).expect(200);
+      expect(repo.contaTemAlgumSlip).toHaveBeenCalledWith('u1');
+      expect(rodadas.visiveis).toHaveBeenCalledWith('u1', false);
+    });
+
+    it('fora da guilda sem slip nenhum → 403', async () => {
+      comSessao('semRoster');
+      await request(server).get(ROTA).expect(403);
+      nenhumServiceChamado();
+    });
+  });
+
+  describe('F0 — T-C02: o cardápio da rodada', () => {
+    it('com a conta da sessão; rodada não publicada → 404', async () => {
+      comSessao('social');
+      const r = await request(server).get('/internal/titan-bet/rodadas/r1').expect(200);
+      expect(r.body).toEqual({ roundId: 'r1' });
+      expect(rodadas.daRodada).toHaveBeenCalledWith('r1', 'u1');
+
+      rodadas.daRodada.mockResolvedValueOnce(null);
+      await request(server).get('/internal/titan-bet/rodadas/r1').expect(404);
+    });
+  });
+
+  describe('F0 — T-C04 e T-C05: Officer Panel', () => {
+    it('as rodadas e os slips submetidos, só para officer', async () => {
+      comSessao('officer');
+      await request(server).get('/internal/titan-bet/officer/rodadas').expect(200);
+      expect(rodadas.doOfficer).toHaveBeenCalled();
+
+      await request(server).get('/internal/titan-bet/officer/rodadas/r1/slips').expect(200);
+      expect(deposito.submetidos).toHaveBeenCalledWith('r1');
     });
   });
 });

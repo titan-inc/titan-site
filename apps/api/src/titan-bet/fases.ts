@@ -5,15 +5,10 @@
  * o `cutoffAt`, a última auditoria não substituída e o closing report. Gravar
  * as fases como coluna criaria uma segunda verdade a manter sincronizada.
  */
-export type FaseDaRodada =
-  | 'PREPARATION'
-  | 'NAO_ABERTA'
-  | 'OPEN'
-  | 'BETTING_CLOSED'
-  | 'AUDITING'
-  | 'CALCULATED'
-  | 'SETTLED'
-  | 'CLOSED';
+import type { FaseDaRodada } from '@titan/shared';
+
+/** O contrato do shared (`faseDaRodadaSchema`) — o front lê as mesmas fases. */
+export type { FaseDaRodada };
 
 /** Estado da última auditoria não substituída da rodada (§16.5). */
 export type StatusDaAuditoria = 'aguardando_revisao' | 'pronta' | 'calculada' | 'confirmada';

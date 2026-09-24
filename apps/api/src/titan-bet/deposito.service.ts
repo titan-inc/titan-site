@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { DepositosPendentes, SlipDoOfficer } from '@titan/shared';
+import type { DepositosPendentes, SlipDoOfficer, SlipsSubmetidos } from '@titan/shared';
 import { TitanBetRepository } from './titan-bet.repository';
 
 /** A ação do officer sobre o depósito foi recusada; nada mudou. */
@@ -38,6 +38,25 @@ export class DepositoService {
         depositCharacter: s.depositCharacter!,
         expectedTotal: s.expectedTotal!,
         status: 'aguardando_deposito' as const,
+        submittedAt: s.submittedAt!.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Os slips submetidos da rodada, em qualquer estado, sem as escolhas (T-C05):
+   * a porta do "ver slip" (D-57). Rascunho não entra — não foi submetido.
+   */
+  async submetidos(roundId: string): Promise<SlipsSubmetidos> {
+    const slips = await this.repo.slipsSubmetidos(roundId);
+    return {
+      slips: slips.map((s) => ({
+        slipId: s.id,
+        ownerBattletag: s.ownerBattletag,
+        status: s.status as SlipsSubmetidos['slips'][number]['status'],
+        // Submetido tem os três preenchidos — CHECK do banco por estado (§16.4).
+        depositCharacter: s.depositCharacter!,
+        expectedTotal: s.expectedTotal!,
         submittedAt: s.submittedAt!.toISOString(),
       })),
     };

@@ -129,7 +129,9 @@ nenhum fora dele:
 
 Serve só às rotas `internal/titan-bet/rodadas/:roundId/*`: quem apostou e saiu da guilda
 continua concorrendo naquela rodada (D-53a/D-65 da spec), e nada além dela — as outras
-rodadas e o resto do site continuam `RosterGuard`/`MemberGuard`. Ver `docs/specs/titan-bet.md`.
+rodadas e o resto do site continuam `RosterGuard`/`MemberGuard`. Na lista
+`internal/titan-bet/rodadas`, sem `:roundId`, basta slip em alguma rodada, e a lista só
+traz as dele. Ver `docs/specs/titan-bet.md`.
 
 Endpoint novo continua exigindo guard; a escolha é qual. Ver `docs/specs/mplus-vaga-discord.md`.
 

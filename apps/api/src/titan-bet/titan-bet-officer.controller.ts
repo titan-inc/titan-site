@@ -27,7 +27,9 @@ import {
   type PrepararRodada,
   type RecusarDeposito,
   type SessaoDaAuditoria,
+  type RodadasDoOfficer,
   type SlipDoOfficer,
+  type SlipsSubmetidos,
 } from '@titan/shared';
 import type { Request } from 'express';
 import { OfficerGuard } from '../auth/session.guard';
@@ -40,6 +42,7 @@ import { DepositoService } from './deposito.service';
 import { comoHttp, contaDe } from './http';
 import { PreparacaoService } from './preparacao.service';
 import { ReadyService } from './ready.service';
+import { RodadasService } from './rodadas.service';
 
 /**
  * O Officer Panel do Titan Bet (D-36; spec §16.9): preparação da semana,
@@ -58,6 +61,7 @@ import { ReadyService } from './ready.service';
 export class TitanBetOfficerController {
   constructor(
     private readonly ready: ReadyService,
+    private readonly rodadas: RodadasService,
     private readonly deposito: DepositoService,
     private readonly auditoria: AuditoriaService,
     private readonly preparacao: PreparacaoService,
@@ -241,5 +245,17 @@ export class TitanBetOfficerController {
     const slip = await comoHttp(() => this.deposito.verSlip(slipId, contaDe(req)));
     if (!slip) throw new NotFoundException('O slip não existe');
     return slip;
+  }
+
+  /** As rodadas, inclusive em preparação, com a fase (T-C04). */
+  @Get('rodadas')
+  rodadasDoOfficer(): Promise<RodadasDoOfficer> {
+    return this.rodadas.doOfficer();
+  }
+
+  /** Os slips submetidos da rodada, sem as escolhas — a porta do "ver slip" (T-C05). */
+  @Get('rodadas/:roundId/slips')
+  slipsSubmetidos(@Param('roundId') roundId: string): Promise<SlipsSubmetidos> {
+    return this.deposito.submetidos(roundId);
   }
 }

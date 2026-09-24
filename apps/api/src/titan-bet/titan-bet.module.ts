@@ -16,9 +16,11 @@ import { ElegibilidadeService } from './elegibilidade.service';
 import { OddsService } from './odds.service';
 import { PreparacaoService } from './preparacao.service';
 import { ReadyService } from './ready.service';
+import { RodadasService } from './rodadas.service';
 import { TitanBetMemberController } from './titan-bet-member.controller';
 import { TitanBetOfficerController } from './titan-bet-officer.controller';
 import { TitanBetResultsController } from './titan-bet-results.controller';
+import { TitanBetRodadasController } from './titan-bet-rodadas.controller';
 import { TitanBetRepository } from './titan-bet.repository';
 
 /**
@@ -29,7 +31,12 @@ import { TitanBetRepository } from './titan-bet.repository';
  */
 @Module({
   imports: [AuthModule, BlizzardModule, CharactersModule, WarcraftLogsModule, WowAuditModule],
-  controllers: [TitanBetMemberController, TitanBetOfficerController, TitanBetResultsController],
+  controllers: [
+    TitanBetMemberController,
+    TitanBetOfficerController,
+    TitanBetResultsController,
+    TitanBetRodadasController,
+  ],
   providers: [
     TitanBetRepository,
     ReadyService,
@@ -38,6 +45,7 @@ import { TitanBetRepository } from './titan-bet.repository';
     DepositoService,
     CutoffService,
     OddsService,
+    RodadasService,
     AuditoriaService,
     PreparacaoService,
     CalculoService,

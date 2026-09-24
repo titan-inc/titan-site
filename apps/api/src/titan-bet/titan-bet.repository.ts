@@ -150,6 +150,104 @@ export class TitanBetRepository {
     return slip !== null;
   }
 
+  /** A conta tem slip em alguma rodada? A porta da lista de rodadas (D-53a). */
+  async contaTemAlgumSlip(userId: string): Promise<boolean> {
+    const slip = await this.prisma.betSlip.findFirst({
+      where: { ownerUserId: userId },
+      select: { id: true },
+    });
+    return slip !== null;
+  }
+
+  /**
+   * As rodadas com o que a fase precisa (§16.5): Ready, cutoff, a última
+   * auditoria não substituída e se há closing. `publicadas` = só com Ready;
+   * `comSlipDe` = só as em que a conta tem slip. A mais recente primeiro.
+   */
+  async rodadasComEstado(filtro: { publicadas?: boolean; comSlipDe?: string } = {}) {
+    return this.prisma.betRound.findMany({
+      where: {
+        ...(filtro.publicadas ? { readyAt: { not: null } } : {}),
+        ...(filtro.comSlipDe ? { slips: { some: { ownerUserId: filtro.comSlipDe } } } : {}),
+      },
+      orderBy: [{ cutoffAt: 'desc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        period: true,
+        opensAt: true,
+        cutoffAt: true,
+        readyAt: true,
+        readyByBattletag: true,
+        audits: {
+          where: { status: { not: 'substituida' } },
+          orderBy: { attempt: 'desc' },
+          take: 1,
+          select: { status: true },
+        },
+        _count: { select: { closingReports: true } },
+      },
+    });
+  }
+
+  /** O cardápio com nomes (T-C02): mercados, encounters e candidatos da rodada. */
+  async cardapioLegivel(roundId: string) {
+    return this.prisma.betRound.findUnique({
+      where: { id: roundId },
+      select: {
+        id: true,
+        period: true,
+        opensAt: true,
+        cutoffAt: true,
+        readyAt: true,
+        readyByBattletag: true,
+        audits: {
+          where: { status: { not: 'substituida' } },
+          orderBy: { attempt: 'desc' },
+          take: 1,
+          select: { status: true },
+        },
+        _count: { select: { closingReports: true } },
+        markets: {
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            kind: true,
+            roundEncounter: { select: { id: true, encounterName: true, track: true } },
+          },
+        },
+        encounters: {
+          where: { track: 'progressao' },
+          orderBy: { id: 'asc' },
+          select: { id: true, encounterName: true },
+        },
+        candidates: {
+          orderBy: [{ role: 'asc' }, { characterId: 'asc' }],
+          select: {
+            characterId: true,
+            role: true,
+            character: { select: { name: true, realm: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /** Os slips submetidos da rodada, sem as apostas (T-C05, §16.9). */
+  async slipsSubmetidos(roundId: string) {
+    return this.prisma.betSlip.findMany({
+      where: { roundId, status: { not: 'rascunho' } },
+      orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        ownerBattletag: true,
+        status: true,
+        depositCharacter: { select: { name: true, realm: true } },
+        expectedTotal: true,
+        submittedAt: true,
+      },
+    });
+  }
+
   /** O personagem de elegibilidade de um slip da conta nesta rodada (D-53a). */
   async elegibilidadeDeSlipDaConta(roundId: string, userId: string): Promise<string | null> {
     const slip = await this.prisma.betSlip.findFirst({

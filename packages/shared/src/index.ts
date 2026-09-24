@@ -34,3 +34,4 @@ export * from './titan-bet/auditoria.js';
 export * from './titan-bet/ledger.js';
 export * from './titan-bet/published.js';
 export * from './titan-bet/resultado.js';
+export * from './titan-bet/rodada.js';

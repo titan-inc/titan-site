@@ -20,6 +20,9 @@ import { TitanBetRepository } from './titan-bet.repository';
  * `GuildCharacter` e a conta vira `not_member`; o slip fica, e é por ele que a
  * conta é reconhecida. Outra rodada, ou qualquer outra área, continua 403.
  *
+ * Na rota sem `:roundId` — a lista de rodadas —, basta slip em **alguma**
+ * rodada; a lista que o service devolve é que se restringe às dele.
+ *
  * Membro da guilda passa sem o banco ser consultado, como no `RosterGuard`.
  * Continua sendo segurança de verdade (Regra 5): sem sessão, 401.
  */
@@ -41,7 +44,9 @@ export class ApostadorDaRodadaGuard implements CanActivate {
     if (sessionUser.membership !== 'member') {
       const roundId = (req.params as Record<string, string | undefined>).roundId;
       const temSlip =
-        roundId !== undefined && (await this.repo.contaTemSlipNaRodada(roundId, user.id));
+        roundId !== undefined
+          ? await this.repo.contaTemSlipNaRodada(roundId, user.id)
+          : await this.repo.contaTemAlgumSlip(user.id);
       if (!temSlip) {
         throw new ForbiddenException('Sua conta não tem personagem no roster da guilda');
       }

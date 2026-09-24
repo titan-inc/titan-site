@@ -15,6 +15,7 @@ import {
   submeterSlipSchema,
   type MeuSlip,
   type OddsDaRodada,
+  type RodadaDoMembro,
   type SalvarSlip,
   type SubmeterSlip,
 } from '@titan/shared';
@@ -24,6 +25,7 @@ import { ApostadorDaRodadaGuard } from './apostador-da-rodada.guard';
 import { ApostasService } from './apostas.service';
 import { comoHttp, contaDe } from './http';
 import { OddsService } from './odds.service';
+import { RodadasService } from './rodadas.service';
 
 /**
  * A superfície de apostas do membro (D-01, D-36; spec §16.9).
@@ -45,7 +47,16 @@ export class TitanBetMemberController {
   constructor(
     private readonly apostas: ApostasService,
     private readonly odds: OddsService,
+    private readonly rodadas: RodadasService,
   ) {}
+
+  /** O cardápio da rodada com nomes, e o que a conta pode fazer nela (T-C02). */
+  @Get()
+  async rodada(@Param('roundId') roundId: string, @Req() req: Request): Promise<RodadaDoMembro> {
+    const r = await this.rodadas.daRodada(roundId, contaDe(req).userId);
+    if (!r) throw new NotFoundException('A rodada não existe ou ainda não foi publicada');
+    return r;
+  }
 
   /** Projected payout de todos os mercados publicados — só multiplicadores (§16.10). */
   @Get('odds')

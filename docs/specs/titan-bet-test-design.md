@@ -1741,3 +1741,39 @@ reports funde, 10 s não. **Controle:** `restituicao_anulado` continua lançáve
 D-69 (identidade com diacrítico — o T-S26 "o acento distingue pessoas" já cobre; a
 `Character` órfã fica, sem cleanup). `ApostadorDaRodadaGuard` documentado no CLAUDE.md
 como específico do Titan Bet.
+
+## 36. F0 — contratos de leitura do front (24/09/2026)
+
+**Status: GREEN.** T-C01–T-C05 da §34.1, sem decisão de produto nova.
+
+### 36.1 RED
+
+**Awaiting seam** nas três camadas — nenhum dos módulos existia:
+`rodada.spec.ts` (shared: `Cannot find module './rodada.js'`),
+`titan-bet.controller.spec.ts` (`Cannot find module './rodadas.service'`) e
+`rodadas.db-spec.ts` (idem). Não houve comportamento antigo para falhar: são rotas e
+contratos novos.
+
+### 36.2 O que entrou
+
+| ID    | Rota                                                | Guard                    | Contrato                 |
+| ----- | --------------------------------------------------- | ------------------------ | ------------------------ |
+| T-C01 | `GET /internal/titan-bet/rodadas`                   | `ApostadorDaRodadaGuard` | `rodadasDoMembroSchema`  |
+| T-C02 | `GET /internal/titan-bet/rodadas/:roundId`          | `ApostadorDaRodadaGuard` | `rodadaDoMembroSchema`   |
+| T-C04 | `GET /internal/titan-bet/officer/rodadas`           | `OfficerGuard`           | `rodadasDoOfficerSchema` |
+| T-C05 | `GET /internal/titan-bet/officer/rodadas/:id/slips` | `OfficerGuard`           | `slipsSubmetidosSchema`  |
+
+- **Fase** derivada por `faseDaRodada` (§16.5), cujo tipo agora vem do shared
+  (`faseDaRodadaSchema`) — o front lê as mesmas fases.
+- **T-C01:** membro vê as rodadas com Ready; quem saiu da guilda, só as com slip dele.
+  O guard, sem `:roundId`, aceita slip em **alguma** rodada (CLAUDE.md atualizado).
+- **T-C02:** `podeApostar` = fase `OPEN` e conta elegível (o mesmo que o Salvar confere);
+  `personagensDoApostador` = ligados à conta + o de elegibilidade (D-56). Preparação e
+  rodada inexistente → 404.
+- **T-C05:** submetidos em qualquer estado, sem apostas; rascunho fica de fora.
+- **Yaak:** as 4 rotas.
+
+### 36.3 Resultado
+
+`pnpm test:db` **314/314**; `pnpm test`: shared **392**, api **932**, web 147; format,
+lint, typecheck e build OK; banco de dev com o mesmo hash.
