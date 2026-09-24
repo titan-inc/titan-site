@@ -8,6 +8,12 @@
 > correção pós-pagamento, self-bet e odds. As OQs resolvidas saíram da lista de
 > pendências e estão registradas na §2. O M0 foi reescopado (§14).
 >
+> **Revisão 14 (24/09/2026):** achados da auditoria independente do PR #114 (D-71 a D-75):
+> expirado sem submissão, Salvar antes do Submeter, auditoria só depois de quinta 23:30,
+> restituição de 90% quando a rodada não tem mercado premiável, odds só depois do Ready, e
+> a evidência completa da §15.10. A divergência de revisão do WCL (achado 5) está
+> pendente de decisão.
+>
 > **Revisão 11 (23/09/2026):** as OQs restantes decididas (D-53 a D-66). **Mudança de
 > produto na Weekly Progression** (D-54): deixa de ser aposta num conjunto exato e passa a
 > ter os bosses de progressão como opções — substitui D-05, D-15, a parte Weekly da D-28 e
@@ -332,6 +338,31 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | —    | OQ-53   | **O desenho da D-38 está aprovado como está**: roster da Blizzard → `Character` → `BetRoundBettor(roundId, characterId)` com rank, nome e realm; `GuildCharacter` associa a conta depois; `BetSlip.eligibilityCharacterId`; um slip ativo por conta. O id numérico da Blizzard **não** entra agora. Rename/transfer entre o Ready e o primeiro login pode fazer a associação daquela semana falhar — limitação documentada, **não** bloqueia o M2, e não se resolve fora do escopo do Titan Bet.                       |
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
+
+### Revisão 14 (24/09/2026) — achados da auditoria independente do PR #114
+
+| D    | Resolve  | Decisão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-71 | achado 1 | **Slip expirado pode nunca ter sido submetido.** Rascunho que chega ao cutoff vira `expirado` (§5.5) e continua sem `submittedAt`, `expectedTotal` e depositante — o banco já permitia, e o contrato passa a dizer isso. Nos contratos do Officer Panel (lista de slips e "ver slip") os três são **nulos só em `expirado`**; qualquer outro estado sem eles quebra o parse. A tela diz "nunca submetido". **Nenhuma data é inventada.** O "ver slip" de um expirado nunca submetido mostra o último rascunho salvo, só leitura e registrado (D-57).                                                                                                                                                                                                                                                                                                          |
+| D-72 | achado 2 | **Submeter pagamento congela o que a tela mostra.** Com alteração válida ainda não salva, o Submeter primeiro **salva** o estado exibido e só chama o Submeter depois que o Salvar deu certo. Salvar falhou → nenhum Submeter. Sem submit otimista, e uma operação por vez (duplo clique não dispara dois pedidos).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| D-73 | achado 3 | **A rodada só entra em auditoria depois de quinta 23:30, no fuso da guilda** (`GUILD_TIMEZONE`). A quinta é a da rodada: dois dias depois da data local do cutoff — o mesmo calendário das sessões (§5.2). Antes disso o backend recusa **Auditar, declarar "sem raid", Calcular e Confirmar** — nenhum é caminho alternativo. A regra mora numa função só da API (`fases.ts`); o Officer Panel recebe `podeAuditar` e `auditavelDesde` prontos e **não compara relógio**. Formaliza o "depois da raid de quinta" da D-30.                                                                                                                                                                                                                                                                                                                                    |
+| D-74 | achado 4 | **Rodada sem nenhum mercado premiável: o órfão restitui 90% aos próprios apostadores.** Vale só quando a rodada inteira não tem mercado premiável para receber o `P` de um órfão (§8.6). Os 10% (`G₀ = V − P`) continuam do Guild Bank; o `P` volta aos apostadores válidos **daquele mesmo mercado**, proporcional ao stake: `floor(P × stake / V)`, e o indivisível é do Guild Bank. Ex.: `V = 300` → 30 ao Guild Bank, 270 restituídos. No ledger é um tipo novo, **`restituicao_sem_premiavel`** — não é o `restituicao_anulado` do VOID (que devolve 100%, sem receita) nem a D-67 (slip que nunca foi válido continua sem restituição). Aparece no settlement e no Closing Report como mercado restituído. Substitui o "para e pede decisão" da D-44, da D-61 e da §8.6 **para este caso**; com ao menos um premiável na rodada, a D-44 vale como está. |
+| D-75 | achado 7 | **As odds seguem a publicação da rodada.** Antes do Ready, o `/odds` do membro responde como a leitura da rodada — 404 —, e não um 200 com estrutura parcial. As rotas de preparação do officer não mudam.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| —    | N1       | **A evidência gravada cobre a §15.10**, sem guardar o payload do WCL: por pull, report, `fight.id`, `encounterID`, dificuldade, kill, início e fim (a duração); no First Death, a sequência de mortes até a primeira elegível, com os de fora pulados e os timestamps; os pares deduplicados e a regra; o vínculo com a rodada, a tentativa e o snapshot de candidatos; `computedAt` e a versão do algoritmo. Documento de evidência versão 2.                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+**Achado 5 — divergência de revisão do WCL: pendente de decisão.** Hoje o Auditar congela
+`code`/`title`/`revision`, e o Calcular relê o report ao vivo. Se o report mudar de revisão
+entre os dois, o cálculo usa a revisão nova e a evidência cita a antiga. Guardar um
+snapshot mínimo dos dados externos no Auditar exige coluna ou tabela nova (migration) e
+mover a leitura pesada do WCL para o Auditar. Pela regra da revisão, isso para aqui e vai
+para decisão (alternativa em `titan-bet-test-design.md` §42.5). Até a decisão, o
+comportamento continua o da D-43: o valor é o lido no Calcular.
+
+**Melhoria futura (achado 8), não implementada:** uma tela de evidência completa no
+Officer Panel, que mostre para cada mercado as pulls, a sequência de mortes, os valores
+lidos e os pares deduplicados. Hoje a evidência fica gravada e sai no contrato de
+resultados, mas a tela mostra só o resumo. Registrada como melhoria de auditabilidade e
+UX.
 
 ### Revisão 13 (24/09/2026) — o conteúdo atual na preparação
 
@@ -809,8 +840,11 @@ receptor m:   P'(m) = P(m) + Σ cotas recebidas;  payout(i) = floor(P'(m) × sta
   é arredondado à parte (o resto é "desse mercado", como diz a D-44).
 - `VOID` não é premiável e não recebe; órfão também não.
 - Órfão com `P = 0` (nenhuma aposta válida) não tem o que repartir.
-- **Sem nenhum mercado premiável** para receber um `P > 0`: não há regra. O settlement
-  **não liquida** a rodada e pede decisão — nenhum destino é inventado.
+- ~~**Sem nenhum mercado premiável** para receber um `P > 0`: não há regra. O settlement
+  **não liquida** a rodada e pede decisão — nenhum destino é inventado.~~ **Vigente
+  (D-74, revisão 14):** sem nenhum premiável na rodada, cada órfão com `P > 0` restitui o
+  `P` aos próprios apostadores, `floor(P × stake / V)` cada, com o lançamento
+  `restituicao_sem_premiavel`; `G₀` e o indivisível ficam com o Guild Bank.
 - Reconciliação muda de escopo: a de mercado (Σ `premio` + receita + resíduo = `V`) deixa de
   valer para órfão e receptor; vale a da **rodada** (§16.6).
 
