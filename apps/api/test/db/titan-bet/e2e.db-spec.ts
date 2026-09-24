@@ -18,7 +18,7 @@ import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository'
 import type { RaidCatalog } from '../../../src/warcraftlogs/warcraftlogs.service';
 import type { TeamCharacter, WowAuditService } from '../../../src/wowaudit/wowaudit.service';
 import { esperarPassar } from './ciclo';
-import { Fabrica } from './fabrica';
+import { depositante, Fabrica } from './fabrica';
 
 /**
  * T-E01 — um fluxo, do começo ao fim (titan-bet-test-design.md §3.11):
@@ -62,7 +62,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
     const nome = (p: string) => `${p}${randomUUID().slice(0, 6)}`;
     const [ana, bia, candA, candB] = [nome('Ana'), nome('Bia'), nome('Aa'), nome('Bb')];
     const elegibilidade = new ElegibilidadeService(repo);
-    const apostas = new ApostasService(repo, elegibilidade);
+    const apostas = new ApostasService(repo, elegibilidade, new CharactersRepository(db));
     const deposito = new DepositoService(repo);
 
     // 1. Preparar a semana (D-45).
@@ -132,7 +132,7 @@ describe('Titan Bet — E2E (T-E01)', () => {
         data: { battlenetId: randomUUID(), battletag: `${n}#1`, membership: 'member' },
       });
       await db.guildCharacter.create({ data: { userId: user.id, characterId: pj.id, rank: 5 } });
-      return { userId: user.id, battletag: user.battletag, pj: pj.id };
+      return { userId: user.id, battletag: user.battletag, pj: pj.id, dep: depositante(pj) };
     };
     const [contaAna, contaBia] = [await conta(ana), await conta(bia)];
     const idDe = async (n: string) =>
@@ -150,15 +150,13 @@ describe('Titan Bet — E2E (T-E01)', () => {
         { marketId: weekly, stake: 300, encounterId: prog.roundEncounterId },
       ],
     });
-    expect(
-      await apostas.submeter(rodada.id, contaAna, { depositCharacterId: contaAna.pj }),
-    ).toEqual({
+    expect(await apostas.submeter(rodada.id, contaAna, contaAna.dep)).toEqual({
       total: 900,
     });
     const slipBia = await apostas.salvar(rodada.id, contaBia, {
       apostas: [{ marketId: topDps, stake: 400, targetCharacterId: idB }],
     });
-    await apostas.submeter(rodada.id, contaBia, { depositCharacterId: contaBia.pj });
+    await apostas.submeter(rodada.id, contaBia, contaBia.dep);
     await deposito.confirmar(slipAna.slipId, OFFICER);
     await deposito.confirmar(slipBia.slipId, OFFICER);
 

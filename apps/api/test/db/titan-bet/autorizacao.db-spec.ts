@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { CharactersRepository } from '../../../src/characters/characters.repository';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { ApostasService, ContaNaoElegivel } from '../../../src/titan-bet/apostas.service';
 import { DepositoService } from '../../../src/titan-bet/deposito.service';
 import { ElegibilidadeService } from '../../../src/titan-bet/elegibilidade.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
-import { Fabrica } from './fabrica';
+import { depositante, Fabrica } from './fabrica';
 
 /**
  * Milestone "RED/GREEN Autorização" — o lado do dado (D-21, D-32, D-36, D-38).
@@ -24,7 +25,11 @@ describe('Titan Bet — o próprio dado, e só ele (serviço + banco)', () => {
     await db.$connect();
     f = new Fabrica(db);
     const repo = new TitanBetRepository(db);
-    apostas = new ApostasService(repo, new ElegibilidadeService(repo));
+    apostas = new ApostasService(
+      repo,
+      new ElegibilidadeService(repo),
+      new CharactersRepository(db),
+    );
     deposito = new DepositoService(repo);
   });
 
@@ -93,7 +98,7 @@ describe('Titan Bet — o próprio dado, e só ele (serviço + banco)', () => {
       await apostas.salvar(c.rodada.id, c.a, {
         apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.pjA.id }],
       });
-      await apostas.submeter(c.rodada.id, c.a, { depositCharacterId: c.pjA.id });
+      await apostas.submeter(c.rodada.id, c.a, depositante(c.pjA));
       const [slip] = await db.betSlip.findMany({ where: { ownerUserId: c.a.userId } });
       await deposito.recusar(slip!.id, { userId: 'officer', battletag: 'Officer#1' }, 'faltou');
 
@@ -118,7 +123,7 @@ describe('Titan Bet — o próprio dado, e só ele (serviço + banco)', () => {
       await apostas.salvar(c.rodada.id, c.a, {
         apostas: [{ marketId: c.topDps.id, stake: 300, targetCharacterId: c.pjA.id }],
       });
-      await apostas.submeter(c.rodada.id, c.a, { depositCharacterId: c.pjA.id });
+      await apostas.submeter(c.rodada.id, c.a, depositante(c.pjA));
       await apostas.salvar(c.rodada.id, c.b, { apostas: [] });
 
       const { depositos } = await deposito.pendentes(c.rodada.id);

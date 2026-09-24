@@ -138,13 +138,13 @@ export class TitanBetRepository {
     });
   }
 
-  /** O personagem é da conta (`GuildCharacter` de agora)? — D-02. */
-  async personagemEDaConta(userId: string, characterId: string): Promise<boolean> {
-    const achado = await this.prisma.guildCharacter.findFirst({
-      where: { userId, characterId },
-      select: { id: true },
+  /** Os personagens ligados à conta agora (`GuildCharacter`) — parte do D-56. */
+  async personagensDaConta(userId: string): Promise<string[]> {
+    const ligados = await this.prisma.guildCharacter.findMany({
+      where: { userId },
+      select: { characterId: true },
     });
-    return achado !== null;
+    return ligados.map((g) => g.characterId);
   }
 
   /** O que a rodada oferece para apostar: mercados, encounters e o snapshot de candidatos. */
@@ -236,15 +236,18 @@ export class TitanBetRepository {
     userId: string;
     depositCharacterId: string;
     agora: Date;
-    avaliar: (apostas: ApostaGravada[]) => { total: number } | { recusa: string };
+    avaliar: (
+      apostas: ApostaGravada[],
+      proprios: ReadonlySet<string>,
+    ) => { total: number } | { recusa: string };
   }): Promise<
     | { tipo: 'ok'; slipId: string; total: number }
     | { tipo: 'sem_rascunho' }
     | { tipo: 'recusado'; motivo: string }
   > {
     return this.prisma.$transaction(async (tx) => {
-      const [rascunho] = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id" FROM "BetSlip"
+      const [rascunho] = await tx.$queryRaw<Array<{ id: string; eligibilityCharacterId: string }>>`
+        SELECT "id", "eligibilityCharacterId" FROM "BetSlip"
         WHERE "roundId" = ${r.roundId} AND "ownerUserId" = ${r.userId} AND "status" = 'rascunho'
         FOR UPDATE`;
       if (!rascunho) return { tipo: 'sem_rascunho' as const };
@@ -253,7 +256,18 @@ export class TitanBetRepository {
         where: { slipId: rascunho.id },
         select: { marketKind: true, stake: true, targetCharacterId: true },
       });
-      const avaliacao = r.avaliar(apostas);
+      // Reconhecidos como do apostador no Submeter (D-56): os ligados à conta, o
+      // de elegibilidade do slip e o depositante informado.
+      const ligados = await tx.guildCharacter.findMany({
+        where: { userId: r.userId },
+        select: { characterId: true },
+      });
+      const proprios = new Set([
+        ...ligados.map((g) => g.characterId),
+        rascunho.eligibilityCharacterId,
+        r.depositCharacterId,
+      ]);
+      const avaliacao = r.avaliar(apostas, proprios);
       if ('recusa' in avaliacao) return { tipo: 'recusado' as const, motivo: avaliacao.recusa };
 
       await tx.betSlip.update({
@@ -363,7 +377,7 @@ export class TitanBetRepository {
       select: {
         id: true,
         status: true,
-        depositCharacterId: true,
+        depositCharacter: { select: { name: true, realm: true } },
         expectedTotal: true,
         rejectionReason: true,
         bets: {

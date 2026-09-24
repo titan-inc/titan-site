@@ -1,12 +1,13 @@
 import { oddsDaRodadaSchema } from '@titan/shared';
 import { randomUUID } from 'node:crypto';
+import { CharactersRepository } from '../../../src/characters/characters.repository';
 import { PrismaService } from '../../../src/prisma/prisma.service';
 import { ApostasService, ContaNaoElegivel } from '../../../src/titan-bet/apostas.service';
 import { DepositoService } from '../../../src/titan-bet/deposito.service';
 import { ElegibilidadeService } from '../../../src/titan-bet/elegibilidade.service';
 import { OddsService } from '../../../src/titan-bet/odds.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
-import { Fabrica } from './fabrica';
+import { depositante, Fabrica } from './fabrica';
 
 /**
  * Milestone "RED/GREEN Odds" — projected payout (R-35, D-12, D-36; spec §8.4,
@@ -29,7 +30,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     f = new Fabrica(db);
     const repo = new TitanBetRepository(db);
     const elegibilidade = new ElegibilidadeService(repo);
-    apostas = new ApostasService(repo, elegibilidade);
+    apostas = new ApostasService(repo, elegibilidade, new CharactersRepository(db));
     deposito = new DepositoService(repo);
     odds = new OddsService(repo, elegibilidade);
   });
@@ -58,7 +59,12 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
     await f.candidato(rodada.id, ranged.id, 'Ranged');
     await f.candidato(rodada.id, heal.id, 'Heal');
 
-    const contas: Array<{ userId: string; battletag: string; pj: string }> = [];
+    const contas: Array<{
+      userId: string;
+      battletag: string;
+      pj: string;
+      dep: ReturnType<typeof depositante>;
+    }> = [];
     for (let i = 0; i < 7; i++) {
       const pj = await f.personagem();
       await f.bettor(rodada.id, pj.id);
@@ -66,7 +72,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
         data: { battlenetId: randomUUID(), battletag: `Bettor${i}#1`, membership: 'member' },
       });
       await db.guildCharacter.create({ data: { userId: user.id, characterId: pj.id, rank: 5 } });
-      contas.push({ userId: user.id, battletag: user.battletag, pj: pj.id });
+      contas.push({ userId: user.id, battletag: user.battletag, pj: pj.id, dep: depositante(pj) });
     }
     await f.pronta(rodada.id);
 
@@ -98,7 +104,7 @@ describe('Titan Bet — projected payout (serviço + banco)', () => {
       });
       return;
     }
-    await apostas.submeter(c.rodada.id, conta, { depositCharacterId: conta.pj });
+    await apostas.submeter(c.rodada.id, conta, conta.dep);
     if (destino === 'valido') await deposito.confirmar(slipId, OFFICER);
     if (destino === 'recusado') await deposito.recusar(slipId, OFFICER, 'não achado');
   }

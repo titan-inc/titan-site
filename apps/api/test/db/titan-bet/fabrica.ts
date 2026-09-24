@@ -208,3 +208,8 @@ export class Fabrica {
     return { rodada, dono, slip, candidatos, config };
   }
 }
+
+/** O corpo do Submeter: o depositante por nome + realm, como o membro informa (D-55). */
+export function depositante(pj: { name: string; realm: string }) {
+  return { depositCharacter: { name: pj.name, realm: pj.realm } };
+}

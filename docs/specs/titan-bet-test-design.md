@@ -1567,3 +1567,46 @@ T-A12 do fluxo (escolha do officer) e o "dois ou mais → ambígua" do `resolver
 lint, typecheck e build OK; banco de dev com o mesmo hash. (O build do web só passou
 depois de apagar `apps/web/.next/dev/types`, cache ignorado de um `next dev` antigo que
 ainda apontava para `app/oauth/callback`, removida na TIT-148 — nada do Titan Bet.)
+
+## 32. Revisão 11, milestone 3 — depositante e self-bet (24/09/2026)
+
+**Status: GREEN.** D-55 e D-56 — **mudança de produto**, não correção.
+
+### 32.1 RED
+
+| Camada   | Onde                                               | RED                                                                                                                                                                                                    |
+| -------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| contrato | `betting.spec.ts`, `betting-leitura.spec.ts` — 33  | **RED** — 4 falhas: Submeter ainda pedia `depositCharacterId`; `meuSlip` sem `depositCharacter`                                                                                                        |
+| HTTP     | `titan-bet.controller.spec.ts` — 84                | **RED** — 2 falhas: o corpo novo do Submeter dava 400 no `ZodValidationPipe` antigo                                                                                                                    |
+| serviço  | `apostas-fluxo`, `autorizacao`, `odds`, `e2e` — 39 | **RED** — 23 falhas: Submeter sem `depositCharacterId` recusado ("não é da conta"); Salvar aceitando First Death no personagem de elegibilidade e no alt; `meuSlip` sem o depositante por nome e realm |
+
+### 32.2 O que mudou
+
+- **Contrato:** `submeterSlipSchema = { depositCharacter: { name, realm } }` (estrito, sem
+  região — `characterInputSchema`); `meuSlip.depositCharacter: { name, realm } | null` no
+  lugar de `depositCharacterId`.
+- **Depositante (D-55):** qualquer personagem. O nome + realm informado resolve pela
+  **identidade** (`CharactersRepository.resolver`: `toCharacterKey` mantém o acento,
+  `toRealmMatchKey` tira o separador), criando-a se o site nunca a viu, e o id fica
+  congelado no slip pelo trigger de imutabilidade que já existia. **Não** usa o `toSlug`
+  que a Regra 6 prevê para nome digitado: lá a tolerância evita perder um lookup; aqui não
+  existe lookup que falhe — todo nome é aceito —, e a tolerância juntaria `Shrëwd` e
+  `Shrewd` numa identidade só. Quem confere que o personagem é do apostador é o officer.
+  Efeito aceito: um Submeter recusado depois de resolver deixa a identidade criada (é
+  só uma linha de `Character`, sem vínculo nenhum).
+- **Self-bet (D-56):** First Death recusado em qualquer personagem reconhecido como do
+  apostador — no Salvar, os ligados à conta e o de elegibilidade; no Submeter, esses
+  (relidos na transação que trava o rascunho) e o depositante informado.
+- **Removido:** `personagemEDaConta` (D-02 deixou de restringir o depositante).
+- **Yaak:** Submeter, Ler e Salvar.
+
+**Testes substituídos, registrados no próprio teste:** T-S16 (parte do depositante: "não é
+da conta → recusado" e o controle do alt) → T-S26; T-S15 → T-S27; o schema do Submeter.
+
+Sem teste, por decisão (§3.18): D-58 — nada impede o officer de confirmar o próprio
+depósito, e continua assim.
+
+### 32.3 Resultado
+
+`pnpm test:db` **291/291**; `pnpm test`: shared **370**, api **902**, web 147; format,
+lint, typecheck e build OK; banco de dev com o mesmo hash.

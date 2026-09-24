@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { characterInputSchema } from '../wow.js';
 
 /**
  * Titan Bet — contrato PRIVADO do Bet Slip (spec do Titan Bet §9.1).
@@ -53,8 +54,14 @@ export const salvarSlipSchema = z.object({
 });
 export type SalvarSlip = z.infer<typeof salvarSlipSchema>;
 
-/** "Submeter pagamento" (D-27): o personagem da conta que deposita (D-02). */
-export const submeterSlipSchema = z.object({ depositCharacterId: z.string().min(1) });
+/**
+ * "Submeter pagamento" (D-27): o personagem que deposita, informado por nome +
+ * realm (D-55). Qualquer personagem, não só os ligados à conta — quem confere
+ * que é do apostador é o officer, na confirmação. Sem região (Regra 6).
+ */
+export const submeterSlipSchema = z
+  .object({ depositCharacter: characterInputSchema.strict() })
+  .strict();
 export type SubmeterSlip = z.infer<typeof submeterSlipSchema>;
 
 /** Recusa de depósito pelo officer: o motivo é obrigatório (D-34). */
@@ -81,7 +88,8 @@ export const meuSlipSchema = z
     slipId: z.string(),
     status: betSlipStatusSchema,
     apostas: z.array(apostaDoSlipSchema),
-    depositCharacterId: z.string().nullable(),
+    /** Como o membro informou no Submeter (D-55); nulo antes dele. */
+    depositCharacter: z.object({ name: z.string(), realm: z.string() }).strict().nullable(),
     expectedTotal: z.number().int().nullable(),
     rejectionReason: z.string().nullable(),
   })

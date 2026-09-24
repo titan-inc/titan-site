@@ -63,7 +63,7 @@ describe('meuSlipSchema — o próprio slip, para o dono', () => {
       { marketId: 'm1', stake: 300, targetCharacterId: 'c1' },
       { marketId: 'm2', stake: 200, encounterId: 'e1' },
     ],
-    depositCharacterId: null,
+    depositCharacter: null,
     expectedTotal: null,
     rejectionReason: null,
   };
@@ -78,5 +78,18 @@ describe('meuSlipSchema — o próprio slip, para o dono', () => {
 
   it('recusa status fora do ciclo de vida', () => {
     expect(meuSlipSchema.safeParse({ ...slip, status: 'pago' }).success).toBe(false);
+  });
+
+  // Mudança de produto (D-55): o dono vê o depositante como informou — nome e
+  // realm, congelados no Submeter —, não um id.
+  it('T-S26: depois do Submeter, o depositante volta com nome e realm', () => {
+    const submetido = {
+      ...slip,
+      status: 'aguardando_deposito',
+      depositCharacter: { name: 'Qualquer', realm: 'Azralon' },
+      expectedTotal: 500,
+    };
+    expect(meuSlipSchema.parse(submetido)).toEqual(submetido);
+    expect(meuSlipSchema.safeParse({ ...submetido, depositCharacterId: 'c1' }).success).toBe(false);
   });
 });

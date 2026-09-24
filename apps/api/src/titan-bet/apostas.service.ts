@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { ApostaDoSlip, MeuSlip, SalvarSlip, SubmeterSlip } from '@titan/shared';
+import { CharactersRepository } from '../characters/characters.repository';
 import { candidatosDoMercado } from './candidatos';
 import { ElegibilidadeService } from './elegibilidade.service';
 import {
@@ -41,14 +42,15 @@ interface Conta {
  * O banco já recusa o que viola a forma (FKs compostas, CHECKs, triggers de
  * cutoff e de edição — spec §16.4). Aqui fica o que é regra de domínio e o que
  * dá uma mensagem melhor que a do banco: a conta ser elegível (D-38), o alvo ser
- * candidato do mercado (D-04), o depositante ser da conta (D-02) e o self-bet
- * no First Death (D-09).
+ * candidato do mercado (D-04) e o self-bet no First Death (D-09, D-56). O
+ * depositante é qualquer personagem, informado por nome + realm (D-55).
  */
 @Injectable()
 export class ApostasService {
   constructor(
     private readonly repo: TitanBetRepository,
     private readonly elegibilidade: ElegibilidadeService,
+    private readonly characters: CharactersRepository,
   ) {}
 
   async salvar(roundId: string, conta: Conta, input: SalvarSlip): Promise<{ slipId: string }> {
@@ -59,6 +61,20 @@ export class ApostasService {
     if (!eligibilityCharacterId) throw new ContaNaoElegivel();
 
     const apostas = this.validar(input, await this.repo.cardapio(roundId));
+    // Self-bet (D-56): no Salvar, os ligados à conta e o de elegibilidade. O
+    // depositante ainda não existe; ele entra no Submeter.
+    const proprios = new Set([
+      ...(await this.repo.personagensDaConta(conta.userId)),
+      eligibilityCharacterId,
+    ]);
+    const selfBet = selfBetNoFirstDeath(
+      apostas.map((a) => ({
+        marketKind: a.marketKind,
+        targetCharacterId: a.alvo?.characterId ?? null,
+      })),
+      proprios,
+    );
+    if (selfBet) throw new ApostaRecusada(selfBet);
 
     const resultado = await this.comoRecusa(() =>
       this.repo.salvarRascunho({ roundId, owner: conta, eligibilityCharacterId, apostas }),
@@ -86,24 +102,25 @@ export class ApostasService {
           ? { marketId: b.marketId, stake: b.stake, encounterId: b.targetEncounterId! }
           : { marketId: b.marketId, stake: b.stake, targetCharacterId: b.targetCharacterId! },
       ),
-      depositCharacterId: slip.depositCharacterId,
+      depositCharacter: slip.depositCharacter,
       expectedTotal: slip.expectedTotal,
       rejectionReason: slip.rejectionReason,
     };
   }
 
   async submeter(roundId: string, conta: Conta, input: SubmeterSlip): Promise<{ total: number }> {
-    if (!(await this.repo.personagemEDaConta(conta.userId, input.depositCharacterId))) {
-      throw new ApostaRecusada('o personagem depositante não é da conta');
-    }
+    // Qualquer personagem deposita (D-55): resolve a identidade pela Regra 6 —
+    // o acento distingue pessoas — e ela fica congelada no slip. Que é mesmo do
+    // apostador, confere o officer na confirmação.
+    const depositCharacterId = await this.characters.resolver(input.depositCharacter);
 
     const resultado = await this.comoRecusa(() =>
       this.repo.submeterRascunho({
         roundId,
         userId: conta.userId,
-        depositCharacterId: input.depositCharacterId,
+        depositCharacterId,
         agora: new Date(),
-        avaliar: (apostas) => avaliarSubmissao(apostas, input.depositCharacterId),
+        avaliar: avaliarSubmissao,
       }),
     );
     if (resultado.tipo === 'sem_rascunho') {
@@ -175,17 +192,32 @@ const ATIVOS = new Set<string>(['rascunho', 'aguardando_deposito', 'valido']);
 /**
  * O que pode ser submetido, e o total a depositar.
  *
- * Self-bet (D-09): o First Death no próprio personagem depositante é proibido
- * em qualquer resposta da OQ-27a — é o único caso aplicado aqui.
+ * `proprios` são os personagens reconhecidos como do apostador no Submeter:
+ * os ligados à conta, o de elegibilidade e o depositante informado (D-56).
  */
 export function avaliarSubmissao(
   apostas: ApostaGravada[],
-  depositCharacterId: string,
+  proprios: ReadonlySet<string>,
 ): { total: number } | { recusa: string } {
   if (apostas.length === 0) return { recusa: 'o slip não tem nenhuma aposta' };
-  const selfBet = apostas.some(
-    (a) => a.marketKind === 'first_death' && a.targetCharacterId === depositCharacterId,
-  );
-  if (selfBet) return { recusa: 'First Death no próprio personagem não é permitido' };
+  const selfBet = selfBetNoFirstDeath(apostas, proprios);
+  if (selfBet) return { recusa: selfBet };
   return { total: apostas.reduce((soma, a) => soma + a.stake, 0) };
+}
+
+/**
+ * Self-bet (D-09, D-56): First Death em **qualquer** personagem reconhecido como
+ * do apostador é proibido — não só no depositante. Top DPS e os outros, não.
+ */
+function selfBetNoFirstDeath(
+  apostas: Array<Pick<ApostaGravada, 'marketKind' | 'targetCharacterId'>>,
+  proprios: ReadonlySet<string>,
+): string | null {
+  const selfBet = apostas.some(
+    (a) =>
+      a.marketKind === 'first_death' &&
+      a.targetCharacterId !== null &&
+      proprios.has(a.targetCharacterId),
+  );
+  return selfBet ? 'First Death em personagem do próprio apostador não é permitido' : null;
 }

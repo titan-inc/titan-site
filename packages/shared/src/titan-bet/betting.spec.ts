@@ -65,11 +65,29 @@ describe('salvarSlipSchema', () => {
   });
 });
 
-describe('submeterSlipSchema', () => {
-  it('exige o personagem depositante (D-02)', () => {
-    expect(submeterSlipSchema.safeParse({ depositCharacterId: 'c1' }).success).toBe(true);
+// Mudança de produto (D-55): o depositante deixou de ser um personagem ligado à
+// conta, escolhido por id. É qualquer personagem, informado por nome + realm.
+describe('submeterSlipSchema — T-S26: o depositante é informado (D-55)', () => {
+  const dep = (over: Record<string, unknown> = {}) => ({
+    depositCharacter: { name: 'Qualquer', realm: 'Azralon', ...over },
+  });
+
+  it('nome + realm, sem região (Regra 6)', () => {
+    expect(submeterSlipSchema.safeParse(dep()).success).toBe(true);
+    expect(submeterSlipSchema.safeParse(dep({ region: 'us' })).success).toBe(false);
+  });
+
+  it('exige os dois', () => {
     expect(submeterSlipSchema.safeParse({}).success).toBe(false);
-    expect(submeterSlipSchema.safeParse({ depositCharacterId: '' }).success).toBe(false);
+    expect(submeterSlipSchema.safeParse(dep({ name: '' })).success).toBe(false);
+    expect(submeterSlipSchema.safeParse(dep({ realm: '' })).success).toBe(false);
+  });
+
+  it('o id de personagem da forma antiga é recusado', () => {
+    expect(submeterSlipSchema.safeParse({ depositCharacterId: 'c1' }).success).toBe(false);
+    expect(submeterSlipSchema.safeParse({ ...dep(), depositCharacterId: 'c1' }).success).toBe(
+      false,
+    );
   });
 });
 

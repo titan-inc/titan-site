@@ -62,7 +62,11 @@ const MEMBRO_ROTAS: Array<[Verbo, string, object?]> = [
   ['get', '/internal/titan-bet/rodadas/r1/odds'],
   ['get', '/internal/titan-bet/rodadas/r1/closing'],
   ['put', '/internal/titan-bet/rodadas/r1/slip', { apostas: [] }],
-  ['post', '/internal/titan-bet/rodadas/r1/slip/submeter', { depositCharacterId: 'c1' }],
+  [
+    'post',
+    '/internal/titan-bet/rodadas/r1/slip/submeter',
+    { depositCharacter: { name: 'Qualquer', realm: 'Azralon' } },
+  ],
 ];
 
 const SESSAO = {
@@ -126,7 +130,7 @@ describe('Titan Bet — autorização das rotas', () => {
       slipId: 's1',
       status: 'rascunho',
       apostas: [],
-      depositCharacterId: null,
+      depositCharacter: null,
       expectedTotal: null,
       rejectionReason: null,
     });
@@ -439,9 +443,11 @@ describe('Titan Bet — autorização das rotas', () => {
 
       await request(server)
         .post('/internal/titan-bet/rodadas/r1/slip/submeter')
-        .send({ depositCharacterId: 'c1' })
+        .send({ depositCharacter: { name: 'Qualquer', realm: 'Azralon' } })
         .expect(200);
-      expect(apostas.submeter).toHaveBeenCalledWith('r1', conta, { depositCharacterId: 'c1' });
+      expect(apostas.submeter).toHaveBeenCalledWith('r1', conta, {
+        depositCharacter: { name: 'Qualquer', realm: 'Azralon' },
+      });
     });
 
     it('T-Z08 — odds pela superfície do membro, com a conta da sessão', async () => {
@@ -499,7 +505,7 @@ describe('Titan Bet — autorização das rotas', () => {
       apostas.submeter.mockRejectedValue(new ApostaRecusada('o slip não tem nenhuma aposta'));
       const r = await request(server)
         .post('/internal/titan-bet/rodadas/r1/slip/submeter')
-        .send({ depositCharacterId: 'c1' })
+        .send({ depositCharacter: { name: 'Qualquer', realm: 'Azralon' } })
         .expect(422);
       expect(JSON.stringify(r.body)).toContain('o slip não tem nenhuma aposta');
     });
