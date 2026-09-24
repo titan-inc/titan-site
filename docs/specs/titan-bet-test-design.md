@@ -2281,3 +2281,32 @@ de resultados (`resultadosDaAuditoriaSchema`, depois de ida e volta em JSON).
 Teste existente com asserção ampliada: `leitura-wcl.spec.ts`, "morte de quem não é
 candidato…" — a morte passou a carregar `ator`, e o esperado inclui o id (mais forte, não
 mais fraco).
+
+### 42.7 Achado 5 — revisão do WCL entre o Auditar e o Calcular: PARADO para decisão
+
+**Reproduzido** com um teste temporário (não versionado) no molde do `calculo.db-spec`:
+auditoria congelada com `Terca1` na revisão 3 (A); o WCL passa a devolver o `Terca1` com
+outra tabela de dano (B passa A); o Calcular lê ao vivo. Resultado:
+`{"vencedor":["B"],"revisaoNaEvidencia":3}` — o resultado é o da revisão nova, e a
+evidência cita a auditada. A confirmação aceitaria esse cálculo.
+
+Causa: o Auditar congela só a referência (`code`, `title`, `revision`, `startTime`); o
+Calcular chama `getTitanBetReport` ao vivo, e a leitura nem traz a `revision`, então não há
+como perceber a troca.
+
+A preferência pedida — congelar no Auditar o mínimo dos dados externos — exige
+**migration** (coluna ou tabela para a leitura por report) e mover a leitura pesada do WCL
+para o Auditar. Pela regra da revisão, o item para aqui. Alternativas para a decisão:
+
+|                     | A — snapshot mínimo no Auditar (a preferência)                                                                                                                                                        | B — detectar e recusar no Calcular                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| O que faz           | O Auditar lê cada `titanbet*` (fights da rodada, atores, mortes dessas fights, tabelas e rankings das kills — só as linhas de jogadores) e grava num JSONB imutável por report; o Calcular lê só dali | O Calcular lê a `revision` na mesma query de metadados que já faz e compara com a congelada; diferente → recusa ("o report X mudou da revisão A para B depois do Auditar; audite de novo") |
+| Modelo              | migration nova (`BetAuditSourceReport.leitura` JSONB + trigger de imutabilidade)                                                                                                                      | nenhuma — um campo a mais no retorno de `getTitanBetReport`                                                                                                                                |
+| Payload             | dezenas de KB por report (≈20 jogadores × poucas kills)                                                                                                                                               | nenhum                                                                                                                                                                                     |
+| Resultado igual a A | sim, sempre — o WCL não é relido                                                                                                                                                                      | sim, ou nenhum resultado: nunca B com evidência de A                                                                                                                                       |
+| Efeito colateral    | o Parse % passa a ser o do **Auditar**, que é o que a D-43 diz; hoje é o do Calcular                                                                                                                  | Parse % continua o do Calcular; se o report seguir recebendo upload, o officer re-audita até estabilizar                                                                                   |
+| Resíduo             | nenhum                                                                                                                                                                                                | janela de ms entre a query de metadados e a de detalhe da mesma chamada                                                                                                                    |
+
+**Recomendação:** B agora (fecha a incoerência sem migration nem payload, em TDD pequeno),
+e A como melhoria se a liderança quiser o Parse % do instante do Auditar, como a D-43
+escreve. Até a decisão, nada foi implementado neste item e o comportamento é o anterior.

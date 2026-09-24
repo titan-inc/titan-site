@@ -355,7 +355,7 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 entre os dois, o cálculo usa a revisão nova e a evidência cita a antiga. Guardar um
 snapshot mínimo dos dados externos no Auditar exige coluna ou tabela nova (migration) e
 mover a leitura pesada do WCL para o Auditar. Pela regra da revisão, isso para aqui e vai
-para decisão (alternativa em `titan-bet-test-design.md` §42.5). Até a decisão, o
+para decisão (reprodução e alternativas em `titan-bet-test-design.md` §42.7). Até a decisão, o
 comportamento continua o da D-43: o valor é o lido no Calcular.
 
 **Melhoria futura (achado 8), não implementada:** uma tela de evidência completa no
