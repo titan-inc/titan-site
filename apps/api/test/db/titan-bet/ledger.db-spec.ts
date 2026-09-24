@@ -171,6 +171,50 @@ describe('Titan Bet — ledger (banco)', () => {
     });
   });
 
+  describe('T-L13 — restituição sem mercado premiável: forma e idempotência (D-74)', () => {
+    const restituicao = (r: RodadaAberta, betId: string) => ({
+      kind: 'restituicao_sem_premiavel' as const,
+      amount: 270,
+      betId,
+      marketId: r.topDispels.id,
+      resultId: randomUUID(),
+    });
+
+    it('controle: na conta do membro, com aposta, mercado e resultado → aceita', async () => {
+      const { r, slip, aposta } = await cenario();
+      expect(await escrita(doMembro(r, slip.id, restituicao(r, aposta.id)))).toBe('aceito');
+    });
+
+    it('uma por aposta, e nunca junto de prêmio ou restituição de VOID da mesma aposta', async () => {
+      const { r, slip, aposta } = await cenario();
+      await doMembro(r, slip.id, restituicao(r, aposta.id));
+      expect(await escrita(doMembro(r, slip.id, restituicao(r, aposta.id)))).toBe('unique');
+      expect(
+        await escrita(doMembro(r, slip.id, { kind: 'premio', betId: aposta.id, amount: 1 })),
+      ).toBe('unique');
+
+      const outra = await ciclo.slipComAposta(r, 'outra-conta');
+      await doMembro(r, outra.slip.id, { kind: 'premio', betId: outra.aposta.id, amount: 1 });
+      expect(await escrita(doMembro(r, outra.slip.id, restituicao(r, outra.aposta.id)))).toBe(
+        'unique',
+      );
+    });
+
+    it('sem aposta, sem mercado ou sem resultado → recusado', async () => {
+      const { r, slip, aposta } = await cenario();
+      for (const falta of ['betId', 'marketId', 'resultId'] as const) {
+        expect(
+          await escrita(doMembro(r, slip.id, { ...restituicao(r, aposta.id), [falta]: null })),
+        ).toBe('check');
+      }
+    });
+
+    it('nunca na conta da guilda', async () => {
+      const { r, aposta } = await cenario();
+      expect(await escrita(daGuilda(r, { ...restituicao(r, aposta.id) }))).toBe('check');
+    });
+  });
+
   describe('T-L03 — idempotência (§16.4)', () => {
     it('recusa dois lançamentos de resultado para a mesma aposta', async () => {
       const { r, slip, aposta } = await cenario();

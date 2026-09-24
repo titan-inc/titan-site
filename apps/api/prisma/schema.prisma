@@ -2170,6 +2170,9 @@ enum GoldLedgerKind {
   restituicao_expirado
   ajuste
   pagamento
+  /// Rodada sem nenhum mercado premiável (D-74): o órfão devolve o próprio `P`
+  /// (90%) aos apostadores válidos do mercado, pelo stake. Não é o VOID.
+  restituicao_sem_premiavel
 }
 
 /// A ÚNICA fonte financeira do Titan Bet (§16.6). Append-only.
