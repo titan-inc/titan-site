@@ -2435,3 +2435,172 @@ Referências gravadas antes da revisão 15 ficam com `snapshot` nulo: o CHECK é
 nada é reescrito, e resultados, confirmações, ledger e Closing Reports não dependem delas.
 Tentativa antiga **ainda não calculada**: o Calcular recusa com o report identificado e pede
 um novo Auditar, que abre outra tentativa já com snapshots. Nenhum snapshot é fabricado.
+
+## 44. D-77 — cancelamento administrativo de rodada (revisão 16)
+
+**Status: GREEN.** Plano de testes escrito antes do código (§44.1); evidência em §44.2–§44.6.
+
+### 44.1 Matriz
+
+| ID    | Camada              | O que prova                                                                                                                                                                                                      |
+| ----- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-X01 | puro (`fases.spec`) | `CANCELLED` vence toda outra fase; `podeCancelar` só antes de `SETTLED`/`CLOSED`; cancelada não audita                                                                                                           |
+| T-X02 | shared              | contratos: fase `CANCELLED`; slip `cancelado` (sem submissão só se nunca submetido); `cancelarRodadaSchema` exige motivo; rodadas do officer com `cancelamento` e `podeCancelar`; slips com `depositoConfirmado` |
+| T-X03 | banco               | `BetSlipStatus.cancelado`; cancelamento da rodada só com os quatro campos, uma vez, nunca desfeito; recusado com auditoria confirmada                                                                            |
+| T-X04 | banco               | slip ativo → `cancelado` só com a rodada cancelada; `cancelado` terminal; `recusado`/`expirado` não viram `cancelado`                                                                                            |
+| T-X05 | banco               | rodada cancelada recusa escrita direta: slip novo, aposta, auditoria, fonte, resultado, ledger (qualquer tipo), Closing, configuração, Ready                                                                     |
+| T-X06 | serviço + banco     | cancelar em PREPARATION, OPEN, BETTING_CLOSED, AUDITING e CALCULATED; recusar em SETTLED, CLOSED e CANCELLED; motivo obrigatório                                                                                 |
+| T-X07 | serviço + banco     | os três ativos → `cancelado`; `recusado`/`expirado` preservados; nada apagado (slips, apostas, depósitos, `submittedAt`, depositante, ledger); nenhum lançamento novo                                            |
+| T-X08 | serviço + banco     | `BetEvent` `rodada_cancelada` com officer, hora e motivo; rodada com os mesmos dados                                                                                                                             |
+| T-X09 | serviço + banco     | atomicidade: falha no meio não deixa rodada nem slip cancelado                                                                                                                                                   |
+| T-X10 | serviço + banco     | depois do cancelamento, todas as mutações recusadas pelo serviço: salvar, submeter, confirmar e recusar depósito, Auditar, sem raid, Calcular, confirmar, pagar, ajustar, publicar Closing, preparar, Ready      |
+| T-X11 | serviço + banco     | concorrência: cancelar × confirmar depósito, × salvar, × Calcular, × confirmar auditoria — nunca uma mutação efetivada depois do cancelamento                                                                    |
+| T-X12 | serviço + banco     | leituras continuam: rodada, slip do dono, "ver slip", resultados calculados, saldos, lançamentos                                                                                                                 |
+| T-X13 | HTTP                | rota de cancelar só com `OfficerGuard` (401/403), corpo validado, 409 quando recusado                                                                                                                            |
+| T-X14 | web officer         | "Cancelar rodada" destrutivo; confirmação irreversível com motivo; estado cancelado com motivo, data e officer; ações incompatíveis somem; depósitos confirmados a tratar fora do Titan Bet                      |
+| T-X15 | web membro          | "Cancelada", aviso de devolução pelos officers, sem apostas de terceiros                                                                                                                                         |
+
+### 44.2 Migrations (aditivas; nenhuma existente editada)
+
+- `20260925000000_titan_bet_cancelamento_estrutura` — `BetSlipStatus.cancelado`,
+  `BetEventType.rodada_cancelada` e, na `BetRound`, `cancelledAt`, `cancelledByUserId`,
+  `cancelledByBattletag`, `cancellationReason` (anuláveis).
+- `20260925010000_titan_bet_cancelamento_invariantes`:
+  - CHECK `BetRound_cancelamento_completo` — os quatro juntos, motivo não vazio;
+  - `titanbet_rodada_imutavel` (substituída, mesmas regras de antes + cancelamento): rodada
+    cancelada não muda mais nada; cancelar é recusado com auditoria `confirmada`; Ready e
+    cancelamento nunca juntos;
+  - `titanbet_slip_transicao` (substituída, mesmas regras de antes + cancelamento): com a
+    rodada cancelada, só `rascunho | aguardando_deposito | valido → cancelado`; `cancelado`
+    só com a rodada cancelada; `cancelado`, `recusado` e `expirado` não saem de onde estão;
+  - `titanbet_rodada_ativa` — rodada cancelada recusa: slip novo, aposta, configuração
+    (encounter e mercado), auditoria (nova ou avançando), resultado, **qualquer** lançamento no
+    ledger e Closing; `titanbet_fonte_rodada_ativa` e `titanbet_report_rodada_ativa` fazem o
+    mesmo nas fontes e nos reports da auditoria. `BetEvent` continua aceitando registro.
+  - Sem drift entre `schema.prisma` e o banco migrado.
+
+### 44.3 RED → GREEN
+
+| Onde                                                                 | RED                                                                                                                                                                                                                                 | GREEN                                                    |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `shared cancelamento.spec.ts` — 11                                   | **RED real**: 10 falhas (fase, estado, `cancelarRodadaSchema` inexistente, campos novos); "podeCancelar vem da API" passava — guarda                                                                                                | contratos                                                |
+| `fases.spec.ts` — T-X01, 4                                           | **RED real**: `canceladaEm` ignorado, `podeCancelar` inexistente                                                                                                                                                                    | `faseDaRodada`, `podeCancelar`                           |
+| `cancelamento-banco.db-spec.ts` — T-X03 a T-X05, 15                  | **RED real** contra a estrutura: 11 falhas (`aceito` onde se espera `check`/`trigger`; transições para `cancelado` inexistentes); 4 passavam — controles e o que o trigger antigo já recusava (`recusado`/`expirado` → `cancelado`) | migration de invariantes                                 |
+| `cancelamento.db-spec.ts` — T-X06 a T-X12, 17                        | awaiting seam (`cancelamento.service` inexistente)                                                                                                                                                                                  | serviço, travas e repositório                            |
+| `cancelamento.db-spec.ts` — concorrência determinística              | **RED real com a trava desligada**: a confirmação de depósito passou durante o cancelamento ("Received promise resolved instead of rejected"); com a trava, espera e é recusada                                                     | `travarRodada*`                                          |
+| `titan-bet.controller.spec.ts` — T-X13 e T-Z01, 6                    | **RED real**: rota inexistente (404)                                                                                                                                                                                                | rota com `OfficerGuard`                                  |
+| `titan-bet.controller.spec.ts` — "mutação em rodada cancelada → 409" | guarda: o mapeamento no `comoHttp` entrou antes do teste                                                                                                                                                                            | —                                                        |
+| `web painel.spec.tsx` — T-X14, 10                                    | awaiting seam (componentes novos); modo só leitura: **RED real** (botões presentes)                                                                                                                                                 | `CancelarRodada`, `DepositosADevolver`, `somenteLeitura` |
+| `web lista-de-rodadas` e `apostas-da-rodada` — T-X15, 3              | **RED real**: sem rótulo nem aviso de cancelamento                                                                                                                                                                                  | rótulos e a situação da rodada                           |
+
+Um RED da primeira versão do teste de banco acusava `unique` em vez de `trigger` por erro da
+fixture (a segunda auditoria reusava `attempt: 1`); corrigido antes do GREEN. Um CHECK da
+primeira versão da migration deixava `cancellationReason` nulo passar (`btrim(NULL) <> ''` é
+nulo, e CHECK nulo passa) — o teste pegou, e a migration, ainda não aplicada fora do banco de
+teste, foi corrigida.
+
+### 44.4 Concorrência
+
+Toda transação que muda a rodada começa travando a linha da `BetRound` (`FOR SHARE`) e
+conferindo `cancelledAt`: `salvarRascunho`, `submeterRascunho`, `confirmarDeposito`,
+`recusarDeposito`, `gravarAuditoria`, `declararSemRaid`, `gravarCalculo`, `confirmarAuditoria`,
+`lancarNaContaDoMembro`, `aplicarPreparacao`, `gravarReady` e o `publicar` do Closing. O
+cancelamento trava a mesma linha com `FOR NO KEY UPDATE`, confere a fase **depois** da trava e
+grava rodada, slips e evento na mesma transação. A ordem é sempre rodada → slip. Testes:
+repetição de cancelar × confirmar depósito, × salvar, × confirmar auditoria (um só vence) e ×
+Calcular, e o caso determinístico da §44.3. O job de cutoff ignora rodada cancelada.
+
+### 44.5 Testes existentes alterados (nenhuma asserção enfraquecida)
+
+- `shared rodada.spec.ts` e `web fixtures.ts`/`painel.spec.tsx`: fixtures com os campos novos
+  obrigatórios (`podeCancelar`, `cancelamento`, `depositoConfirmado`).
+- `rodadas.db-spec.ts` T-C05: a igualdade exata passou a incluir `depositoConfirmado: true`.
+- `fases.spec.ts`: o estado de exemplo ganhou `canceladaEm: null`.
+- `fabrica.ts`: o mapa de status do slip ganhou `cancelado`, por completude do tipo.
+
+### 44.6 Validação
+
+`format:check`, `build`, `lint`, `typecheck`; shared **417**, api **998**, web **240**;
+`test:db` contra o `titan_test` **393** (29 suítes). Collection Yaak: a request de cancelar
+e as descrições das rodadas e dos slips do officer. Validação no navegador na §44.7.
+
+### 44.7 Validação no navegador (25/09/2026)
+
+Banco local de desenvolvimento, com as 2 migrations da D-77 aplicadas por `migrate deploy`
+(sem reset), `pnpm dev`, Chrome DevTools e login real. Duas rodadas exclusivamente locais:
+uma aberta, com configuração e snapshots, e outra em preparação. Identificadores locais
+e BattleTags da validação foram omitidos; os cenários e resultados ficam preservados.
+
+**Montagem, antes do cancelamento da rodada aberta:** um slip em rascunho; outro
+aguardando depósito; o slip do officer criado pela tela do membro (Salvar e Submeter) e
+confirmado pela tela do officer — válido, com `validatedAt` e o `deposito_validado` de 300;
+outro recusado pela tela; outro expirado depois do cutoff (o mesmo
+`UPDATE` do job, só nele); uma tentativa de auditoria em revisão, para as chamadas diretas.
+
+| Cenário                                                                                                                                                                                                                                                                                                                                                                                                                     | Resultado                                                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rodada normal antes; "Cancelar rodada" só onde pode, com estilo destrutivo (`acao-perigo`)                                                                                                                                                                                                                                                                                                                                  | ok                                                                                                                                                                                                 |
+| Confirmação explícita e irreversível; motivo vazio ou em branco, ou sem o aceite: botão desabilitado e nenhuma requisição                                                                                                                                                                                                                                                                                                   | ok                                                                                                                                                                                                 |
+| **Duplo clique em "Confirmar cancelamento"**                                                                                                                                                                                                                                                                                                                                                                                | **bug**: dois `POST …/cancelar` (204 e 409). Corrigido em TDD (RED: 2 chamadas; trava de reentrada; GREEN). Revalidado na rodada em preparação com três cliques no mesmo tick: **um** `POST` (204) |
+| Depois: "Cancelada", motivo, data e hora (`time`), officer                                                                                                                                                                                                                                                                                                                                                                  | ok                                                                                                                                                                                                 |
+| Rascunho, pendente e válido → `cancelado`; recusado e expirado inalterados; `submittedAt`, totais e `validatedAt` preservados                                                                                                                                                                                                                                                                                               | ok — diff do banco antes/depois: só os três status e um `BetEvent` `rodada_cancelada` com motivo, officer e contagem                                                                               |
+| Depósitos a devolver: só o slip com `validatedAt` (o do officer, com o personagem depositante e 300 gold), "fora do Titan Bet — nada aqui gera lançamento"; nenhuma indicação de devolução feita pelo sistema                                                                                                                                                                                                               | ok                                                                                                                                                                                                 |
+| Ações incompatíveis na tela: nenhum botão de Auditar, "sem raid", calcular, liquidar, pagar ou ajustar; só "Ver slip"                                                                                                                                                                                                                                                                                                       | ok                                                                                                                                                                                                 |
+| Chamadas diretas à API: salvar e submeter (422), confirmar e recusar depósito, Auditar, pagar, ajuste, preparação (nas duas rodadas), Ready (na rodada em preparação) e cancelar de novo (409) — todas com o motivo da rodada cancelada; "sem raid", confirmar auditoria, Calcular e Closing recusados antes por regras anteriores (janela da D-73, auditoria não pronta, sem auditoria confirmada); motivo em branco → 400 | ok, nada mudou                                                                                                                                                                                     |
+| Escrita direta no banco: sem raid, avanço da auditoria, pagamento, Closing, reabrir slip, slip novo, trocar o motivo e desfazer o cancelamento                                                                                                                                                                                                                                                                              | todas recusadas pelos triggers da D-77 (o resultado, antes, pelo trigger da auditoria não pronta); estado idêntico antes/depois                                                                    |
+| Ledger, restituição, payout, Closing                                                                                                                                                                                                                                                                                                                                                                                        | nenhum criado; o único lançamento segue o `deposito_validado` anterior                                                                                                                             |
+| Membro participante: "Cancelada" e o aviso de devolução pelos officers; sem o motivo administrativo; o próprio slip "Cancelado" com a aposta; nenhum outro dono na tela; `/slip` só o dele; odds só `characterId` e `multiplicador`; sem botões nem opções                                                                                                                                                                  | ok                                                                                                                                                                                                 |
+| 390 px e 1440 px: sem overflow horizontal (`scrollWidth` = largura), confirmação utilizável, status e aviso sem quebrar                                                                                                                                                                                                                                                                                                     | ok                                                                                                                                                                                                 |
+| Console                                                                                                                                                                                                                                                                                                                                                                                                                     | nenhum erro nem aviso                                                                                                                                                                              |
+| Network                                                                                                                                                                                                                                                                                                                                                                                                                     | só 2xx, exceto as recusas pedidas (409/422/400); nenhum 5xx                                                                                                                                        |
+
+### 44.8 Auditoria independente do PR #115 (25/09/2026)
+
+HEAD auditado inicialmente: `fcafeaef69fe2f7a1fb1746a9cbdee4e6e3b9c98`.
+Base `main`, head `feat/titan-bet-cancelamento`, cinco commits esperados,
+`mergeStateStatus=CLEAN` e check obrigatório `verify` verde. O merge-base é
+`20765bcd7568684e5976612916a8c73f8f950880`, a main atual e o merge do PR #114
+(com dois pais: estratégia merge commit).
+
+**O HEAD original não foi aprovado.** A revisão independente encontrou:
+
+- Motivo composto apenas de tabulação, quebra de linha ou NBSP aceito no banco.
+- Exclusão direta de rodada cancelada sem dependentes, slip vazio cancelado e
+  auditoria histórica sem fontes; inserção de snapshots após cancelar em preparação.
+- Fonte de auditoria transferível de uma rodada cancelada para outra ativa.
+- Slip que podia nascer cancelado numa rodada ativa; transição para cancelado que
+  também podia fabricar campos de confirmação de depósito antes nulos.
+- Checagem de cancelamento sem lock nos triggers, permitindo escrita SQL concorrente.
+- Expiração sem lock da rodada: a proteção reforçada expôs deadlock por ordem
+  slip → rodada, oposta à do cancelamento.
+- Identificadores e BattleTags da validação local na evidência textual; removidos,
+  preservando os cenários e resultados. Não havia dados de browser em código de produção.
+
+Correções restritas à migration nova de invariantes, ao job de expiração e aos testes.
+A migration agora trava e lê a rodada antes de permitir a escrita, vigia origem e destino,
+recusa DELETE e inserções incompatíveis e permite na transição do slip somente a mudança
+de status e updated_at. Resultados filhos também conferem cancelamento. O job adquire
+locks em ordem de id, rodada → slip. Ledger e BetEvent mantêm os triggers append-only;
+o cancelamento continua sem lançamento financeiro, numa transação com slips e evento.
+
+**TDD independente:** os 393 testes anteriores passaram e 12 regressões novas falharam
+contra a implementação original (405 testes naquele run). Após corrigir a migration,
+essas regressões passaram; o novo teste de expiração reproduziu o deadlock antes da
+correção do repositório. Nenhum trigger foi desligado para fabricar RED. O relato anterior
+de RED com lock desligado (§44.3) não foi aceito como evidência nesta auditoria.
+Regressões adicionais cobrem ambos os snapshots e filhos de resultado. No web, um teste
+novo confirma retry após falha de rede; o teste original já dispara dois cliques no mesmo
+tick e comprova um único POST. Nenhuma asserção existente foi enfraquecida.
+
+**Verificações:** format, build, lint, typecheck e testes shared 417, API 998 e web 242
+verdes (web +1 pelo retry). Comparação do schema migrado no titan_test com schema.prisma:
+nenhuma diferença. Suíte DB final: **408/408, 29 suítes**, incluindo as 15 regressões
+adicionais de banco/concorrência. Não houve redução dos totais anteriores.
+
+**Limites de release:** a conexão de Browser desta sessão não encontrou navegador;
+a revalidação dos cenários afetados está pendente. O merge/deploy também depende da decisão
+sobre a janela sem migrations: o Deploy automático instala código que lê as novas colunas,
+mas não aplica migrations. Deixá-las pendentes torna as rotas do Titan Bet incompatíveis
+até sua aplicação. Nenhum merge, deploy ou alteração de banco de produção nesta auditoria.
+As duas migrations D-77 permanecem pendentes em produção conforme o estado informado.
+Nenhuma migration histórica foi modificada; o banco alterado pelos testes é apenas titan_test.

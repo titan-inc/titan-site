@@ -105,6 +105,8 @@ describe('T-C04 — as rodadas do Officer Panel', () => {
     readyByBattletag: null,
     podeAuditar: false,
     auditavelDesde: '2026-10-02T02:30:00.000Z',
+    podeCancelar: true,
+    cancelamento: null,
   };
 
   it('o resumo, com o Ready', () => {
@@ -128,6 +130,7 @@ describe('T-C05 — os slips submetidos da rodada, sem as escolhas', () => {
     depositCharacter: { name: 'Depositante', realm: 'Azralon' },
     expectedTotal: 500,
     submittedAt: '2026-09-23T15:00:00.000Z',
+    depositoConfirmado: true,
   };
 
   it('dono, estado, depositante, total e horário', () => {
@@ -151,6 +154,7 @@ describe('T-C05 — os slips submetidos da rodada, sem as escolhas', () => {
     depositCharacter: null,
     expectedTotal: null,
     submittedAt: null,
+    depositoConfirmado: false,
   };
 
   it('D-71: expirado que nunca foi submetido vem sem data, total e depositante', () => {

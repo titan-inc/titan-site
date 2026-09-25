@@ -94,6 +94,7 @@ export const SLIPS: SlipsSubmetidos = {
       depositCharacter: { name: 'Depositante', realm: 'Azralon' },
       expectedTotal: 500,
       submittedAt: '2026-09-23T15:00:00.000Z',
+      depositoConfirmado: true,
     },
   ],
 };

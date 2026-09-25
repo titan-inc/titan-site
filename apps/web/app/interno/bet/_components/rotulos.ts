@@ -48,6 +48,7 @@ export const STATUS_DO_SLIP: Record<BetSlipStatus, string> = {
   valido: 'Válido',
   recusado: 'Recusado',
   expirado: 'Expirado',
+  cancelado: 'Cancelado',
 };
 
 export const FASE: Record<FaseDaRodada, string> = {
@@ -59,6 +60,7 @@ export const FASE: Record<FaseDaRodada, string> = {
   CALCULATED: 'Resultados calculados',
   SETTLED: 'Liquidada',
   CLOSED: 'Encerrada',
+  CANCELLED: 'Cancelada',
 };
 
 /** Por que um mercado ficou sem vencedor, ou foi anulado (D-61). */

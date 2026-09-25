@@ -21,6 +21,7 @@ export function Resultados({
   bosses,
   encounters = {},
   podeCalcular,
+  somenteLeitura = false,
 }: {
   resultados: ResultadosDaAuditoria | null;
   auditId?: string;
@@ -29,6 +30,8 @@ export function Resultados({
   /** marketId → nome do boss do mercado (a Weekly não tem). */
   encounters?: Record<string, string>;
   podeCalcular: boolean;
+  /** Rodada cancelada (D-77): mostra, mas não calcula nem liquida. */
+  somenteLeitura?: boolean;
 }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
@@ -48,7 +51,7 @@ export function Resultados({
 
   return (
     <div className="flex flex-col gap-4">
-      {podeCalcular && id && (
+      {podeCalcular && !somenteLeitura && id && (
         <div>
           <Acao
             variante="solida"
@@ -70,6 +73,7 @@ export function Resultados({
       ))}
 
       {resultados?.status === 'calculada' &&
+        !somenteLeitura &&
         (confirmando ? (
           <div className="border-border flex flex-col gap-2 rounded-lg border p-3">
             <p className="text-fg text-sm">

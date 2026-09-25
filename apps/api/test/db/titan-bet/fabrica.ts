@@ -133,6 +133,8 @@ export class Fabrica {
     };
     const porEstado: Record<BetSlipStatus, Partial<Prisma.BetSlipUncheckedCreateInput>> = {
       rascunho: {},
+      // Só a rodada cancelada leva a este estado (D-77): o slip nasce ativo.
+      cancelado: {},
       aguardando_deposito: submetido,
       valido: {
         ...submetido,

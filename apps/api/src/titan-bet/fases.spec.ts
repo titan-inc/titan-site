@@ -2,6 +2,7 @@ import {
   auditoriaAberta,
   faseDaRodada,
   podeAuditar,
+  podeCancelar,
   podeDarReady,
   type EstadoDaRodada,
 } from './fases';
@@ -18,6 +19,7 @@ const emPreparacao: EstadoDaRodada = {
   cutoffAt: CUTOFF,
   auditoria: null,
   temClosingReport: false,
+  canceladaEm: null,
 };
 const aberta: EstadoDaRodada = { ...emPreparacao, readyAt: new Date('2026-09-26T20:00:00Z') };
 
@@ -155,5 +157,48 @@ describe('auditoriaAberta (D-73)', () => {
     const quinta2330Utc = new Date('2026-10-01T23:30:00Z');
     expect(auditoriaAberta(CUTOFF, quinta2330Utc, 'UTC')).toBe(true);
     expect(auditoriaAberta(CUTOFF, quinta2330Utc, FUSO)).toBe(false);
+  });
+});
+
+/** T-X01 — D-77: a fase CANCELLED e quando se pode cancelar. */
+describe('cancelamento (D-77)', () => {
+  const agora = new Date('2026-10-02T12:00:00Z');
+  const cancelada = new Date('2026-09-30T12:00:00Z');
+
+  it('CANCELLED vence toda outra fase, inclusive a preparação e a auditoria em curso', () => {
+    for (const estado of [
+      { ...emPreparacao, canceladaEm: cancelada },
+      { ...aberta, canceladaEm: cancelada },
+      { ...aberta, auditoria: 'calculada' as const, canceladaEm: cancelada },
+    ]) {
+      expect(faseDaRodada(estado, agora)).toBe('CANCELLED');
+      expect(faseDaRodada(estado, new Date('2026-09-28T12:00:00Z'))).toBe('CANCELLED');
+    }
+  });
+
+  it('pode cancelar antes do settlement: preparação, não aberta, aberta, fechada, auditando, calculada', () => {
+    const antesDoCutoff = new Date('2026-09-28T12:00:00Z');
+    expect(podeCancelar(emPreparacao, antesDoCutoff)).toBe(true);
+    expect(podeCancelar(emPreparacao, agora)).toBe(true); // NAO_ABERTA
+    expect(podeCancelar(aberta, antesDoCutoff)).toBe(true);
+    for (const auditoria of [null, 'aguardando_revisao', 'pronta', 'calculada'] as const) {
+      expect(podeCancelar({ ...aberta, auditoria }, agora)).toBe(true);
+    }
+  });
+
+  it('não pode cancelar liquidada, fechada ou já cancelada', () => {
+    expect(podeCancelar({ ...aberta, auditoria: 'confirmada' }, agora)).toBe(false);
+    expect(
+      podeCancelar({ ...aberta, auditoria: 'confirmada', temClosingReport: true }, agora),
+    ).toBe(false);
+    expect(podeCancelar({ ...aberta, canceladaEm: cancelada }, agora)).toBe(false);
+  });
+
+  it('rodada cancelada não se audita nem recebe Ready', () => {
+    const tarde = new Date('2026-10-05T12:00:00Z');
+    expect(podeAuditar({ ...aberta, canceladaEm: cancelada }, tarde, FUSO)).toBe(false);
+    expect(
+      podeDarReady({ ...emPreparacao, canceladaEm: cancelada }, new Date('2026-09-28T12:00:00Z')),
+    ).toBe(false);
   });
 });

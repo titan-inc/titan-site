@@ -237,6 +237,8 @@ describe('Titan Bet — rodadas para o front (serviço + banco)', () => {
           depositCharacter: { name: dono.name, realm: dono.realm },
           expectedTotal: 300,
           submittedAt: expect.any(String) as unknown,
+          // D-77: o depósito deste foi confirmado.
+          depositoConfirmado: true,
         },
       ]);
       expect(lista.slips.map((s) => s.slipId)).not.toContain(rascunho.slip.id);

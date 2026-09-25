@@ -29,10 +29,11 @@ export function submissaoCoerente(
       code: 'custom',
       message: 'submissão pela metade: depositante, total e data vêm juntos',
     });
-  } else if (s.status !== 'expirado') {
+  } else if (s.status !== 'expirado' && s.status !== 'cancelado') {
+    // Rascunho que chegou ao cutoff (D-71) ou à rodada cancelada (D-77).
     ctx.addIssue({
       code: 'custom',
-      message: 'só slip expirado pode não ter sido submetido (D-71)',
+      message: 'só slip expirado ou cancelado pode não ter sido submetido (D-71, D-77)',
     });
   }
 }

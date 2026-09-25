@@ -8,7 +8,13 @@ import type {
 import { loadGuildTimezone } from '../config/guild.config';
 import { inicioDaAuditoria } from './calendario';
 import { ElegibilidadeService } from './elegibilidade.service';
-import { faseDaRodada, podeAuditar, type EstadoDaRodada, type StatusDaAuditoria } from './fases';
+import {
+  faseDaRodada,
+  podeAuditar,
+  podeCancelar,
+  type EstadoDaRodada,
+  type StatusDaAuditoria,
+} from './fases';
 import { RELOGIO, relogioDoSistema, type Relogio } from './relogio';
 import { TitanBetRepository } from './titan-bet.repository';
 
@@ -100,6 +106,16 @@ export class RodadasService {
         // A mesma regra que o Auditar aplica (D-73) — o painel só mostra.
         podeAuditar: podeAuditar(estado(r), agora, this.timezone),
         auditavelDesde: inicioDaAuditoria(r.cutoffAt, this.timezone).toISOString(),
+        // A mesma regra do cancelamento (D-77) — o painel só mostra.
+        podeCancelar: podeCancelar(estado(r), agora),
+        cancelamento:
+          r.cancelledAt && r.cancelledByBattletag && r.cancellationReason
+            ? {
+                motivo: r.cancellationReason,
+                em: r.cancelledAt.toISOString(),
+                porBattletag: r.cancelledByBattletag,
+              }
+            : null,
       })),
     };
   }
@@ -125,5 +141,6 @@ function estado(r: RodadaComEstado): EstadoDaRodada {
     cutoffAt: r.cutoffAt,
     auditoria: (r.audits[0]?.status as StatusDaAuditoria | undefined) ?? null,
     temClosingReport: r._count.closingReports > 0,
+    canceladaEm: r.cancelledAt,
   };
 }

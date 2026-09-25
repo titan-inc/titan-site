@@ -12,12 +12,14 @@ import {
 } from '@nestjs/common';
 import {
   ajustarSchema,
+  cancelarRodadaSchema,
   declararSemRaidSchema,
   prepararRodadaSchema,
   recusarDepositoSchema,
   sessaoDaAuditoriaSchema,
   type Ajustar,
   type AuditoriaCorrente,
+  type CancelarRodada,
   type CatalogoDeRaid,
   type DeclararSemRaid,
   type DepositosPendentes,
@@ -36,6 +38,7 @@ import type { Request } from 'express';
 import { OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuditoriaService } from './auditoria.service';
+import { CancelamentoService } from './cancelamento.service';
 import { CalculoService } from './calculo.service';
 import { ClosingService } from './closing.service';
 import { LedgerService, SettlementService } from './settlement.service';
@@ -70,6 +73,7 @@ export class TitanBetOfficerController {
     private readonly settlement: SettlementService,
     private readonly ledger: LedgerService,
     private readonly closing: ClosingService,
+    private readonly cancelamento: CancelamentoService,
   ) {}
 
   /**
@@ -206,6 +210,20 @@ export class TitanBetOfficerController {
     @Req() req: Request,
   ): Promise<void> {
     await comoHttp(() => this.deposito.recusar(slipId, contaDe(req), body.motivo));
+  }
+
+  /**
+   * Cancelamento administrativo (D-77): terminal, com motivo; os slips ativos
+   * viram `cancelado`. Sem lançamento no ledger — devolução é fora do Titan Bet.
+   */
+  @Post('rodadas/:roundId/cancelar')
+  @HttpCode(204)
+  async cancelar(
+    @Param('roundId') roundId: string,
+    @Body(new ZodValidationPipe(cancelarRodadaSchema)) body: CancelarRodada,
+    @Req() req: Request,
+  ): Promise<void> {
+    await comoHttp(() => this.cancelamento.cancelar(roundId, contaDe(req), body.motivo));
   }
 
   /** Auditar (D-30): procura os `titanbet*` de terça e quinta e abre uma tentativa. */

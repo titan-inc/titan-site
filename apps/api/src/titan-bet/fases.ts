@@ -20,9 +20,13 @@ export interface EstadoDaRodada {
   /** Nulo quando nenhum Auditar foi feito. */
   auditoria: StatusDaAuditoria | null;
   temClosingReport: boolean;
+  /** Quando um officer cancelou a rodada (D-77); `null` se não foi cancelada. */
+  canceladaEm: Date | null;
 }
 
 export function faseDaRodada(estado: EstadoDaRodada, agora: Date): FaseDaRodada {
+  // Cancelada é terminal e vence tudo (D-77).
+  if (estado.canceladaEm !== null) return 'CANCELLED';
   const antesDoCutoff = agora.getTime() < estado.cutoffAt.getTime();
 
   if (estado.readyAt === null) return antesDoCutoff ? 'PREPARATION' : 'NAO_ABERTA';
@@ -87,4 +91,13 @@ export function podeAuditar(estado: EstadoDaRodada, agora: Date, timezone: strin
     (fase === 'BETTING_CLOSED' || fase === 'AUDITING' || fase === 'CALCULATED') &&
     auditoriaAberta(estado.cutoffAt, agora, timezone)
   );
+}
+
+/**
+ * Cancelar vale até o settlement (D-77): nunca com a auditoria confirmada, com o
+ * Closing publicado ou com a rodada já cancelada. O banco confere o mesmo.
+ */
+export function podeCancelar(estado: EstadoDaRodada, agora: Date): boolean {
+  const fase = faseDaRodada(estado, agora);
+  return fase !== 'SETTLED' && fase !== 'CLOSED' && fase !== 'CANCELLED';
 }

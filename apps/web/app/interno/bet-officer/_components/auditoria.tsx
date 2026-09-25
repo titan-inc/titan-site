@@ -29,6 +29,7 @@ export function Auditoria({
   auditoria,
   podeAuditar,
   auditavelDesde,
+  somenteLeitura = false,
 }: {
   roundId: string;
   auditoria: AuditoriaCorrente | null;
@@ -36,6 +37,8 @@ export function Auditoria({
   podeAuditar: boolean;
   /** Quinta 23:30 no fuso da guilda; `null` quando não há o que esperar. */
   auditavelDesde: string | null;
+  /** Rodada cancelada (D-77): as fontes aparecem, nenhuma ação. */
+  somenteLeitura?: boolean;
 }) {
   const router = useRouter();
   const [erro, setErro] = useState<string | null>(null);
@@ -63,7 +66,7 @@ export function Auditoria({
           key={f.session}
           fonte={f}
           auditId={auditoria.auditId}
-          aberta={auditoria.status === 'aguardando_revisao'}
+          aberta={auditoria.status === 'aguardando_revisao' && !somenteLeitura}
         />
       ))}
       {!podeAuditar && auditavelDesde !== null && (
@@ -71,7 +74,7 @@ export function Auditoria({
           O Auditar abre depois da raid de quinta: <Quando iso={auditavelDesde} />.
         </p>
       )}
-      {podeAuditar && (
+      {podeAuditar && !somenteLeitura && (
         <div>
           <Acao variante="fantasma" onClick={auditar} disabled={pendente}>
             {auditoria ? 'Auditar de novo' : 'Auditar'}

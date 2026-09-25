@@ -365,6 +365,16 @@ function mensagemDoContrato(erro: z.ZodError): string {
 }
 
 function Situacao({ cardapio }: { cardapio: RodadaDoMembro }) {
+  if (cardapio.fase === 'CANCELLED') {
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-fg text-sm font-semibold">Rodada cancelada pelos officers.</p>
+        <p className="text-fg-muted text-sm">
+          Eventuais devoluções de gold são administradas pelos officers, fora do Titan Bet.
+        </p>
+      </div>
+    );
+  }
   if (cardapio.fase !== 'OPEN') {
     return (
       <p className="text-fg-muted text-sm">

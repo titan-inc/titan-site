@@ -195,10 +195,16 @@ function gravavel(r: ReportDaGuilda): ReportDaGuilda {
 }
 
 function motivoParaNaoAuditar(
-  estado: { readyAt: Date | null; cutoffAt: Date; auditoria: string | null },
+  estado: {
+    readyAt: Date | null;
+    cutoffAt: Date;
+    auditoria: string | null;
+    canceladaEm: Date | null;
+  },
   agora: Date,
   timezone: string,
 ): string {
+  if (estado.canceladaEm !== null) return 'a rodada foi cancelada (D-77)';
   if (estado.readyAt === null) return 'a rodada não teve Ready — não houve aposta';
   if (agora < estado.cutoffAt) return 'as apostas ainda estão abertas — o cutoff não passou';
   return (

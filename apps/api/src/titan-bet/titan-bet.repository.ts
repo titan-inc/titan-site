@@ -10,6 +10,8 @@ import type {
   GoldLedgerKind,
   Prisma,
 } from '@prisma/client';
+import type { EstadoDaRodada, StatusDaAuditoria } from './fases';
+import { RodadaCancelada } from './rodada-cancelada';
 import type { SnapshotDoReport } from './snapshot';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -44,6 +46,7 @@ export interface RodadaParaReady {
   id: string;
   cutoffAt: Date;
   readyAt: Date | null;
+  cancelledAt: Date | null;
   markets: Array<{ kind: BetMarketKind }>;
   /** A Weekly tem por opções os bosses de progressão (D-54). */
   encounters: Array<{ track: BetEncounterTrack }>;
@@ -60,6 +63,117 @@ export interface RodadaParaReady {
 export class TitanBetRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Trava a rodada para uma mutação (D-77): `FOR SHARE` na linha da BetRound —
+   * mutações não se bloqueiam entre si, mas esperam o cancelamento, que trava a
+   * mesma linha para escrever. Rodada cancelada → `RodadaCancelada`. É a
+   * primeira instrução de toda transação que muda a rodada: a ordem de travas é
+   * sempre rodada → slip, a mesma do cancelamento.
+   */
+  private async travarRodada(tx: Prisma.TransactionClient, roundId: string): Promise<void> {
+    const [r] = await tx.$queryRaw<Array<{ cancelledAt: Date | null }>>`
+      SELECT "cancelledAt" FROM "BetRound" WHERE "id" = ${roundId} FOR SHARE`;
+    if (r?.cancelledAt) throw new RodadaCancelada(roundId);
+  }
+
+  private async travarRodadaDoSlip(tx: Prisma.TransactionClient, slipId: string): Promise<void> {
+    const [r] = await tx.$queryRaw<Array<{ id: string; cancelledAt: Date | null }>>`
+      SELECT r."id", r."cancelledAt" FROM "BetRound" r JOIN "BetSlip" s ON s."roundId" = r."id"
+      WHERE s."id" = ${slipId} FOR SHARE OF r`;
+    if (r?.cancelledAt) throw new RodadaCancelada(r.id);
+  }
+
+  private async travarRodadaDaAuditoria(
+    tx: Prisma.TransactionClient,
+    auditId: string,
+  ): Promise<void> {
+    const [r] = await tx.$queryRaw<Array<{ id: string; cancelledAt: Date | null }>>`
+      SELECT r."id", r."cancelledAt" FROM "BetRound" r JOIN "BetAudit" a ON a."roundId" = r."id"
+      WHERE a."id" = ${auditId} FOR SHARE OF r`;
+    if (r?.cancelledAt) throw new RodadaCancelada(r.id);
+  }
+
+  /**
+   * Cancelamento administrativo (D-77), numa transação: trava a rodada para
+   * escrever (espera as mutações em curso terminarem), confere que ela ainda
+   * pode ser cancelada — nunca com settlement confirmado —, grava quem, quando
+   * e por quê, cancela os slips ativos e registra o evento. Nada é apagado e
+   * nenhum lançamento entra no ledger. O banco confere o mesmo (triggers).
+   */
+  async cancelarRodada(r: {
+    roundId: string;
+    officer: { userId: string; battletag: string };
+    motivo: string;
+    agora: Date;
+    podeCancelar: (estado: EstadoDaRodada) => boolean;
+  }): Promise<
+    | { tipo: 'ok'; slipsCancelados: Record<'rascunho' | 'aguardando_deposito' | 'valido', number> }
+    | { tipo: 'inexistente' }
+    | { tipo: 'recusado'; estado: EstadoDaRodada }
+  > {
+    return this.prisma.$transaction(async (tx) => {
+      const [rodada] = await tx.$queryRaw<
+        Array<{ readyAt: Date | null; cutoffAt: Date; cancelledAt: Date | null }>
+      >`
+        SELECT "readyAt", "cutoffAt", "cancelledAt" FROM "BetRound"
+        WHERE "id" = ${r.roundId} FOR NO KEY UPDATE`;
+      if (!rodada) return { tipo: 'inexistente' as const };
+
+      // Lido depois da trava: um settlement que terminou antes aparece aqui.
+      const [corrente, closings] = await Promise.all([
+        tx.betAudit.findFirst({
+          where: { roundId: r.roundId, status: { not: 'substituida' } },
+          orderBy: { attempt: 'desc' },
+          select: { status: true },
+        }),
+        tx.roundClosingReport.count({ where: { roundId: r.roundId } }),
+      ]);
+      const estado: EstadoDaRodada = {
+        readyAt: rodada.readyAt,
+        cutoffAt: rodada.cutoffAt,
+        auditoria: (corrente?.status as StatusDaAuditoria | undefined) ?? null,
+        temClosingReport: closings > 0,
+        canceladaEm: rodada.cancelledAt,
+      };
+      if (!r.podeCancelar(estado)) return { tipo: 'recusado' as const, estado };
+
+      await tx.betRound.update({
+        where: { id: r.roundId },
+        data: {
+          cancelledAt: r.agora,
+          cancelledByUserId: r.officer.userId,
+          cancelledByBattletag: r.officer.battletag,
+          cancellationReason: r.motivo,
+        },
+      });
+
+      const ativos = ['rascunho', 'aguardando_deposito', 'valido'] as const;
+      const contagem = await tx.betSlip.groupBy({
+        by: ['status'],
+        where: { roundId: r.roundId, status: { in: [...ativos] } },
+        _count: { _all: true },
+      });
+      const slipsCancelados = Object.fromEntries(
+        ativos.map((st) => [st, contagem.find((c) => c.status === st)?._count._all ?? 0]),
+      ) as Record<(typeof ativos)[number], number>;
+      await tx.betSlip.updateMany({
+        where: { roundId: r.roundId, status: { in: [...ativos] } },
+        data: { status: 'cancelado' },
+      });
+
+      await tx.betEvent.create({
+        data: {
+          roundId: r.roundId,
+          type: 'rodada_cancelada',
+          actorUserId: r.officer.userId,
+          actorBattletag: r.officer.battletag,
+          payload: { motivo: r.motivo, slipsCancelados },
+        },
+      });
+      return { tipo: 'ok' as const, slipsCancelados };
+    });
+  }
+
   rodadaParaReady(roundId: string): Promise<RodadaParaReady | null> {
     return this.prisma.betRound.findUnique({
       where: { id: roundId },
@@ -67,6 +181,7 @@ export class TitanBetRepository {
         id: true,
         cutoffAt: true,
         readyAt: true,
+        cancelledAt: true,
         markets: { select: { kind: true } },
         encounters: { select: { track: true } },
       },
@@ -82,6 +197,7 @@ export class TitanBetRepository {
    */
   async gravarReady(g: GravacaoDoReady): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
+      await this.travarRodada(tx, g.roundId);
       await tx.betRoundBettor.createMany({
         data: g.bettors.map((b) => ({ roundId: g.roundId, ...b })),
       });
@@ -179,6 +295,9 @@ export class TitanBetRepository {
         cutoffAt: true,
         readyAt: true,
         readyByBattletag: true,
+        cancelledAt: true,
+        cancelledByBattletag: true,
+        cancellationReason: true,
         audits: {
           where: { status: { not: 'substituida' } },
           orderBy: { attempt: 'desc' },
@@ -201,6 +320,9 @@ export class TitanBetRepository {
         cutoffAt: true,
         readyAt: true,
         readyByBattletag: true,
+        cancelledAt: true,
+        cancelledByBattletag: true,
+        cancellationReason: true,
         audits: {
           where: { status: { not: 'substituida' } },
           orderBy: { attempt: 'desc' },
@@ -245,6 +367,7 @@ export class TitanBetRepository {
         depositCharacter: { select: { name: true, realm: true } },
         expectedTotal: true,
         submittedAt: true,
+        validatedAt: true,
       },
     });
   }
@@ -362,6 +485,7 @@ export class TitanBetRepository {
     apostas: ApostaParaGravar[];
   }): Promise<{ tipo: 'ok'; slipId: string } | { tipo: 'nao_editavel'; status: BetSlipStatus }> {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodada(tx, r.roundId);
       const [ativo] = await tx.$queryRaw<Array<{ id: string; status: BetSlipStatus }>>`
         SELECT "id", "status" FROM "BetSlip"
         WHERE "roundId" = ${r.roundId} AND "ownerUserId" = ${r.owner.userId}
@@ -430,6 +554,7 @@ export class TitanBetRepository {
     | { tipo: 'recusado'; motivo: string }
   > {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodada(tx, r.roundId);
       const [rascunho] = await tx.$queryRaw<Array<{ id: string; eligibilityCharacterId: string }>>`
         SELECT "id", "eligibilityCharacterId" FROM "BetSlip"
         WHERE "roundId" = ${r.roundId} AND "ownerUserId" = ${r.userId} AND "status" = 'rascunho'
@@ -477,6 +602,7 @@ export class TitanBetRepository {
     agora: Date;
   }): Promise<{ tipo: 'ok' } | { tipo: 'nao_pendente'; status: BetSlipStatus | null }> {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodadaDoSlip(tx, r.slipId);
       const slip = await this.travarSlip(tx, r.slipId);
       if (slip?.status !== 'aguardando_deposito') {
         return { tipo: 'nao_pendente' as const, status: slip?.status ?? null };
@@ -514,6 +640,7 @@ export class TitanBetRepository {
     agora: Date;
   }): Promise<{ tipo: 'ok' } | { tipo: 'nao_pendente'; status: BetSlipStatus | null }> {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodadaDoSlip(tx, r.slipId);
       const slip = await this.travarSlip(tx, r.slipId);
       if (slip?.status !== 'aguardando_deposito') {
         return { tipo: 'nao_pendente' as const, status: slip?.status ?? null };
@@ -538,14 +665,22 @@ export class TitanBetRepository {
    * pendente de rodada vencida viram `expirado`. Idempotente.
    */
   async expirarVencidos(agora: Date): Promise<number> {
-    const { count } = await this.prisma.betSlip.updateMany({
-      where: {
-        status: { in: ['rascunho', 'aguardando_deposito'] },
-        round: { cutoffAt: { lte: agora } },
-      },
-      data: { status: 'expirado', expiredAt: agora },
+    return this.prisma.$transaction(async (tx) => {
+      // A mesma ordem rodada → slip das demais mutações. Depois de esperar um
+      // cancelamento, o SELECT reavalia cancelledAt e exclui a rodada cancelada.
+      const rodadas = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "BetRound"
+        WHERE "cutoffAt" <= ${agora} AND "cancelledAt" IS NULL
+        ORDER BY "id" FOR SHARE`;
+      const { count } = await tx.betSlip.updateMany({
+        where: {
+          status: { in: ['rascunho', 'aguardando_deposito'] },
+          roundId: { in: rodadas.map((r) => r.id) },
+        },
+        data: { status: 'expirado', expiredAt: agora },
+      });
+      return count;
     });
-    return count;
   }
 
   /**
@@ -624,6 +759,7 @@ export class TitanBetRepository {
       select: {
         cutoffAt: true,
         readyAt: true,
+        cancelledAt: true,
         // Os encounters da rodada: o recorte do snapshot (D-76).
         encounters: { select: { encounterId: true } },
         audits: {
@@ -639,6 +775,7 @@ export class TitanBetRepository {
     return {
       cutoffAt: rodada.cutoffAt,
       readyAt: rodada.readyAt,
+      canceladaEm: rodada.cancelledAt,
       encounterIds: rodada.encounters.map((e) => e.encounterId),
       auditoria: (corrente?.status ?? null) as Exclude<BetAuditStatus, 'substituida'> | null,
     };
@@ -656,6 +793,7 @@ export class TitanBetRepository {
     fontes: FonteParaGravar[];
   }): Promise<{ auditId: string }> {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodada(tx, g.roundId);
       const ultima = await tx.betAudit.aggregate({
         where: { roundId: g.roundId },
         _max: { attempt: true },
@@ -715,6 +853,7 @@ export class TitanBetRepository {
     agora: Date;
   }): Promise<{ tipo: 'ok' } | { tipo: 'recusado'; motivo: string }> {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodadaDaAuditoria(tx, r.auditId);
       const [auditoria] = await tx.$queryRaw<Array<{ status: BetAuditStatus }>>`
         SELECT "status" FROM "BetAudit" WHERE "id" = ${r.auditId} FOR UPDATE`;
       if (!auditoria) return { tipo: 'recusado' as const, motivo: 'a auditoria não existe' };
@@ -843,6 +982,7 @@ export class TitanBetRepository {
         opensAt: true,
         cutoffAt: true,
         readyAt: true,
+        cancelledAt: true,
         encounters: {
           orderBy: { createdAt: 'asc' },
           select: {
@@ -870,6 +1010,7 @@ export class TitanBetRepository {
    */
   async aplicarPreparacao(p: PlanoDePreparacao): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
+      await this.travarRodada(tx, p.roundId);
       if (p.removerMercados.length > 0) {
         await tx.betMarket.deleteMany({ where: { id: { in: p.removerMercados } } });
       }
@@ -998,6 +1139,7 @@ export class TitanBetRepository {
     resultados: ResultadoParaGravar[];
   }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
+      await this.travarRodada(tx, g.roundId);
       for (const r of g.resultados) {
         const criado = await tx.betMarketResult.create({
           data: {
@@ -1086,6 +1228,7 @@ export class TitanBetRepository {
     ) => { lancamentos: LancamentoDoSettlement[] } | { recusa: string };
   }): Promise<{ tipo: 'ok' } | { tipo: 'recusado'; motivo: string }> {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodadaDaAuditoria(tx, r.auditId);
       const [auditoria] = await tx.$queryRaw<Array<{ roundId: string; status: BetAuditStatus }>>`
         SELECT "roundId", "status" FROM "BetAudit" WHERE "id" = ${r.auditId} FOR UPDATE`;
       if (!auditoria) return { tipo: 'recusado' as const, motivo: 'a auditoria não existe' };
@@ -1190,6 +1333,7 @@ export class TitanBetRepository {
     ) => LancamentoDoMembro | { recusa: string };
   }): Promise<{ tipo: 'ok' } | { tipo: 'recusado'; motivo: string }> {
     return this.prisma.$transaction(async (tx) => {
+      await this.travarRodadaDoSlip(tx, r.slipId);
       const slip = await this.travarSlip(tx, r.slipId);
       if (!slip) return { tipo: 'recusado' as const, motivo: 'o slip não existe' };
       const lancamentos = await tx.goldLedgerEntry.findMany({
