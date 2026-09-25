@@ -2438,7 +2438,7 @@ um novo Auditar, que abre outra tentativa já com snapshots. Nenhum snapshot é 
 
 ## 44. D-77 — cancelamento administrativo de rodada (revisão 16)
 
-**Status: em andamento.** Plano de testes escrito antes do código.
+**Status: GREEN.** Plano de testes escrito antes do código (§44.1); evidência em §44.2–§44.6.
 
 ### 44.1 Matriz
 
@@ -2459,3 +2459,67 @@ um novo Auditar, que abre outra tentativa já com snapshots. Nenhum snapshot é 
 | T-X13 | HTTP                | rota de cancelar só com `OfficerGuard` (401/403), corpo validado, 409 quando recusado                                                                                                                            |
 | T-X14 | web officer         | "Cancelar rodada" destrutivo; confirmação irreversível com motivo; estado cancelado com motivo, data e officer; ações incompatíveis somem; depósitos confirmados a tratar fora do Titan Bet                      |
 | T-X15 | web membro          | "Cancelada", aviso de devolução pelos officers, sem apostas de terceiros                                                                                                                                         |
+
+### 44.2 Migrations (aditivas; nenhuma existente editada)
+
+- `20260925000000_titan_bet_cancelamento_estrutura` — `BetSlipStatus.cancelado`,
+  `BetEventType.rodada_cancelada` e, na `BetRound`, `cancelledAt`, `cancelledByUserId`,
+  `cancelledByBattletag`, `cancellationReason` (anuláveis).
+- `20260925010000_titan_bet_cancelamento_invariantes`:
+  - CHECK `BetRound_cancelamento_completo` — os quatro juntos, motivo não vazio;
+  - `titanbet_rodada_imutavel` (substituída, mesmas regras de antes + cancelamento): rodada
+    cancelada não muda mais nada; cancelar é recusado com auditoria `confirmada`; Ready e
+    cancelamento nunca juntos;
+  - `titanbet_slip_transicao` (substituída, mesmas regras de antes + cancelamento): com a
+    rodada cancelada, só `rascunho | aguardando_deposito | valido → cancelado`; `cancelado`
+    só com a rodada cancelada; `cancelado`, `recusado` e `expirado` não saem de onde estão;
+  - `titanbet_rodada_ativa` — rodada cancelada recusa: slip novo, aposta, configuração
+    (encounter e mercado), auditoria (nova ou avançando), resultado, **qualquer** lançamento no
+    ledger e Closing; `titanbet_fonte_rodada_ativa` e `titanbet_report_rodada_ativa` fazem o
+    mesmo nas fontes e nos reports da auditoria. `BetEvent` continua aceitando registro.
+  - Sem drift entre `schema.prisma` e o banco migrado.
+
+### 44.3 RED → GREEN
+
+| Onde                                                                 | RED                                                                                                                                                                                                                                 | GREEN                                                    |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `shared cancelamento.spec.ts` — 11                                   | **RED real**: 10 falhas (fase, estado, `cancelarRodadaSchema` inexistente, campos novos); "podeCancelar vem da API" passava — guarda                                                                                                | contratos                                                |
+| `fases.spec.ts` — T-X01, 4                                           | **RED real**: `canceladaEm` ignorado, `podeCancelar` inexistente                                                                                                                                                                    | `faseDaRodada`, `podeCancelar`                           |
+| `cancelamento-banco.db-spec.ts` — T-X03 a T-X05, 15                  | **RED real** contra a estrutura: 11 falhas (`aceito` onde se espera `check`/`trigger`; transições para `cancelado` inexistentes); 4 passavam — controles e o que o trigger antigo já recusava (`recusado`/`expirado` → `cancelado`) | migration de invariantes                                 |
+| `cancelamento.db-spec.ts` — T-X06 a T-X12, 17                        | awaiting seam (`cancelamento.service` inexistente)                                                                                                                                                                                  | serviço, travas e repositório                            |
+| `cancelamento.db-spec.ts` — concorrência determinística              | **RED real com a trava desligada**: a confirmação de depósito passou durante o cancelamento ("Received promise resolved instead of rejected"); com a trava, espera e é recusada                                                     | `travarRodada*`                                          |
+| `titan-bet.controller.spec.ts` — T-X13 e T-Z01, 6                    | **RED real**: rota inexistente (404)                                                                                                                                                                                                | rota com `OfficerGuard`                                  |
+| `titan-bet.controller.spec.ts` — "mutação em rodada cancelada → 409" | guarda: o mapeamento no `comoHttp` entrou antes do teste                                                                                                                                                                            | —                                                        |
+| `web painel.spec.tsx` — T-X14, 10                                    | awaiting seam (componentes novos); modo só leitura: **RED real** (botões presentes)                                                                                                                                                 | `CancelarRodada`, `DepositosADevolver`, `somenteLeitura` |
+| `web lista-de-rodadas` e `apostas-da-rodada` — T-X15, 3              | **RED real**: sem rótulo nem aviso de cancelamento                                                                                                                                                                                  | rótulos e a situação da rodada                           |
+
+Um RED da primeira versão do teste de banco acusava `unique` em vez de `trigger` por erro da
+fixture (a segunda auditoria reusava `attempt: 1`); corrigido antes do GREEN. Um CHECK da
+primeira versão da migration deixava `cancellationReason` nulo passar (`btrim(NULL) <> ''` é
+nulo, e CHECK nulo passa) — o teste pegou, e a migration, ainda não aplicada fora do banco de
+teste, foi corrigida.
+
+### 44.4 Concorrência
+
+Toda transação que muda a rodada começa travando a linha da `BetRound` (`FOR SHARE`) e
+conferindo `cancelledAt`: `salvarRascunho`, `submeterRascunho`, `confirmarDeposito`,
+`recusarDeposito`, `gravarAuditoria`, `declararSemRaid`, `gravarCalculo`, `confirmarAuditoria`,
+`lancarNaContaDoMembro`, `aplicarPreparacao`, `gravarReady` e o `publicar` do Closing. O
+cancelamento trava a mesma linha com `FOR NO KEY UPDATE`, confere a fase **depois** da trava e
+grava rodada, slips e evento na mesma transação. A ordem é sempre rodada → slip. Testes:
+repetição de cancelar × confirmar depósito, × salvar, × confirmar auditoria (um só vence) e ×
+Calcular, e o caso determinístico da §44.3. O job de cutoff ignora rodada cancelada.
+
+### 44.5 Testes existentes alterados (nenhuma asserção enfraquecida)
+
+- `shared rodada.spec.ts` e `web fixtures.ts`/`painel.spec.tsx`: fixtures com os campos novos
+  obrigatórios (`podeCancelar`, `cancelamento`, `depositoConfirmado`).
+- `rodadas.db-spec.ts` T-C05: a igualdade exata passou a incluir `depositoConfirmado: true`.
+- `fases.spec.ts`: o estado de exemplo ganhou `canceladaEm: null`.
+- `fabrica.ts`: o mapa de status do slip ganhou `cancelado`, por completude do tipo.
+
+### 44.6 Validação
+
+`format:check`, `build`, `lint`, `typecheck`; shared **417**, api **998**, web **240**;
+`test:db` contra o `titan_test` **393** (29 suítes). Collection Yaak: a request de cancelar
+e as descrições das rodadas e dos slips do officer. Sem validação no navegador nesta etapa.
