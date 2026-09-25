@@ -472,6 +472,52 @@ describe('Titan Bet — cancelamento administrativo (serviço + banco)', () => {
   });
 
   describe('T-X11 — concorrência: nada é efetivado depois do cancelamento', () => {
+    it('expiração espera o cancelamento em curso, sem expirar seus slips', async () => {
+      const c = await cenario(1, 3_000);
+      const slip = await apostas.salvar(c.rodada.id, c.membros[0]!.conta, c.aposta());
+      await esperarPassar(db, c.rodada.cutoffAt);
+      let travou!: () => void;
+      let liberar!: () => void;
+      const travada = new Promise<void>((resolve) => (travou = resolve));
+      const liberada = new Promise<void>((resolve) => (liberar = resolve));
+      const cancelando = db.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT 1 FROM "BetRound" WHERE "id" = ${c.rodada.id} FOR NO KEY UPDATE`;
+          travou();
+          await liberada;
+          await tx.betRound.update({
+            where: { id: c.rodada.id },
+            data: {
+              cancelledAt: new Date(),
+              cancelledByUserId: OFFICER.userId,
+              cancelledByBattletag: OFFICER.battletag,
+              cancellationReason: MOTIVO,
+            },
+          });
+          await tx.betSlip.update({ where: { id: slip.slipId }, data: { status: 'cancelado' } });
+        },
+        { timeout: 10_000 },
+      );
+      await travada;
+      let terminou = false;
+      const expirando = repo.expirarVencidos(new Date()).then((r) => {
+        terminou = true;
+        return r;
+      });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(terminou).toBe(false);
+      } finally {
+        liberar();
+        await cancelando;
+      }
+      await expirando;
+      expect(await db.betSlip.findUniqueOrThrow({ where: { id: slip.slipId } })).toMatchObject({
+        status: 'cancelado',
+        expiredAt: null,
+      });
+    });
+
     it('cancelar × confirmar depósito', async () => {
       for (let i = 0; i < 4; i++) {
         const c = await cenario(1);

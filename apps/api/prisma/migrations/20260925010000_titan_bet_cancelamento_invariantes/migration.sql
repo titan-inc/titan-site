@@ -14,12 +14,31 @@ ALTER TABLE "BetRound" ADD CONSTRAINT "BetRound_cancelamento_completo"
       AND "cancelledByBattletag" IS NULL AND "cancellationReason" IS NULL)
     OR ("cancelledAt" IS NOT NULL AND "cancelledByUserId" IS NOT NULL
       AND "cancelledByBattletag" IS NOT NULL AND "cancellationReason" IS NOT NULL
-      AND btrim("cancellationReason") <> '')
+      -- Mesmo whitespace recusado pelo trim() do contrato HTTP (inclusive NBSP).
+      AND btrim("cancellationReason", U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF') <> '')
   );
 
-CREATE FUNCTION titanbet_rodada_cancelada(p_round TEXT) RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
-  SELECT "cancelledAt" IS NOT NULL FROM "BetRound" WHERE "id" = p_round
+-- A checagem também serializa SQL direto com o cancelamento. VOLATILE permite
+-- ler o estado que acabou de ser confirmado depois de esperar o lock.
+CREATE FUNCTION titanbet_rodada_cancelada(p_round TEXT) RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE AS $$
+DECLARE
+  v_cancelada BOOLEAN;
+BEGIN
+  SELECT "cancelledAt" IS NOT NULL INTO v_cancelada
+    FROM "BetRound" WHERE "id" = p_round FOR SHARE;
+  RETURN v_cancelada;
+END
 $$;
+
+CREATE FUNCTION titanbet_cancelada_nao_apaga() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD."cancelledAt" IS NOT NULL THEN
+    RAISE EXCEPTION 'titanbet: rodada cancelada não se apaga';
+  END IF;
+  RETURN OLD;
+END $$;
+CREATE TRIGGER titanbet_cancelada_nao_apaga BEFORE DELETE ON "BetRound"
+  FOR EACH ROW EXECUTE FUNCTION titanbet_cancelada_nao_apaga();
 
 -- A rodada: o que já valia (period, abertura, cutoff e o Ready escritos uma vez)
 -- e agora o cancelamento — escrito uma vez, nunca com settlement confirmado, e
@@ -80,10 +99,16 @@ BEGIN
   -- Rodada cancelada (D-77): o único movimento é o do próprio cancelamento —
   -- ativo → cancelado. Nada mais muda num slip dela.
   IF titanbet_rodada_cancelada(OLD."roundId") THEN
-    IF v_para = 'cancelado' AND v_de IN ('rascunho', 'aguardando_deposito', 'valido') THEN
+    IF v_para = 'cancelado' AND v_de IN ('rascunho', 'aguardando_deposito', 'valido')
+       AND (to_jsonb(NEW) - 'status' - 'updated_at') = (to_jsonb(OLD) - 'status' - 'updated_at') THEN
       RETURN NEW;
     END IF;
     RAISE EXCEPTION 'titanbet: slip % — a rodada foi cancelada; % → % recusado', OLD."id", v_de, v_para;
+  END IF;
+
+  IF NEW."roundId" IS DISTINCT FROM OLD."roundId"
+     AND titanbet_rodada_cancelada(NEW."roundId") THEN
+    RAISE EXCEPTION 'titanbet: slip não pode ser movido para rodada cancelada';
   END IF;
 
   IF v_para = 'cancelado' THEN
@@ -120,6 +145,11 @@ CREATE FUNCTION titanbet_rodada_ativa() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   v_round TEXT;
 BEGIN
+  IF TG_TABLE_NAME = 'BetSlip' AND TG_OP = 'INSERT' THEN
+    IF NEW."status" = 'cancelado' THEN
+      RAISE EXCEPTION 'titanbet: slip só entra em cancelado pela transição de cancelamento';
+    END IF;
+  END IF;
   IF TG_OP = 'DELETE' THEN v_round := OLD."roundId"; ELSE v_round := NEW."roundId"; END IF;
   IF titanbet_rodada_cancelada(v_round)
      OR (TG_OP = 'UPDATE' AND titanbet_rodada_cancelada(OLD."roundId")) THEN
@@ -129,7 +159,11 @@ BEGIN
   RETURN NEW;
 END $$;
 
-CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT ON "BetSlip"
+CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR DELETE ON "BetSlip"
+  FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
+CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT ON "BetRoundBettor"
+  FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
+CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT ON "BetRoundCandidate"
   FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
 CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR UPDATE OR DELETE ON "Bet"
   FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
@@ -137,9 +171,13 @@ CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR UPDATE OR DELETE ON "BetRo
   FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
 CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR UPDATE OR DELETE ON "BetMarket"
   FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
-CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR UPDATE ON "BetAudit"
+CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR UPDATE OR DELETE ON "BetAudit"
   FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
 CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR UPDATE ON "BetMarketResult"
+  FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
+CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT ON "BetMarketResultWinner"
+  FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
+CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT ON "BetMarketResultKill"
   FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
 CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT ON "GoldLedgerEntry"
   FOR EACH ROW EXECUTE FUNCTION titanbet_rodada_ativa();
@@ -150,13 +188,18 @@ CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT ON "RoundClosingReport"
 CREATE FUNCTION titanbet_fonte_rodada_ativa() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   v_audit TEXT;
+  v_round TEXT;
 BEGIN
   IF TG_OP = 'DELETE' THEN v_audit := OLD."auditId"; ELSE v_audit := NEW."auditId"; END IF;
-  IF EXISTS (
-    SELECT 1 FROM "BetAudit" a JOIN "BetRound" r ON r."id" = a."roundId"
-    WHERE a."id" = v_audit AND r."cancelledAt" IS NOT NULL
-  ) THEN
+  SELECT "roundId" INTO v_round FROM "BetAudit" WHERE "id" = v_audit;
+  IF titanbet_rodada_cancelada(v_round) THEN
     RAISE EXCEPTION 'titanbet: % — a rodada da auditoria % foi cancelada', TG_TABLE_NAME, v_audit;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    SELECT "roundId" INTO v_round FROM "BetAudit" WHERE "id" = OLD."auditId";
+    IF titanbet_rodada_cancelada(v_round) THEN
+      RAISE EXCEPTION 'titanbet: fonte de rodada cancelada não muda de auditoria';
+    END IF;
   END IF;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
@@ -168,15 +211,21 @@ CREATE TRIGGER titanbet_rodada_ativa BEFORE INSERT OR UPDATE OR DELETE ON "BetAu
 CREATE FUNCTION titanbet_report_rodada_ativa() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   v_source TEXT;
+  v_round TEXT;
 BEGIN
   IF TG_OP = 'DELETE' THEN v_source := OLD."sourceId"; ELSE v_source := NEW."sourceId"; END IF;
-  IF EXISTS (
-    SELECT 1 FROM "BetAuditSource" s
+  SELECT a."roundId" INTO v_round FROM "BetAuditSource" s
     JOIN "BetAudit" a ON a."id" = s."auditId"
-    JOIN "BetRound" r ON r."id" = a."roundId"
-    WHERE s."id" = v_source AND r."cancelledAt" IS NOT NULL
-  ) THEN
+    WHERE s."id" = v_source;
+  IF titanbet_rodada_cancelada(v_round) THEN
     RAISE EXCEPTION 'titanbet: % — a rodada da fonte % foi cancelada', TG_TABLE_NAME, v_source;
+  END IF;
+  IF TG_OP = 'UPDATE' THEN
+    SELECT a."roundId" INTO v_round FROM "BetAuditSource" s
+      JOIN "BetAudit" a ON a."id" = s."auditId" WHERE s."id" = OLD."sourceId";
+    IF titanbet_rodada_cancelada(v_round) THEN
+      RAISE EXCEPTION 'titanbet: report de rodada cancelada não muda de fonte';
+    END IF;
   END IF;
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;

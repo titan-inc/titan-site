@@ -652,6 +652,21 @@ describe('T-X14 — cancelar a rodada (D-77)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('falha libera a trava e permite retry legítimo do cancelamento', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('rede indisponível'));
+    render(<CancelarRodada roundId="r1" podeCancelar cancelamento={null} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar rodada' }));
+    await userEvent.type(screen.getByLabelText(/motivo/i), 'raid cancelada');
+    await userEvent.click(screen.getByLabelText(/entendo que é irreversível/i));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(refresh).not.toHaveBeenCalled();
+    fetchMock.mockResolvedValueOnce(resposta(null, 204));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('desistir fecha a confirmação sem chamar a API', async () => {
     render(<CancelarRodada roundId="r1" podeCancelar cancelamento={null} />);
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar rodada' }));

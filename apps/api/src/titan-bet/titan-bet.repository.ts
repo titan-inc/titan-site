@@ -665,14 +665,22 @@ export class TitanBetRepository {
    * pendente de rodada vencida viram `expirado`. Idempotente.
    */
   async expirarVencidos(agora: Date): Promise<number> {
-    const { count } = await this.prisma.betSlip.updateMany({
-      where: {
-        status: { in: ['rascunho', 'aguardando_deposito'] },
-        round: { cutoffAt: { lte: agora }, cancelledAt: null },
-      },
-      data: { status: 'expirado', expiredAt: agora },
+    return this.prisma.$transaction(async (tx) => {
+      // A mesma ordem rodada → slip das demais mutações. Depois de esperar um
+      // cancelamento, o SELECT reavalia cancelledAt e exclui a rodada cancelada.
+      const rodadas = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "BetRound"
+        WHERE "cutoffAt" <= ${agora} AND "cancelledAt" IS NULL
+        ORDER BY "id" FOR SHARE`;
+      const { count } = await tx.betSlip.updateMany({
+        where: {
+          status: { in: ['rascunho', 'aguardando_deposito'] },
+          roundId: { in: rodadas.map((r) => r.id) },
+        },
+        data: { status: 'expirado', expiredAt: agora },
+      });
+      return count;
     });
-    return count;
   }
 
   /**

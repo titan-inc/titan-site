@@ -64,6 +64,58 @@ describe('Titan Bet — cancelamento no banco (D-77)', () => {
   }
 
   describe('T-X03 — a rodada cancelada', () => {
+    it.each(['\t', '\n', '\r\n\t', '\u00a0'])(
+      'recusa motivo apenas whitespace %j',
+      async (motivo) => {
+        const r = await ciclo.preparacao();
+        expect(await escrita(cancelar(r, { cancellationReason: motivo }))).toBe('check');
+      },
+    );
+
+    it('não apaga rodada cancelada mesmo sem dependentes', async () => {
+      const r = await ciclo.preparacao();
+      await cancelar(r);
+      expect(await escrita(db.betRound.delete({ where: { id: r.id } }))).toBe('trigger');
+    });
+
+    it.each(['bettor', 'candidato'] as const)(
+      'não insere snapshot %s após cancelar em preparação',
+      async (tipo) => {
+        const r = await ciclo.preparacao();
+        const pj = await f.personagem();
+        await cancelar(r);
+        const inserir = () =>
+          tipo === 'bettor' ? f.bettor(r.id, pj.id) : f.candidato(r.id, pj.id, 'Tank');
+        expect(await escrita(inserir())).toBe('trigger');
+      },
+    );
+
+    it('não apaga auditoria histórica sem fontes', async () => {
+      const r = await ciclo.preparacao();
+      const a = await auditoria(r.id);
+      await cancelar(r);
+      expect(await escrita(db.betAudit.delete({ where: { id: a.id } }))).toBe('trigger');
+    });
+
+    it('não transfere fonte de uma rodada cancelada para outra', async () => {
+      const r = await ciclo.preparacao();
+      const outra = await ciclo.preparacao();
+      const a = await auditoria(r.id);
+      const b = await auditoria(outra.id);
+      const fonte = await db.betAuditSource.create({
+        data: { auditId: a.id, session: 'quinta', resolution: 'ausente' },
+      });
+      await cancelar(r);
+      expect(
+        await escrita(
+          db.betAuditSource.update({
+            where: { id: fonte.id },
+            data: { auditId: b.id },
+          }),
+        ),
+      ).toBe('trigger');
+    });
+
     it('controle: cancelar com os quatro campos → aceito', async () => {
       const r = await ciclo.aberta();
       expect(await escrita(cancelar(r.rodada))).toBe('aceito');
@@ -130,6 +182,38 @@ describe('Titan Bet — cancelamento no banco (D-77)', () => {
   });
 
   describe('T-X04 — os slips', () => {
+    it('não nasce cancelado em rodada ativa', async () => {
+      const r = await ciclo.aberta();
+      expect(await escrita(f.slip(r.rodada.id, r.dono.id, 'cancelado'))).toBe('trigger');
+    });
+
+    it('não apaga slip cancelado vazio', async () => {
+      const r = await ciclo.aberta();
+      const s = await f.slip(r.rodada.id, r.dono.id);
+      await cancelar(r.rodada);
+      await paraCancelado(s.id);
+      expect(await escrita(db.betSlip.delete({ where: { id: s.id } }))).toBe('trigger');
+    });
+
+    it('cancelar slip não permite fabricar evidência de depósito confirmado', async () => {
+      const r = await ciclo.aberta();
+      const s = await f.slip(r.rodada.id, r.dono.id);
+      await cancelar(r.rodada);
+      expect(
+        await escrita(
+          db.betSlip.update({
+            where: { id: s.id },
+            data: {
+              status: 'cancelado',
+              validatedAt: new Date(),
+              validatedByUserId: OFFICER.userId,
+              validatedByBattletag: OFFICER.battletag,
+            },
+          }),
+        ),
+      ).toBe('trigger');
+    });
+
     async function comSlips(cutoffEmMs?: number) {
       const r = await ciclo.aberta(cutoffEmMs);
       const [rascunho, pendente, valido, recusado] = await Promise.all(
@@ -208,6 +292,78 @@ describe('Titan Bet — cancelamento no banco (D-77)', () => {
   });
 
   describe('T-X05 — nenhuma escrita direta na rodada cancelada', () => {
+    it('resultado já inserido não ganha vencedores ou kills após cancelar', async () => {
+      const r = await ciclo.aberta();
+      const a = await auditoria(r.rodada.id);
+      const resultado = await db.betMarketResult.create({
+        data: {
+          auditId: a.id,
+          marketId: r.topDispels.id,
+          roundId: r.rodada.id,
+          outcome: 'vencedores',
+          validPool: 500,
+          prizePool: 450,
+          winningStake: 500,
+          evidence: {},
+          algorithmVersion: 'titanbet-2',
+        },
+      });
+      await cancelar(r.rodada);
+      expect(
+        await escrita(
+          db.betMarketResultWinner.create({
+            data: {
+              resultId: resultado.id,
+              roundId: r.rodada.id,
+              characterId: r.candidatos.Tank,
+            },
+          }),
+        ),
+      ).toBe('trigger');
+      expect(
+        await escrita(
+          db.betMarketResultKill.create({
+            data: {
+              resultId: resultado.id,
+              roundId: r.rodada.id,
+              roundEncounterId: r.prog.id,
+            },
+          }),
+        ),
+      ).toBe('trigger');
+    });
+
+    it('escrita SQL concorrente espera o cancelamento e é recusada', async () => {
+      const rodada = await ciclo.preparacao();
+      let travou!: () => void;
+      let liberar!: () => void;
+      const travada = new Promise<void>((resolve) => (travou = resolve));
+      const liberada = new Promise<void>((resolve) => (liberar = resolve));
+      const cancelando = db.$transaction(
+        async (tx) => {
+          await tx.betRound.update({ where: { id: rodada.id }, data: CANCELAMENTO() });
+          travou();
+          await liberada;
+        },
+        { timeout: 10_000 },
+      );
+      await travada;
+      let terminou = false;
+      const inserindo = escrita(f.encounter(rodada.id)).then((r) => {
+        terminou = true;
+        return r;
+      });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(terminou).toBe(false);
+      } finally {
+        liberar();
+        await cancelando;
+      }
+      expect(await inserindo).toBe('trigger');
+      expect(await db.betRoundEncounter.count({ where: { roundId: rodada.id } })).toBe(0);
+    });
+
     it('auditoria, fonte, resultado e o avanço da tentativa', async () => {
       const r = await ciclo.aberta(3_000);
       await esperarPassar(db, r.rodada.cutoffAt);
