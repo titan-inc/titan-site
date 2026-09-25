@@ -21,7 +21,14 @@ type Saldo = SaldosDaRodada['saldos'][number];
  * sinal, motivo e o lançamento que ele corrige — escolhido da lista do ledger
  * do slip (T-C06).
  */
-export function Saldos({ saldos }: { saldos: Saldo[] }) {
+export function Saldos({
+  saldos,
+  somenteLeitura = false,
+}: {
+  saldos: Saldo[];
+  /** Rodada cancelada (D-77): nada se paga nem se ajusta pelo Titan Bet. */
+  somenteLeitura?: boolean;
+}) {
   const router = useRouter();
   const [erro, setErro] = useState<string | null>(null);
   const [ajustando, setAjustando] = useState<{
@@ -61,16 +68,18 @@ export function Saldos({ saldos }: { saldos: Saldo[] }) {
             <p className="text-fg text-sm">
               {s.ownerBattletag}: devido {gold(s.devido)} · pago {gold(s.pago)}
             </p>
-            <div className="flex flex-wrap gap-3">
-              {s.devido > 0 && (
-                <Acao variante="solida" onClick={() => pagar(s.slipId)} disabled={pendente}>
-                  Pagar {gold(s.devido)}
+            {!somenteLeitura && (
+              <div className="flex flex-wrap gap-3">
+                {s.devido > 0 && (
+                  <Acao variante="solida" onClick={() => pagar(s.slipId)} disabled={pendente}>
+                    Pagar {gold(s.devido)}
+                  </Acao>
+                )}
+                <Acao variante="fantasma" onClick={() => abrirAjuste(s.slipId)} disabled={pendente}>
+                  Ajustar
                 </Acao>
-              )}
-              <Acao variante="fantasma" onClick={() => abrirAjuste(s.slipId)} disabled={pendente}>
-                Ajustar
-              </Acao>
-            </div>
+              </div>
+            )}
             {ajustando?.slipId === s.slipId && (
               <Ajuste
                 slipId={s.slipId}

@@ -69,10 +69,19 @@ export class ReadyService {
     officer: { userId: string; battletag: string },
   ): Promise<void> {
     const agora = new Date();
-    const estado = { ...rodada, auditoria: null, temClosingReport: false };
+    const estado = {
+      ...rodada,
+      auditoria: null,
+      temClosingReport: false,
+      canceladaEm: rodada.cancelledAt,
+    };
     if (!podeDarReady(estado, agora)) {
       throw new ReadyRecusado(
-        rodada.readyAt ? 'a rodada já teve Ready' : 'o cutoff da rodada já passou',
+        rodada.cancelledAt
+          ? 'a rodada foi cancelada (D-77)'
+          : rodada.readyAt
+            ? 'a rodada já teve Ready'
+            : 'o cutoff da rodada já passou',
       );
     }
 

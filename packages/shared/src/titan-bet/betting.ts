@@ -77,6 +77,8 @@ export const betSlipStatusSchema = z.enum([
   'valido',
   'recusado',
   'expirado',
+  /** A rodada foi cancelada por um officer (D-77): terminal, estado próprio. */
+  'cancelado',
 ]);
 export type BetSlipStatus = z.infer<typeof betSlipStatusSchema>;
 
@@ -155,7 +157,7 @@ export const slipDoOfficerSchema = z
   .object({
     slipId: z.string(),
     roundId: z.string(),
-    status: z.enum(['aguardando_deposito', 'valido', 'recusado', 'expirado']),
+    status: z.enum(['aguardando_deposito', 'valido', 'recusado', 'expirado', 'cancelado']),
     ownerBattletag: z.string(),
     eligibilityCharacter: personagemVistoSchema,
     ...camposDaSubmissao,

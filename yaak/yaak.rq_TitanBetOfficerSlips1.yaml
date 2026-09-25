@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Os slips submetidos da rodada em qualquer estado (aguardando_deposito, valido, recusado, expirado), SEM as apostas: dono, depositante, total e horário (T-C05). É a porta do "Ver slip", que mostra as apostas e registra o acesso (D-57). Rascunho não aparece.'
+description: 'OfficerGuard. Os slips submetidos da rodada em qualquer estado (aguardando_deposito, valido, recusado, expirado, cancelado), SEM as apostas: dono, depositante, total, horário e depositoConfirmado — num cancelado, o depósito que os officers devolvem fora do Titan Bet (T-C05, D-77). É a porta do "Ver slip", que mostra as apostas e registra o acesso (D-57). Rascunho não aparece.'
 headers:
 - enabled: true
   name: Cookie

@@ -15,7 +15,9 @@ import {
 import { FASE } from '../../bet/_components/rotulos';
 import { destinoDoPainel } from '../_components/acesso';
 import { Auditoria } from '../_components/auditoria';
+import { CancelarRodada } from '../_components/cancelar-rodada';
 import { Depositos } from '../_components/depositos';
+import { DepositosADevolver } from '../_components/depositos-a-devolver';
 import { Preparacao } from '../_components/preparacao';
 import { PublicarClosing } from '../_components/publicar-closing';
 import { Resultados } from '../_components/resultados';
@@ -69,6 +71,8 @@ export default async function RodadaOfficerPage({
 
   const fase = resumo.fase;
   const emPreparacao = fase === 'PREPARATION';
+  // Cancelada (D-77): tudo fica visível, nenhuma ação que mude a rodada.
+  const cancelada = fase === 'CANCELLED';
   const catalogo = emPreparacao ? await getCatalogoOfficer() : null;
   const corrente = auditoria.tipo === 'ok' ? auditoria.dados : null;
   const resultados =
@@ -88,6 +92,26 @@ export default async function RodadaOfficerPage({
   return (
     <main className="flex flex-1 flex-col gap-10">
       <Cabecalho fase={FASE[fase]} />
+
+      {(resumo.podeCancelar || resumo.cancelamento) && (
+        <Secao titulo="Cancelamento">
+          <CancelarRodada
+            roundId={roundId}
+            podeCancelar={resumo.podeCancelar}
+            cancelamento={resumo.cancelamento}
+          />
+        </Secao>
+      )}
+
+      {cancelada && (
+        <Secao titulo="Depósitos a devolver fora do Titan Bet">
+          {slips.tipo === 'ok' ? (
+            <DepositosADevolver slips={slips.dados.slips} />
+          ) : (
+            <Indisponivel />
+          )}
+        </Secao>
+      )}
 
       <Secao titulo="Preparação e Ready">
         <Preparacao
@@ -114,6 +138,7 @@ export default async function RodadaOfficerPage({
           roundId={roundId}
           auditoria={corrente}
           podeAuditar={resumo.podeAuditar}
+          somenteLeitura={cancelada}
           // Só há o que esperar com as apostas fechadas e nada auditado ainda.
           auditavelDesde={fase === 'BETTING_CLOSED' ? resumo.auditavelDesde : null}
         />
@@ -127,12 +152,17 @@ export default async function RodadaOfficerPage({
             bosses={bosses}
             encounters={encounters}
             podeCalcular={corrente.status === 'pronta'}
+            somenteLeitura={cancelada}
           />
         </Secao>
       )}
 
       <Secao titulo="Saldos e pagamento">
-        {saldos.tipo === 'ok' ? <Saldos saldos={saldos.dados.saldos} /> : <Indisponivel />}
+        {saldos.tipo === 'ok' ? (
+          <Saldos saldos={saldos.dados.saldos} somenteLeitura={cancelada} />
+        ) : (
+          <Indisponivel />
+        )}
       </Secao>
 
       {FASES_DO_CLOSING.has(fase) && (

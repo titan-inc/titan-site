@@ -311,6 +311,40 @@ describe('ApostasDaRodada', () => {
     });
   });
 
+  describe('T-X15 — rodada cancelada (D-77)', () => {
+    const CANCELADA = { ...CARDAPIO, fase: 'CANCELLED' as const, podeApostar: false };
+
+    it('diz que foi cancelada e que devoluções são dos officers, fora do Titan Bet', () => {
+      render(<ApostasDaRodada cardapio={CANCELADA} odds={ODDS} slip={null} />);
+      expect(screen.getByText(/rodada cancelada/i)).toBeTruthy();
+      expect(screen.getByText(/devoluç.*officers.*fora do titan bet/i)).toBeTruthy();
+      expect(screen.queryByText(/apostas encerradas|liquidada|expirad/i)).toBeNull();
+      expect(screen.queryAllByRole('radio')).toHaveLength(0);
+      expect(screen.queryByRole('button', { name: /Salvar|Submeter/ })).toBeNull();
+    });
+
+    it('o próprio slip cancelado: estado, total e depositante como gravados; sem ações', () => {
+      render(
+        <ApostasDaRodada
+          cardapio={CANCELADA}
+          odds={ODDS}
+          slip={{
+            ...RASCUNHO,
+            status: 'cancelado',
+            depositCharacter: { name: 'Qualquer', realm: 'Azralon' },
+            expectedTotal: 300,
+          }}
+        />,
+      );
+      expect(screen.getByRole('heading', { name: /cancelado/i })).toBeTruthy();
+      expect(screen.getByText(/Qualquer-Azralon/)).toBeTruthy();
+      expect(screen.queryByText(/deposite/i)).toBeNull();
+      expect(screen.queryByRole('button')).toBeNull();
+      // A escolha continua visível para o dono.
+      expect(within(grupo('Top DPS · Boss Farm')).getByText(/sua aposta · 300 gold/)).toBeTruthy();
+    });
+  });
+
   describe('T-UI07 — slip submetido é só leitura (D-27, D-34)', () => {
     it('aguardando depósito: estado, depositante como informado e total; sem edição', () => {
       render(

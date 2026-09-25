@@ -7,6 +7,7 @@ import { WarcraftLogsModule } from '../warcraftlogs/warcraftlogs.module';
 import { WowAuditModule } from '../wowaudit/wowaudit.module';
 import { ApostasService } from './apostas.service';
 import { AuditoriaService } from './auditoria.service';
+import { CancelamentoService } from './cancelamento.service';
 import { CalculoService } from './calculo.service';
 import { ClosingRepository } from './closing.repository';
 import { ClosingService } from './closing.service';
@@ -61,6 +62,7 @@ import { TitanBetRepository } from './titan-bet.repository';
     LedgerService,
     ClosingRepository,
     ClosingService,
+    CancelamentoService,
   ],
   exports: [ReadyService, ElegibilidadeService, ApostasService, DepositoService],
 })

@@ -22,6 +22,8 @@ export const faseDaRodadaSchema = z.enum([
   'CALCULATED',
   'SETTLED',
   'CLOSED',
+  /** Cancelada por um officer, com motivo (D-77): terminal, vence as outras. */
+  'CANCELLED',
 ]);
 export type FaseDaRodada = z.infer<typeof faseDaRodadaSchema>;
 
@@ -110,6 +112,13 @@ export const rodadasDoOfficerSchema = z
           podeAuditar: z.boolean(),
           /** Quinta 23:30 no fuso da guilda: quando a auditoria abre (D-73). */
           auditavelDesde: z.string().datetime(),
+          /** A rodada ainda pode ser cancelada (D-77)? A API decide. */
+          podeCancelar: z.boolean(),
+          /** Quem cancelou, quando e por quê; `null` se não foi cancelada (D-77). */
+          cancelamento: z
+            .object({ motivo: z.string(), em: z.string().datetime(), porBattletag: z.string() })
+            .strict()
+            .nullable(),
         })
         .strict(),
     ),
@@ -128,8 +137,13 @@ export const slipsSubmetidosSchema = z
         .object({
           slipId: z.string(),
           ownerBattletag: z.string(),
-          status: z.enum(['aguardando_deposito', 'valido', 'recusado', 'expirado']),
+          status: z.enum(['aguardando_deposito', 'valido', 'recusado', 'expirado', 'cancelado']),
           ...camposDaSubmissao,
+          /**
+           * O depósito foi confirmado (o slip chegou a `valido`). Num slip
+           * `cancelado`, é o que os officers devolvem fora do Titan Bet (D-77).
+           */
+          depositoConfirmado: z.boolean(),
         })
         .strict()
         .superRefine(submissaoCoerente),
@@ -137,3 +151,9 @@ export const slipsSubmetidosSchema = z
   })
   .strict();
 export type SlipsSubmetidos = z.infer<typeof slipsSubmetidosSchema>;
+
+/** Cancelar a rodada (D-77): o motivo é obrigatório. */
+export const cancelarRodadaSchema = z
+  .object({ motivo: z.string().trim().min(1, 'o cancelamento exige motivo').max(500) })
+  .strict();
+export type CancelarRodada = z.infer<typeof cancelarRodadaSchema>;

@@ -1915,6 +1915,9 @@ enum BetSlipStatus {
   valido
   recusado
   expirado
+  /// A rodada foi cancelada por um officer (D-77). Terminal; não é recusa nem
+  /// expiração. Se `validatedAt` está preenchido, o depósito tinha sido confirmado.
+  cancelado
 }
 
 /// Uma semana do Titan Bet — a unidade de aposta e de settlement (D-29).
@@ -1941,6 +1944,13 @@ model BetRound {
   /// De quando é o dado externo congelado no Ready.
   bettorSourceFetchedAt    DateTime?
   candidateSourceFetchedAt DateTime?
+
+  /// Cancelamento administrativo (D-77): os quatro juntos, gravados uma vez;
+  /// a rodada vira CANCELLED, terminal.
+  cancelledAt          DateTime?
+  cancelledByUserId    String?
+  cancelledByBattletag String?
+  cancellationReason   String?
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -2230,6 +2240,8 @@ enum BetEventType {
   configuracao_salva
   /// "Ver slip" do Officer Panel (D-57): quem abriu qual slip, e quando.
   slip_visualizado
+  /// Rodada cancelada por um officer (D-77): quem, quando, o motivo e os slips.
+  rodada_cancelada
 }
 
 /// Trilha de auditoria do Titan Bet (§16.8), no molde do LootSessionEvent.

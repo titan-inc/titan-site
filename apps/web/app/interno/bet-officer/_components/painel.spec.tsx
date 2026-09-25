@@ -6,8 +6,10 @@ import type { SessionUser } from '@titan/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { destinoDoPainel } from './acesso';
 import { Auditoria } from './auditoria';
+import { CancelarRodada } from './cancelar-rodada';
 import { CriarRodada } from './criar-rodada';
 import { Depositos } from './depositos';
+import { DepositosADevolver } from './depositos-a-devolver';
 import {
   AUDITORIA,
   CATALOGO,
@@ -245,6 +247,7 @@ describe('T-UI24 — "ver slip": ação explícita, só leitura (D-57)', () => {
       depositCharacter: null,
       expectedTotal: null,
       submittedAt: null,
+      depositoConfirmado: false,
     };
     fetchMock.mockResolvedValueOnce(
       resposta({
@@ -585,5 +588,142 @@ describe('B2 — preparação com o conteúdo atual', () => {
     expect(chamada(0).corpo).toMatchObject({
       encounters: [{ encounterId: 3176, track: 'farm', mercados: ['top_dps'] }],
     });
+  });
+});
+
+describe('T-X14 — cancelar a rodada (D-77)', () => {
+  const CANCELAMENTO = {
+    motivo: 'raid cancelada pela liderança',
+    em: '2026-09-27T15:00:00.000Z',
+    porBattletag: OFFICER_BT,
+  };
+
+  it('ação destrutiva; a confirmação pede motivo e deixa claro que é irreversível', async () => {
+    fetchMock.mockResolvedValueOnce(resposta(null, 204));
+    render(<CancelarRodada roundId="r1" podeCancelar cancelamento={null} />);
+    const botao = screen.getByRole('button', { name: 'Cancelar rodada' });
+    expect(botao.className).toMatch(/red/);
+
+    await userEvent.click(botao);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/não reabre/i).textContent).toMatch(/irreversível/i);
+    expect(screen.getByText(/devolução.*fora do Titan Bet/i)).toBeTruthy();
+    const confirmar = screen.getByRole('button', { name: 'Confirmar cancelamento' });
+    expect((confirmar as HTMLButtonElement).disabled).toBe(true);
+
+    await userEvent.type(screen.getByLabelText(/motivo/i), 'raid cancelada pela liderança');
+    expect((confirmar as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByLabelText(/entendo que é irreversível/i));
+    expect((confirmar as HTMLButtonElement).disabled).toBe(false);
+
+    await userEvent.click(confirmar);
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(chamada(0)).toMatchObject({
+      url: `${OFFICER_API}/rodadas/r1/cancelar`,
+      metodo: 'POST',
+      credenciais: 'include',
+      corpo: { motivo: 'raid cancelada pela liderança' },
+    });
+  });
+
+  it('desistir fecha a confirmação sem chamar a API', async () => {
+    render(<CancelarRodada roundId="r1" podeCancelar cancelamento={null} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar rodada' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(screen.queryByRole('button', { name: 'Confirmar cancelamento' })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('recusado pelo backend → o motivo dele', async () => {
+    fetchMock.mockResolvedValueOnce(
+      resposta({ message: 'a rodada já tem settlement confirmado' }, 409),
+    );
+    render(<CancelarRodada roundId="r1" podeCancelar cancelamento={null} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar rodada' }));
+    await userEvent.type(screen.getByLabelText(/motivo/i), 'x');
+    await userEvent.click(screen.getByLabelText(/entendo que é irreversível/i));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+    expect(await screen.findByText('a rodada já tem settlement confirmado')).toBeTruthy();
+  });
+
+  it('cancelada: status, motivo, quando e quem; nenhum botão', () => {
+    render(<CancelarRodada roundId="r1" podeCancelar={false} cancelamento={CANCELAMENTO} />);
+    expect(screen.getByText(/rodada cancelada/i)).toBeTruthy();
+    expect(screen.getByText(/raid cancelada pela liderança/)).toBeTruthy();
+    expect(screen.getByText(new RegExp(OFFICER_BT))).toBeTruthy();
+    expect(document.querySelector(`time[datetime="${CANCELAMENTO.em}"]`)).not.toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('liquidada ou fechada (não pode cancelar): nada a oferecer', () => {
+    render(<CancelarRodada roundId="r1" podeCancelar={false} cancelamento={null} />);
+    expect(screen.queryByRole('button', { name: 'Cancelar rodada' })).toBeNull();
+  });
+});
+
+describe('T-X14 — depósitos confirmados de rodada cancelada (D-77)', () => {
+  const slip = {
+    ownerBattletag: 'Membro#1234',
+    status: 'cancelado' as const,
+    depositCharacter: { name: 'Depositante', realm: 'Azralon' },
+    expectedTotal: 500,
+    submittedAt: '2026-09-23T15:00:00.000Z',
+  };
+
+  it('lista só os que tinham depósito confirmado, com dono, depositante e total — sem ação', () => {
+    render(
+      <DepositosADevolver
+        slips={[
+          { ...slip, slipId: 's1', depositoConfirmado: true },
+          { ...slip, slipId: 's2', ownerBattletag: 'Pendente#1', depositoConfirmado: false },
+          {
+            ...slip,
+            slipId: 's3',
+            ownerBattletag: 'Recusado#1',
+            status: 'recusado',
+            depositoConfirmado: false,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText(/Membro#1234/).textContent).toMatch(/Depositante-Azralon.*500 gold/);
+    expect(screen.queryByText(/Pendente#1|Recusado#1/)).toBeNull();
+    expect(screen.getByText(/fora do Titan Bet/i)).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('nenhum depósito confirmado: diz isso', () => {
+    render(<DepositosADevolver slips={[{ ...slip, slipId: 's2', depositoConfirmado: false }]} />);
+    expect(screen.getByText(/nenhum depósito confirmado/i)).toBeTruthy();
+  });
+});
+
+describe('T-X14 — rodada cancelada não oferece ação incompatível (D-77)', () => {
+  it('resultados: nem calcular nem liquidar', () => {
+    render(
+      <Resultados resultados={RESULTADOS} auditId="a1" bosses={{}} podeCalcular somenteLeitura />,
+    );
+    expect(screen.queryByRole('button', { name: /Calcular|liquidar/i })).toBeNull();
+    expect(screen.getByText(/Alvoescolhido-Azralon/)).toBeTruthy();
+  });
+
+  it('saldos: nem pagar nem ajustar', () => {
+    render(<Saldos saldos={SALDOS.saldos} somenteLeitura />);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByText(/Membro#1234/)).toBeTruthy();
+  });
+
+  it('auditoria: nem Auditar nem "sem raid"', () => {
+    render(
+      <Auditoria
+        roundId="r1"
+        auditoria={AUDITORIA}
+        podeAuditar={false}
+        auditavelDesde={null}
+        somenteLeitura
+      />,
+    );
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 });

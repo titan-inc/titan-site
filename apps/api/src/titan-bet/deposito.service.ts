@@ -55,6 +55,9 @@ export class DepositoService {
         ownerBattletag: s.ownerBattletag,
         status: s.status as SlipsSubmetidos['slips'][number]['status'],
         ...submissao(s),
+        // Chegou a `valido`: o depósito existiu — num cancelado, é o que os
+        // officers devolvem fora do Titan Bet (D-77).
+        depositoConfirmado: s.validatedAt !== null,
       })),
     };
   }

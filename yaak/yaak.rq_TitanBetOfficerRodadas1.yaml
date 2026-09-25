@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Todas as rodadas, inclusive em preparação, com a fase derivada, readyAt e quem deu o Ready (T-C04), podeAuditar e auditavelDesde (quinta 23:30 no fuso da guilda, D-73) — a API decide, o painel só mostra. A mais recente primeiro.'
+description: 'OfficerGuard. Todas as rodadas, inclusive em preparação, com a fase derivada, readyAt e quem deu o Ready (T-C04), podeAuditar e auditavelDesde (quinta 23:30 no fuso da guilda, D-73) — a API decide, o painel só mostra —, podeCancelar e cancelamento (motivo, em, porBattletag; nulo se não foi cancelada, D-77). Fase CANCELLED para a rodada cancelada. A mais recente primeiro.'
 headers:
 - enabled: true
   name: Cookie

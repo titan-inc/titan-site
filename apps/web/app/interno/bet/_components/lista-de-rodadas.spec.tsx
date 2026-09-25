@@ -35,6 +35,12 @@ describe('ListaDeRodadas', () => {
     expect(screen.getByText(/apostas abertas/i)).toBeTruthy();
   });
 
+  it('D-77: rodada cancelada aparece como Cancelada — nem encerrada, nem liquidada', () => {
+    render(<ListaDeRodadas rodadas={[{ ...RODADA, fase: 'CANCELLED' }]} base="/interno/bet" />);
+    expect(screen.getByText(/^cancelada$/i)).toBeTruthy();
+    expect(screen.queryByText(/encerrada|liquidada|expirad/i)).toBeNull();
+  });
+
   it('B1: lista vazia diz que está vazia', () => {
     render(<ListaDeRodadas rodadas={[]} base="/interno/bet-officer" />);
     expect(screen.getByText(/nenhuma rodada/i)).toBeTruthy();

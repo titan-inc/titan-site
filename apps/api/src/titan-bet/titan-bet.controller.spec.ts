@@ -13,6 +13,8 @@ import { TitanBetResultsController } from './titan-bet-results.controller';
 import { LedgerRecusado, LedgerService, SettlementService } from './settlement.service';
 import { DepositoRecusado, DepositoService } from './deposito.service';
 import { OddsService } from './odds.service';
+import { CancelamentoRecusado, CancelamentoService } from './cancelamento.service';
+import { RodadaCancelada } from './rodada-cancelada';
 import { PreparacaoRecusada, PreparacaoService } from './preparacao.service';
 import { ReadyRecusado, ReadyService } from './ready.service';
 import { RodadasService } from './rodadas.service';
@@ -62,6 +64,7 @@ const OFFICER_ROTAS: Array<[Verbo, string, object?]> = [
     '/internal/titan-bet/officer/auditorias/a1/fontes/terca/sem-raid',
     { motivo: 'raid cancelada' },
   ],
+  ['post', '/internal/titan-bet/officer/rodadas/r1/cancelar', { motivo: 'raid cancelada' }],
 ];
 
 const MEMBRO_ROTAS: Array<[Verbo, string, object?]> = [
@@ -96,6 +99,7 @@ describe('Titan Bet — autorização das rotas', () => {
   const calculo = { calcular: jest.fn(), resultados: jest.fn() };
   const settlement = { confirmar: jest.fn() };
   const closing = { publicar: jest.fn(), ultimo: jest.fn() };
+  const cancelamento = { cancelar: jest.fn() };
   const ledger = {
     saldos: jest.fn(),
     pagar: jest.fn(),
@@ -135,6 +139,7 @@ describe('Titan Bet — autorização das rotas', () => {
         { provide: SettlementService, useValue: settlement },
         { provide: LedgerService, useValue: ledger },
         { provide: ClosingService, useValue: closing },
+        { provide: CancelamentoService, useValue: cancelamento },
         { provide: TitanBetRepository, useValue: repo },
         { provide: RodadasService, useValue: rodadas },
       ],
@@ -245,6 +250,55 @@ describe('Titan Bet — autorização das rotas', () => {
       auth.resolveSession.mockResolvedValue(null);
       await request(server).post('/internal/titan-bet/officer/rodadas/r1/ready').expect(401);
       expect(ready.ready).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('T-X13 — cancelar rodada é do officer (D-77)', () => {
+    it('membro → 403, sem chamar o cancelamento', async () => {
+      comSessao('raider');
+      await request(server)
+        .post('/internal/titan-bet/officer/rodadas/r1/cancelar')
+        .send({ motivo: 'x' })
+        .expect(403);
+      expect(cancelamento.cancelar).not.toHaveBeenCalled();
+    });
+
+    it('officer: 204 com o officer da sessão e o motivo', async () => {
+      comSessao('officer');
+      cancelamento.cancelar.mockResolvedValue(undefined);
+      await request(server)
+        .post('/internal/titan-bet/officer/rodadas/r1/cancelar')
+        .send({ motivo: 'raid cancelada' })
+        .expect(204);
+      expect(cancelamento.cancelar).toHaveBeenCalledWith(
+        'r1',
+        expect.objectContaining({ battletag: expect.any(String) as unknown }),
+        'raid cancelada',
+      );
+    });
+
+    it('sem motivo → 400, antes do serviço; recusado → 409 com o motivo', async () => {
+      comSessao('officer');
+      await request(server)
+        .post('/internal/titan-bet/officer/rodadas/r1/cancelar')
+        .send({})
+        .expect(400);
+      expect(cancelamento.cancelar).not.toHaveBeenCalled();
+
+      cancelamento.cancelar.mockRejectedValue(
+        new CancelamentoRecusado('a rodada já tem settlement confirmado'),
+      );
+      const r = await request(server)
+        .post('/internal/titan-bet/officer/rodadas/r1/cancelar')
+        .send({ motivo: 'x' })
+        .expect(409);
+      expect((r.body as { message: string }).message).toMatch(/settlement/);
+    });
+
+    it('mutação numa rodada cancelada → 409', async () => {
+      comSessao('officer');
+      deposito.confirmar.mockRejectedValue(new RodadaCancelada('r1'));
+      await request(server).post('/internal/titan-bet/officer/slips/s1/confirmar').expect(409);
     });
   });
 

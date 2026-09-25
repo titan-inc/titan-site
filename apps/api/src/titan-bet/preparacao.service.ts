@@ -141,14 +141,17 @@ export class PreparacaoService {
         cutoffAt: rodada.cutoffAt,
         auditoria: null,
         temClosingReport: false,
+        canceladaEm: rodada.cancelledAt,
       },
       new Date(),
     );
     if (fase !== 'PREPARATION') {
       throw new PreparacaoRecusada(
-        rodada.readyAt
-          ? 'a rodada já teve Ready — a configuração congelou (D-31)'
-          : 'o cutoff passou sem Ready — a rodada não abre mais',
+        fase === 'CANCELLED'
+          ? 'a rodada foi cancelada (D-77)'
+          : rodada.readyAt
+            ? 'a rodada já teve Ready — a configuração congelou (D-31)'
+            : 'o cutoff passou sem Ready — a rodada não abre mais',
       );
     }
 

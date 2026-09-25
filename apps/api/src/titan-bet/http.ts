@@ -8,7 +8,9 @@ import type { UserWithCharacters } from '../auth/auth.repository';
 import { ApostaRecusada, ContaNaoElegivel } from './apostas.service';
 import { AuditoriaRecusada } from './auditoria.service';
 import { ClosingRecusado } from './closing.service';
+import { CancelamentoRecusado } from './cancelamento.service';
 import { DepositoRecusado } from './deposito.service';
+import { RodadaCancelada } from './rodada-cancelada';
 import { LedgerRecusado } from './settlement.service';
 import { PreparacaoInvalida, PreparacaoRecusada } from './preparacao.service';
 import { ReadyRecusado } from './ready.service';
@@ -47,7 +49,9 @@ export async function comoHttp<T>(operacao: () => Promise<T>): Promise<T> {
       erro instanceof AuditoriaRecusada ||
       erro instanceof PreparacaoRecusada ||
       erro instanceof LedgerRecusado ||
-      erro instanceof ClosingRecusado
+      erro instanceof ClosingRecusado ||
+      erro instanceof CancelamentoRecusado ||
+      erro instanceof RodadaCancelada
     ) {
       throw new ConflictException(erro.message);
     }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { RodadaCancelada } from './rodada-cancelada';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -72,6 +73,11 @@ export class ClosingRepository {
     officer: { userId: string; battletag: string };
   }): Promise<{ version: number }> {
     return this.prisma.$transaction(async (tx) => {
+      // A trava da rodada (D-77): esperar um cancelamento em curso, e recusar a
+      // rodada cancelada.
+      const [rodada] = await tx.$queryRaw<Array<{ cancelledAt: Date | null }>>`
+        SELECT "cancelledAt" FROM "BetRound" WHERE "id" = ${p.roundId} FOR SHARE`;
+      if (rodada?.cancelledAt) throw new RodadaCancelada(p.roundId);
       const ultima = await tx.roundClosingReport.aggregate({
         where: { roundId: p.roundId },
         _max: { version: true },
