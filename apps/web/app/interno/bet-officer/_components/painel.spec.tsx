@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { SessionUser } from '@titan/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -624,6 +624,32 @@ describe('T-X14 — cancelar a rodada (D-77)', () => {
       credenciais: 'include',
       corpo: { motivo: 'raid cancelada pela liderança' },
     });
+  });
+
+  it('duplo clique em Confirmar cancelamento: uma requisição só (achado da validação no navegador)', async () => {
+    let liberar: () => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          liberar = () => resolve(resposta(null, 204));
+        }),
+    );
+    render(<CancelarRodada roundId="r1" podeCancelar cancelamento={null} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar rodada' }));
+    await userEvent.type(screen.getByLabelText(/motivo/i), 'raid cancelada');
+    await userEvent.click(screen.getByLabelText(/entendo que é irreversível/i));
+
+    // Dois cliques no mesmo tick, como no navegador: o React não re-renderiza
+    // entre eles, então o `disabled` do `pendente` ainda não chegou ao botão.
+    const confirmar = screen.getByRole('button', { name: 'Confirmar cancelamento' });
+    act(() => {
+      confirmar.click();
+      confirmar.click();
+    });
+    liberar();
+
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('desistir fecha a confirmação sem chamar a API', async () => {

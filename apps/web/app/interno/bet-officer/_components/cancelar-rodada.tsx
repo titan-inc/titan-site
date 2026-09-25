@@ -2,7 +2,7 @@
 
 import { cancelarRodadaSchema, type RodadasDoOfficer } from '@titan/shared';
 import { useRouter } from 'next/navigation';
-import { useId, useState, useTransition } from 'react';
+import { useId, useRef, useState, useTransition } from 'react';
 import { Acao } from '../../../_components/ui/acao';
 import { Quando } from '../../mplus/_components/quando';
 import { chamarOfficer, Erro } from './officer-api';
@@ -30,6 +30,9 @@ export function CancelarRodada({
   const [entendi, setEntendi] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [pendente, startTransition] = useTransition();
+  // Uma chamada por vez: o `pendente` só desabilita o botão no render seguinte,
+  // e um duplo clique chega antes dele (achado da validação no navegador).
+  const enviando = useRef(false);
 
   if (cancelamento) {
     return (
@@ -47,15 +50,20 @@ export function CancelarRodada({
   const pedido = cancelarRodadaSchema.safeParse({ motivo });
 
   function cancelar() {
+    if (enviando.current || !pedido.success || !entendi) return;
+    enviando.current = true;
     setErro(null);
-    if (!pedido.success || !entendi) return;
     startTransition(async () => {
-      const r = await chamarOfficer(`/rodadas/${roundId}/cancelar`, {
-        method: 'POST',
-        corpo: pedido.data,
-      });
-      if (!r.ok) return setErro(r.motivo);
-      router.refresh();
+      try {
+        const r = await chamarOfficer(`/rodadas/${roundId}/cancelar`, {
+          method: 'POST',
+          corpo: pedido.data,
+        });
+        if (!r.ok) return setErro(r.motivo);
+        router.refresh();
+      } finally {
+        enviando.current = false;
+      }
     });
   }
 
