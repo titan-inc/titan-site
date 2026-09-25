@@ -2604,3 +2604,28 @@ mas não aplica migrations. Deixá-las pendentes torna as rotas do Titan Bet inc
 até sua aplicação. Nenhum merge, deploy ou alteração de banco de produção nesta auditoria.
 As duas migrations D-77 permanecem pendentes em produção conforme o estado informado.
 Nenhuma migration histórica foi modificada; o banco alterado pelos testes é apenas titan_test.
+
+## 45. D-78 — cancelar libera o period (revisão 17)
+
+**Status: GREEN.** Pedido: depois de cancelar uma rodada, tem de ser possível criar outra
+para o mesmo period — antes, a cancelada ocupava o period para sempre (`BetRound_period_key`).
+
+**Migration nova (aditiva; nenhuma existente editada):**
+`20260925020000_titan_bet_period_livre_apos_cancelamento` — índice único parcial
+`BetRound_uma_ativa_por_period` (`period` onde `cancelledAt` é nulo), criado antes de o
+`BetRound_period_key` sair. A criação continua decidida pelo banco (erro de unicidade → "já
+existe rodada para o period"), sem leitura prévia. Sem drift entre `schema.prisma` e o banco
+migrado.
+
+| Onde                                       | RED                                                                                                                                                     | GREEN          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `preparacao.db-spec.ts` — T-G11, 2         | **RED real**: `PreparacaoRecusada: já existe rodada para o period …` depois de cancelar                                                                 | índice parcial |
+| `cancelamento-banco.db-spec.ts` — T-X16, 3 | **RED real**: `unique` onde se espera `aceito` (cancelada + nova), e a segunda ativa não chegava a ser testada; "duas ativas → unique" passava — guarda | índice parcial |
+
+**Navegador (dev):** com a rodada do period 1083 ativa, "Criar rodada da semana" → "já existe
+rodada para o period 1083"; cancelada pelo painel, o mesmo botão → `POST …/rodadas` **201** e a
+rodada nova em preparação. No banco: as duas do period 1083, a cancelada intacta e a nova
+ativa. Console sem erro (só o aviso de `scroll-behavior` do `globals.css`, anterior a isto).
+
+**Suítes:** `format:check`, `build`, `lint`, `typecheck`; shared 417, api 998, web 242;
+`test:db` 413 (29 suítes).

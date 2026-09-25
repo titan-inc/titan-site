@@ -1927,8 +1927,10 @@ enum BetSlipStatus {
 model BetRound {
   id String @id @default(cuid())
 
-  /// Period da Blizzard: uma rodada por reset.
-  period Int @unique
+  /// Period da Blizzard: uma rodada **não cancelada** por reset (D-78) — índice
+  /// único parcial `BetRound_uma_ativa_por_period`, na migration (o Prisma não
+  /// descreve índice parcial). Cancelar libera o period para uma rodada nova.
+  period Int
 
   /// Informativo. Sem FK: a rodada não depende de a season estar gravada.
   seasonId Int?

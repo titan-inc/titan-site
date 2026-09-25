@@ -9,7 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: 'OfficerGuard. Cria a rodada da próxima semana, vazia, em PREPARATION (D-45): period = o corrente da Blizzard + 1, cutoff na próxima terça 12:00 no fuso da guilda, abertura na sexta 00:00 antes dele. 201 com roundId; 409 se o period já tem rodada. Chama a Blizzard de verdade.'
+description: 'OfficerGuard. Cria a rodada da próxima semana, vazia, em PREPARATION (D-45): period = o corrente da Blizzard + 1, cutoff na próxima terça 12:00 no fuso da guilda, abertura na sexta 00:00 antes dele. 201 com roundId; 409 se o period já tem rodada não cancelada — cancelar libera o period (D-78). Chama a Blizzard de verdade.'
 headers:
 - enabled: true
   name: Cookie
