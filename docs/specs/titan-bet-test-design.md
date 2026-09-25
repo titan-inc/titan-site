@@ -2435,3 +2435,27 @@ Referências gravadas antes da revisão 15 ficam com `snapshot` nulo: o CHECK é
 nada é reescrito, e resultados, confirmações, ledger e Closing Reports não dependem delas.
 Tentativa antiga **ainda não calculada**: o Calcular recusa com o report identificado e pede
 um novo Auditar, que abre outra tentativa já com snapshots. Nenhum snapshot é fabricado.
+
+## 44. D-77 — cancelamento administrativo de rodada (revisão 16)
+
+**Status: em andamento.** Plano de testes escrito antes do código.
+
+### 44.1 Matriz
+
+| ID    | Camada              | O que prova                                                                                                                                                                                                      |
+| ----- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T-X01 | puro (`fases.spec`) | `CANCELLED` vence toda outra fase; `podeCancelar` só antes de `SETTLED`/`CLOSED`; cancelada não audita                                                                                                           |
+| T-X02 | shared              | contratos: fase `CANCELLED`; slip `cancelado` (sem submissão só se nunca submetido); `cancelarRodadaSchema` exige motivo; rodadas do officer com `cancelamento` e `podeCancelar`; slips com `depositoConfirmado` |
+| T-X03 | banco               | `BetSlipStatus.cancelado`; cancelamento da rodada só com os quatro campos, uma vez, nunca desfeito; recusado com auditoria confirmada                                                                            |
+| T-X04 | banco               | slip ativo → `cancelado` só com a rodada cancelada; `cancelado` terminal; `recusado`/`expirado` não viram `cancelado`                                                                                            |
+| T-X05 | banco               | rodada cancelada recusa escrita direta: slip novo, aposta, auditoria, fonte, resultado, ledger (qualquer tipo), Closing, configuração, Ready                                                                     |
+| T-X06 | serviço + banco     | cancelar em PREPARATION, OPEN, BETTING_CLOSED, AUDITING e CALCULATED; recusar em SETTLED, CLOSED e CANCELLED; motivo obrigatório                                                                                 |
+| T-X07 | serviço + banco     | os três ativos → `cancelado`; `recusado`/`expirado` preservados; nada apagado (slips, apostas, depósitos, `submittedAt`, depositante, ledger); nenhum lançamento novo                                            |
+| T-X08 | serviço + banco     | `BetEvent` `rodada_cancelada` com officer, hora e motivo; rodada com os mesmos dados                                                                                                                             |
+| T-X09 | serviço + banco     | atomicidade: falha no meio não deixa rodada nem slip cancelado                                                                                                                                                   |
+| T-X10 | serviço + banco     | depois do cancelamento, todas as mutações recusadas pelo serviço: salvar, submeter, confirmar e recusar depósito, Auditar, sem raid, Calcular, confirmar, pagar, ajustar, publicar Closing, preparar, Ready      |
+| T-X11 | serviço + banco     | concorrência: cancelar × confirmar depósito, × salvar, × Calcular, × confirmar auditoria — nunca uma mutação efetivada depois do cancelamento                                                                    |
+| T-X12 | serviço + banco     | leituras continuam: rodada, slip do dono, "ver slip", resultados calculados, saldos, lançamentos                                                                                                                 |
+| T-X13 | HTTP                | rota de cancelar só com `OfficerGuard` (401/403), corpo validado, 409 quando recusado                                                                                                                            |
+| T-X14 | web officer         | "Cancelar rodada" destrutivo; confirmação irreversível com motivo; estado cancelado com motivo, data e officer; ações incompatíveis somem; depósitos confirmados a tratar fora do Titan Bet                      |
+| T-X15 | web membro          | "Cancelada", aviso de devolução pelos officers, sem apostas de terceiros                                                                                                                                         |

@@ -8,6 +8,9 @@
 > correção pós-pagamento, self-bet e odds. As OQs resolvidas saíram da lista de
 > pendências e estão registradas na §2. O M0 foi reescopado (§14).
 >
+> **Revisão 16 (25/09/2026):** cancelamento administrativo de rodada — fase terminal
+> `CANCELLED`, slips ativos `cancelado`, sem lançamento no ledger (D-77).
+>
 > **Revisão 15 (24/09/2026):** o Auditar congela os dados externos de cada report num
 > snapshot imutável, e o Calcular lê só dele (D-76, achado 5).
 >
@@ -341,6 +344,26 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | —    | OQ-53   | **O desenho da D-38 está aprovado como está**: roster da Blizzard → `Character` → `BetRoundBettor(roundId, characterId)` com rank, nome e realm; `GuildCharacter` associa a conta depois; `BetSlip.eligibilityCharacterId`; um slip ativo por conta. O id numérico da Blizzard **não** entra agora. Rename/transfer entre o Ready e o primeiro login pode fazer a associação daquela semana falhar — limitação documentada, **não** bloqueia o M2, e não se resolve fora do escopo do Titan Bet.                       |
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
+
+### Revisão 16 (25/09/2026) — cancelamento administrativo de rodada
+
+| D    | Resolve | Decisão                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-77 | —       | **Cancelamento administrativo de rodada.** Um officer cancela uma rodada já criada com **confirmação explícita** e **motivo** obrigatório. A rodada entra na fase **`CANCELLED`**, terminal: não reabre. Não se cancela rodada com settlement confirmado (`SETTLED`) nem fechada (`CLOSED`) — regra do backend e do banco, não só da tela. Na mesma transação, todo slip **ativo** vira **`cancelado`** — `rascunho`, `aguardando_deposito` e `valido` —, um estado próprio, que não é `recusado` nem `expirado`; `recusado` e `expirado` ficam como estão. Nada é apagado: apostas, slips, depósitos, `submittedAt`, valores, depositante e evidências continuam. O cancelamento fica na rodada (quem, quando, motivo) e em `BetEvent` (`rodada_cancelada`). Depois dele, **nenhuma mutação** passa: aposta, slip, depósito, Auditar, "sem raid", Calcular, confirmar, pagamento, ajuste, Closing, preparação, Ready. Leituras continuam, pelas regras de acesso vigentes. **A devolução de gold é dos officers, fora do Titan Bet:** o cancelamento não gera lançamento no ledger — nem restituição, nem payout — e não muda VOID, `expirado`, `recusado` nem a D-74. O Officer Panel mostra os slips que estavam **`valido`** no cancelamento (depósito confirmado), com total e depositante, para o tratamento manual — sem virar ledger nem estado de pagamento. O membro vê a rodada como **Cancelada**, com o aviso de que devoluções são tratadas pelos officers fora do Titan Bet. |
+
+**Como se sabe que um slip cancelado estava `valido`:** o `validatedAt` gravado na
+confirmação do depósito, que não muda (trigger `titanbet_slip_transicao`). Nenhuma coluna
+nova no slip.
+
+**Concorrência:** toda mutação da rodada trava a linha da `BetRound` (`FOR SHARE`) antes
+de escrever e confere que ela não foi cancelada; o cancelamento trava a mesma linha
+(`FOR NO KEY UPDATE`). Uma mutação que passou antes termina antes do cancelamento — e o
+que ela deixou ativo é cancelado junto; uma que chega depois é recusada. O banco protege o
+estado terminal contra escrita direta (triggers), sem depender do serviço.
+
+**Não reverte** nenhuma decisão financeira: VOID, D-44/D-61, D-67 e D-74 seguem como
+estão. Uma rodada `CALCULATED` cancelada guarda os resultados calculados, que nunca são
+confirmados.
 
 ### Revisão 15 (24/09/2026) — o Auditar congela os dados externos (achado 5)
 
@@ -1818,10 +1841,12 @@ D-31 e a D-37 pedem, sem depender de cada service lembrar.
 | `AUDITING` / `CALCULATED`    | a última `BetAudit` não substituída está `aguardando_revisao` / `pronta` / `calculada` |
 | `SETTLED`                    | existe `BetAudit` `confirmada` (o settlement é gravado na mesma transação)             |
 | `CLOSED`                     | existe `RoundClosingReport` publicado                                                  |
+| `CANCELLED` (terminal)       | `cancelledAt` preenchido — vence todas as outras (D-77)                                |
 
 ```
 PREPARATION ──Ready──▶ OPEN ──cutoff──▶ BETTING_CLOSED ──Auditar──▶ AUDITING ──▶ CALCULATED ──confirmar──▶ SETTLED ──publicar──▶ CLOSED
 PREPARATION ──cutoff sem Ready──▶ NAO_ABERTA
+qualquer fase antes de SETTLED ──officer cancela, com motivo──▶ CANCELLED   (D-77)
 ```
 
 Gravar essas fases como coluna criaria uma segunda verdade que o job teria de manter
@@ -1835,6 +1860,7 @@ rascunho ──Submeter pagamento──▶ aguardando_deposito ──officer con
                                         ├──officer recusa──▶ recusado   (terminal)
                                         └──cutoff──────────▶ expirado   (terminal)
 rascunho ──cutoff──▶ expirado (terminal; submittedAt nulo = nunca houve depósito esperado)
+rascunho | aguardando_deposito | valido ──rodada cancelada──▶ cancelado (terminal, D-77)
 ```
 
 | Estado                | Ativo? | Editável?            | Entra em pool? |
@@ -1844,10 +1870,13 @@ rascunho ──cutoff──▶ expirado (terminal; submittedAt nulo = nunca houv
 | `valido`              | sim    | não                  | **sim**        |
 | `recusado`            | não    | não                  | não            |
 | `expirado`            | não    | não                  | não            |
+| `cancelado`           | não    | não                  | não            |
 
 **Ativos** = `rascunho`, `aguardando_deposito`, `valido`. `valido` é final mas **ativo**:
-impede criar outro slip na rodada. Não há mais estados: cancelar um rascunho é esvaziá-lo
-(nenhuma decisão pediu estado de cancelamento), e o slip vazio expira no cutoff.
+impede criar outro slip na rodada. ~~Não há mais estados: cancelar um rascunho é esvaziá-lo
+(nenhuma decisão pediu estado de cancelamento), e o slip vazio expira no cutoff.~~
+**Vigente (D-77):** `cancelado` existe, e só pelo cancelamento da rodada — o membro
+continua sem cancelar o próprio slip (esvaziar o rascunho segue valendo).
 
 **`BetMarket`** não tem estado (§16.1): antes do Ready pode ser apagado; depois, não muda.
 O desfecho vive no resultado da auditoria confirmada.
