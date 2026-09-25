@@ -181,6 +181,32 @@ describe('Titan Bet — cancelamento no banco (D-77)', () => {
     });
   });
 
+  describe('T-X16 — o period depois do cancelamento (D-78)', () => {
+    const period = () => 700_000_000 + Math.floor(Math.random() * 100_000_000);
+    const rodadaNoPeriod = (p: number) =>
+      f.rodada({ period: p, cutoffAt: new Date(Date.now() + 48 * 60 * 60 * 1000) });
+
+    it('duas rodadas ativas no mesmo period → recusado', async () => {
+      const p = period();
+      await rodadaNoPeriod(p);
+      expect(await escrita(rodadaNoPeriod(p))).toBe('unique');
+    });
+
+    it('com a do period cancelada, outra rodada no mesmo period → aceita', async () => {
+      const p = period();
+      const primeira = await rodadaNoPeriod(p);
+      await cancelar(primeira);
+      expect(await escrita(rodadaNoPeriod(p))).toBe('aceito');
+    });
+
+    it('cancelada + ativa no period: a segunda ativa continua recusada', async () => {
+      const p = period();
+      await cancelar(await rodadaNoPeriod(p));
+      await rodadaNoPeriod(p);
+      expect(await escrita(rodadaNoPeriod(p))).toBe('unique');
+    });
+  });
+
   describe('T-X04 — os slips', () => {
     it('não nasce cancelado em rodada ativa', async () => {
       const r = await ciclo.aberta();

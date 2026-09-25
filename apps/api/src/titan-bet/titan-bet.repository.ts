@@ -940,8 +940,8 @@ export class TitanBetRepository {
 
   /**
    * Cria a rodada em PREPARATION, sem encounter nem mercado (D-45). `null`
-   * quando o period já tem rodada — o unique `period` decide, não uma leitura
-   * antes.
+   * quando o period já tem rodada não cancelada — o índice único parcial decide
+   * (D-78), não uma leitura antes.
    */
   async criarRodada(r: {
     period: number;

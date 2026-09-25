@@ -8,6 +8,7 @@ import {
   PreparacaoRecusada,
   PreparacaoService,
 } from '../../../src/titan-bet/preparacao.service';
+import { CancelamentoService } from '../../../src/titan-bet/cancelamento.service';
 import { ReadyService } from '../../../src/titan-bet/ready.service';
 import { TitanBetRepository } from '../../../src/titan-bet/titan-bet.repository';
 import type { RaidCatalog } from '../../../src/warcraftlogs/warcraftlogs.service';
@@ -135,6 +136,34 @@ describe('Titan Bet — preparação da semana (serviço + banco)', () => {
 
       await expect(prep.criar(OUTRO)).rejects.toBeInstanceOf(PreparacaoRecusada);
       expect(await db.betRound.findUniqueOrThrow({ where: { id: roundId } })).toEqual(antes);
+    });
+  });
+
+  describe('T-G11 — cancelar libera o period (D-78)', () => {
+    it('cancelada a rodada do period, criar de novo cria outra para o mesmo period', async () => {
+      const { prep } = servico();
+      const { roundId: primeira } = await prep.criar(OFFICER);
+      const antes = await db.betRound.findUniqueOrThrow({ where: { id: primeira } });
+      await new CancelamentoService(repo).cancelar(primeira, OFFICER, 'criada por engano');
+
+      const { roundId: segunda } = await prep.criar(OUTRO);
+
+      expect(segunda).not.toBe(primeira);
+      const nova = await db.betRound.findUniqueOrThrow({ where: { id: segunda } });
+      expect(nova).toMatchObject({ period: antes.period, cancelledAt: null, readyAt: null });
+      // A cancelada fica como estava: terminal, no histórico.
+      expect(await db.betRound.findUniqueOrThrow({ where: { id: primeira } })).toMatchObject({
+        period: antes.period,
+        cancellationReason: 'criada por engano',
+      });
+    });
+
+    it('com a nova ativa, o period volta a ter dono: uma terceira é recusada', async () => {
+      const { prep } = servico();
+      const { roundId: primeira } = await prep.criar(OFFICER);
+      await new CancelamentoService(repo).cancelar(primeira, OFFICER, 'criada por engano');
+      await prep.criar(OFFICER);
+      await expect(prep.criar(OUTRO)).rejects.toBeInstanceOf(PreparacaoRecusada);
     });
   });
 

@@ -8,6 +8,9 @@
 > correção pós-pagamento, self-bet e odds. As OQs resolvidas saíram da lista de
 > pendências e estão registradas na §2. O M0 foi reescopado (§14).
 >
+> **Revisão 17 (25/09/2026):** cancelar libera o period — uma rodada não cancelada por
+> period, e a cancelada fica no histórico (D-78).
+>
 > **Revisão 16 (25/09/2026):** cancelamento administrativo de rodada — fase terminal
 > `CANCELLED`, slips ativos `cancelado`, sem lançamento no ledger (D-77).
 >
@@ -344,6 +347,18 @@ characterId)`. "Esta conta pode apostar nesta rodada?" = a conta tem um personag
 | —    | OQ-53   | **O desenho da D-38 está aprovado como está**: roster da Blizzard → `Character` → `BetRoundBettor(roundId, characterId)` com rank, nome e realm; `GuildCharacter` associa a conta depois; `BetSlip.eligibilityCharacterId`; um slip ativo por conta. O id numérico da Blizzard **não** entra agora. Rename/transfer entre o Ready e o primeiro login pode fazer a associação daquela semana falhar — limitação documentada, **não** bloqueia o M2, e não se resolve fora do escopo do Titan Bet.                       |
 | D-41 | —       | **Banco de teste isolado `titan_test`**, com configuração separada, runner próprio (`*.db-spec.ts`), proteção contra rodar com URL de dev/prod, e CI capaz de usá-lo no futuro. Nunca teste destrutivo no banco de dev. Isolamento por dado (cada teste com sua rodada), sem depender de truncar — o ledger não permite. Tempo pelo dado (`cutoffAt` futuro/passado), **sem** bypass, relógio especial ou `NODE_ENV === 'test'` em trigger. Desenho: `titan-bet-test-design.md` §1.2.                                  |
 | D-42 | —       | **Não fabricar RED.** Proibido: implementação propositalmente errada, controller sem `OfficerGuard` para provar acesso, constraint removida de propósito, assertion artificial, stub `not implemented` como evidência principal. Domínio: estrutura mínima legítima, ou **`RED awaiting implementation seam`**. Banco: migration incremental (estrutura → RED → regra → GREEN). Autorização: teste antes da primeira rota real. Guardas estruturais são regressão, não RED. Baseline registrado antes do primeiro RED. |
+
+### Revisão 17 (25/09/2026) — o period volta a ficar livre depois do cancelamento
+
+| D    | Resolve | Decisão                                                                                                                                                                                                                                                                                                                                                                    |
+| ---- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D-78 | D-77    | **Cancelar libera o period.** Um period tem **no máximo uma rodada não cancelada**; depois de cancelar, "Criar rodada da semana" cria uma rodada nova para o mesmo period. A cancelada continua como estava — terminal, com o histórico — e não volta. Garantido no banco por um índice único parcial (`period` onde `cancelledAt` é nulo), no lugar do único em `period`. |
+
+**Por quê:** uma rodada criada por engano ocupava o period para sempre, e o reset daquela
+semana ficava sem rodada. Cancelar precisava resolver isso.
+
+**Consequência:** a lista do Officer Panel pode ter duas rodadas do mesmo period — a
+cancelada e a nova; a fase diz qual é qual. Os membros só veem rodadas com Ready.
 
 ### Revisão 16 (25/09/2026) — cancelamento administrativo de rodada
 
@@ -1653,7 +1668,7 @@ identidade existente, nunca apagada.
 
 | Campo                                               | Nota                                                              |
 | --------------------------------------------------- | ----------------------------------------------------------------- |
-| `period`                                            | **único**                                                         |
+| `period`                                            | **único** — **vigente (D-78):** único entre as não canceladas     |
 | `seasonId`                                          | informativo                                                       |
 | `opensAt`, `cutoffAt`                               | calculados na criação no fuso da guilda; imutáveis                |
 | `readyAt`, `readyByUserId`, `readyByBattletag`      | o configuration freeze. **Nulo = `PREPARATION`**. Escrito uma vez |
@@ -1751,7 +1766,7 @@ Zero linhas = aposta em `{}`.
 
 | Relação                                         | Card.    | Garantia                                                                            |
 | ----------------------------------------------- | -------- | ----------------------------------------------------------------------------------- |
-| reset → `BetRound`                              | 1 : 0..1 | `period` único                                                                      |
+| reset → `BetRound`                              | 1 : 0..1 | `period` único — **vigente (D-78):** único entre as não canceladas                  |
 | `BetRound` → `BetRoundEncounter`                | 1 : N    | `(roundId, encounterId)` único                                                      |
 | `BetRound` → `BetMarket`                        | 1 : N    | §16.4                                                                               |
 | `BetRoundEncounter` → `BetMarket`               | 1 : 0..6 | `(roundId, kind, roundEncounterId)` único                                           |
@@ -1773,7 +1788,7 @@ Zero linhas = aposta em `{}`.
 
 | Tabela                           | Constraint                                                                                                                                                                                                     |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BetRound`                       | `period` único                                                                                                                                                                                                 |
+| `BetRound`                       | `period` único — **vigente (D-78):** único entre as não canceladas                                                                                                                                             |
 | `BetRoundEncounter`              | `(roundId, encounterId)` único; `(id, roundId, inWeeklyProgression)` e `(id, roundId, track)` únicos (alvos de FK)                                                                                             |
 | `BetMarket`                      | `(roundId, kind, roundEncounterId)` único; `(id, roundId, kind)` único (alvo); FK `(roundEncounterId, roundId, track)` → encounter — o `roundId` entrou no GREEN-M2B para cumprir o §16.3 (nada cruza rodadas) |
 | `BetRoundBettor`                 | `(roundId, characterId)` único                                                                                                                                                                                 |
@@ -2019,7 +2034,7 @@ aposta publicaria, de forma anônima, as seleções privadas de alguém — OQ-5
 
 | Invariante                                        | Garantia                                                                                                              |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| uma `BetRound` por reset                          | unique `period`                                                                                                       |
+| uma `BetRound` por reset                          | unique `period` — **vigente (D-78):** único entre as não canceladas                                                   |
 | Ready antes de apostar                            | trigger `titanbet_slip_aberto`                                                                                        |
 | Ready atômico                                     | leitura externa validada antes; snapshots + `readyAt` numa transação                                                  |
 | configuração imutável depois do Ready             | trigger `titanbet_config_congelada`                                                                                   |
