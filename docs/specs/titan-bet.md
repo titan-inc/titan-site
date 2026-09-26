@@ -8,6 +8,9 @@
 > correção pós-pagamento, self-bet e odds. As OQs resolvidas saíram da lista de
 > pendências e estão registradas na §2. O M0 foi reescopado (§14).
 >
+> **Revisão 18 (26/09/2026):** total flutuante do slip e odds em jogo na home (D-79, D-80),
+> só front — ver `docs/specs/titan-bet-total-e-odds-home.md`.
+>
 > **Revisão 17 (25/09/2026):** cancelar libera o period — uma rodada não cancelada por
 > period, e a cancelada fica no histórico (D-78).
 >

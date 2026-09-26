@@ -429,6 +429,86 @@ describe('ApostasDaRodada', () => {
     expect(screen.queryByText(/projeção/i)).toBeNull();
   });
 
+  describe('D-79 — total flutuante do rascunho', () => {
+    const total = () => screen.getByRole('status');
+
+    it('T-F07: escolher soma o stake padrão, mudar o stake atualiza, e cada mercado entra', async () => {
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={null} />);
+      expect(total().textContent).toMatch(/0 gold/);
+      expect(total().textContent).toMatch(/0 de 3 mercados/);
+
+      await userEvent.click(
+        within(grupo('Top DPS · Boss Farm')).getByRole('radio', { name: /Outropersonagem/ }),
+      );
+      expect(total().textContent).toMatch(/200 gold/);
+      expect(total().textContent).toMatch(/1 de 3 mercados/);
+
+      const weekly = grupo('Weekly Progression');
+      await userEvent.click(within(weekly).getByRole('radio', { name: /Boss Novo/ }));
+      await userEvent.clear(within(weekly).getByLabelText('Stake (gold)'));
+      await userEvent.type(within(weekly).getByLabelText('Stake (gold)'), '550');
+      expect(total().textContent).toMatch(/750 gold/);
+      expect(total().textContent).toMatch(/2 de 3 mercados/);
+    });
+
+    it('T-F07: stake fora do limite não entra na soma e é sinalizado', async () => {
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+      const dps = grupo('Top DPS · Boss Farm');
+      await userEvent.clear(within(dps).getByLabelText('Stake (gold)'));
+      await userEvent.type(within(dps).getByLabelText('Stake (gold)'), '50');
+      expect(total().textContent).toMatch(/0 gold/);
+      expect(total().textContent).toMatch(/1 stake fora de 200–1\.000/);
+    });
+
+    it('T-F08: o rascunho salvo já abre com o total dele, sem "não salvo"', () => {
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+      expect(total().textContent).toMatch(/300 gold/);
+      expect(total().textContent).not.toMatch(/não salvo/i);
+    });
+
+    it('T-F08: alterar depois de salvo mostra "não salvo"', async () => {
+      render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={RASCUNHO} />);
+      const dps = grupo('Top DPS · Boss Farm');
+      await userEvent.clear(within(dps).getByLabelText('Stake (gold)'));
+      await userEvent.type(within(dps).getByLabelText('Stake (gold)'), '400');
+      expect(total().textContent).toMatch(/400 gold/);
+      expect(total().textContent).toMatch(/não salvo/i);
+    });
+
+    it('T-F09: sem edição (fora do snapshot, rodada fechada, slip submetido) não há barra', () => {
+      // Um render por caso: o slip entra como estado inicial, e `rerender` não o reinicia.
+      render(
+        <ApostasDaRodada cardapio={{ ...CARDAPIO, podeApostar: false }} odds={ODDS} slip={null} />,
+      );
+      expect(screen.queryByRole('status')).toBeNull();
+      cleanup();
+
+      render(
+        <ApostasDaRodada
+          cardapio={{ ...CARDAPIO, fase: 'BETTING_CLOSED' }}
+          odds={ODDS}
+          slip={null}
+        />,
+      );
+      expect(screen.queryByRole('status')).toBeNull();
+      cleanup();
+
+      render(
+        <ApostasDaRodada
+          cardapio={CARDAPIO}
+          odds={ODDS}
+          slip={{
+            ...RASCUNHO,
+            status: 'aguardando_deposito',
+            depositCharacter: { name: 'Depositante', realm: 'Azralon' },
+            expectedTotal: 300,
+          }}
+        />,
+      );
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+  });
+
   describe('T-UI09 — odds: "—" sem aposta, e projeção, não promessa (§16.10)', () => {
     it('multiplicador nulo é "—"; o aviso de projeção aparece', () => {
       render(<ApostasDaRodada cardapio={CARDAPIO} odds={ODDS} slip={null} />);
