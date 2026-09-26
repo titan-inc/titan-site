@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
-import { getRodadasBet, getSessionUser } from '../../../lib/api';
+import { getOddsBet, getRodadaBet, getRodadasBet, getSessionUser } from '../../../lib/api';
 import { destinoDaPaginaBet } from './_components/acesso';
 import { ListaDeRodadas } from './_components/lista-de-rodadas';
+import { OddsEmJogo } from './_components/odds-em-jogo';
 
 export const metadata = { title: 'Titan Bet — Titan Inc' };
 
@@ -20,6 +21,13 @@ export default async function BetPage() {
   );
   if (destino) redirect(destino);
 
+  // Odds em jogo (D-80): a rodada aberta é a primeira, a lista vem da mais recente.
+  // Falha em qualquer leitura esconde a seção, sem derrubar a lista de rodadas.
+  const aberta = lista.tipo === 'ok' ? lista.dados.rodadas.find((r) => r.fase === 'OPEN') : null;
+  const [cardapio, odds] = aberta
+    ? await Promise.all([getRodadaBet(aberta.roundId), getOddsBet(aberta.roundId)])
+    : [null, null];
+
   return (
     <main className="flex flex-1 flex-col gap-8">
       <div>
@@ -30,6 +38,10 @@ export default async function BetPage() {
           resultados publicados depois da auditoria.
         </p>
       </div>
+
+      {cardapio?.tipo === 'ok' && odds?.tipo === 'ok' && (
+        <OddsEmJogo cardapio={cardapio.dados} odds={odds.dados} />
+      )}
 
       {lista.tipo !== 'ok' ? (
         <p className="border-border text-fg-muted rounded-lg border border-dashed p-5 text-sm">

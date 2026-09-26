@@ -15,6 +15,8 @@ import { API_URL } from '../../../../lib/config';
 import { Acao } from '../../../_components/ui/acao';
 import { Quando } from '../../mplus/_components/quando';
 import { gold, multiplicador, personagem, STATUS_DO_SLIP, tituloDoMercado } from './rotulos';
+import { totalDoRascunho } from './total-do-rascunho';
+import { TotalFlutuante } from './total-flutuante';
 
 const STAKE_PADRAO = '200';
 
@@ -311,6 +313,13 @@ export function ApostasDaRodada({
                 Salvar rascunho
               </Acao>
             </div>
+          )}
+
+          {editavel && (
+            <TotalFlutuante
+              resumo={totalDoRascunho(cardapio, escolhas)}
+              alterado={alteradoDesdeSalvo}
+            />
           )}
         </form>
       )}
