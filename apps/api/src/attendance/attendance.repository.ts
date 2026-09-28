@@ -105,30 +105,6 @@ export class AttendanceRepository {
   }
 
   /**
-   * Histórico dos personagens de UMA conta.
-   *
-   * Existe separado de `listNights` porque a Regra 7 é explícita: membro vê o
-   * próprio histórico inteiro, e não o de outro membro. **O filtro é no banco**,
-   * não na tela — assim o dado dos outros nem trafega, e um bug de render não
-   * vira vazamento.
-   *
-   * Recebe a lista de ids porque uma conta tem N personagens, e o histórico da
-   * pessoa é o de todos eles juntos. Ver Regra 4.
-   */
-  listForCharacters(characterIds: string[], limite: number, ate: string) {
-    if (characterIds.length === 0) return Promise.resolve([]);
-
-    return this.prisma.raidAttendance.findMany({
-      // Mesmo corte de `listNights`: raid que ainda não aconteceu não é
-      // histórico, e apareceria como "sem dado" contra a pessoa.
-      where: { characterId: { in: characterIds }, raidNight: { date: { lte: ate } } },
-      orderBy: { raidNight: { date: 'desc' } },
-      take: limite,
-      include: { raidNight: true, character: true },
-    });
-  }
-
-  /**
    * Grava a anotação do raid leader.
    *
    * Só os campos de anotação. O resto da linha é fato coletado e não se edita

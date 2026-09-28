@@ -33,7 +33,6 @@ import {
   lootCouncilPanelSchema,
   lootSessionDetailSchema,
   lootSessionSummarySchema,
-  myAttendanceSchema,
   officerListSchema,
   progressReportSchema,
   raidProgressReportSchema,
@@ -47,7 +46,6 @@ import {
   type LootCouncilPanel,
   type LootSessionDetail,
   type LootSessionSummary,
-  type MyAttendance,
   type OfficerList,
   type ProgressReport,
   type RaidProgressReport,
@@ -343,24 +341,6 @@ export async function getVaga(id: string): Promise<Vaga | null> {
     if (!res.ok) return null;
 
     const parsed = vagaSchema.safeParse(await res.json());
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-/** O próprio histórico de presença. Qualquer membro com acesso interno. */
-export async function getMyAttendance(): Promise<MyAttendance | null> {
-  try {
-    const res = await fetch(`${API_URL}/internal/attendance/me`, {
-      headers: await sessionHeader(),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) return null;
-
-    const parsed = myAttendanceSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

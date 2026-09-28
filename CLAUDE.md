@@ -444,12 +444,31 @@ Então o sistema grava o fato observável ("Não Raidou") e oferece ao raid lead
 Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico **de presença**:
 
 - **Oficial** vê o detalhe de qualquer pessoa.
-- **Membro** vê o próprio histórico, inteiro.
-- **Membro não vê o histórico de outro membro.**
+- **Membro não vê presença nenhuma** — nem a dos outros, nem a própria.
 
 **O motivo é social, não sigilo.** O dado está aberto no Logs e no WoWAudit; o que o site evita é apresentá-lo pronto em forma de ranking, que gera treta e não ajuda o raid leader — quem lidera já tem o detalhe.
 
 A régua para caso novo é "isto vira comparação entre membros?", não "isto é confidencial?". Média da guilda passa; lista ordenada por falta, não.
+
+#### O membro via o próprio histórico até 28/09/2026
+
+A segunda linha era **"membro vê o próprio histórico, inteiro"**, e existia `GET /internal/attendance/me` com um recorte feito no banco a partir dos personagens da sessão.
+
+Saiu porque **não tinha usuário**. Os players não entram no site, mesmo tendo acesso — quem usa a área interna é oficial. E a tela passou a ser ferramenta de trabalho do raid leader: é lá que mora a rotação de banco, que é explicitamente não-pública (ver a subseção seguinte).
+
+**A régua não mudou.** "Isto vira comparação entre membros?" continua valendo e continua dando "não" para presença. O que caiu foi a premissa de que existia um membro do outro lado da tela.
+
+Consequência prática: `myAttendanceSchema` saiu do shared e o endpoint foi **apagado**, não deixado sem uso — mesmo raciocínio que tirou o `canReviewApplications()` dali. Contrato órfão convida alguém a reconstruir a tela em cima dele.
+
+Registrado em vez de apagado, para ninguém refazer o raciocínio antigo achando que é novo. Ver TIT-150.
+
+#### O banco não é público, e isso é requisito (28/09/2026)
+
+Quando a liderança diz que alguém vai ficar no banco na semana, **é esperado que a pessoa compareça na raid mesmo assim**, para o caso de precisar trocar. Divulgar antes faz a pessoa não aparecer.
+
+Então o plano de rotação nunca sai em payload que um membro alcance, e nunca vai para canal público do Discord. Se virar push, é canal de oficial — e aí vale o mesmo raciocínio da candidatura: **a permissão do canal é o controle de acesso**.
+
+Corolário que decide o modelo de dados: **não dá para contar tempo de banco a partir do resultado da noite.** Quem foi sentado e apareceu, e quem foi sentado e sumiu, ficam parecidos no fim da noite e significam o oposto. Contar pelo resultado dá crédito de descanso a quem não apareceu — ou seja, inverte exatamente o incentivo que o sigilo existe para proteger. O plano tem que ser gravado à parte, e cruzado com o resultado. Ver TIT-152.
 
 #### Loot é o caso que responde diferente (13/08/2026)
 

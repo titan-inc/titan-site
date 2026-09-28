@@ -237,32 +237,16 @@ export const raidNightSchema = raidNightInfoSchema.extend({
 });
 export type RaidNight = z.infer<typeof raidNightSchema>;
 
-/** Visão do oficial: as noites, com o detalhe de todo mundo. */
+/**
+ * As noites, com o detalhe de todo mundo. **Só oficial** — Regra 7.
+ *
+ * Havia um `myAttendanceSchema` ao lado deste, com o próprio histórico do
+ * membro. Saiu na TIT-150 junto com o endpoint: os players não entram no site,
+ * e a tela virou ferramenta do raid leader. Removido em vez de deixado sem uso,
+ * pelo mesmo motivo que tirou o `canReviewApplications()` daqui — contrato
+ * órfão convida alguém a reconstruir a tela em cima dele.
+ */
 export const attendanceReportSchema = z.object({
   nights: raidNightSchema.array(),
 });
 export type AttendanceReport = z.infer<typeof attendanceReportSchema>;
-
-/**
- * Visão do membro: o **próprio** histórico, inteiro.
- *
- * Uma conta tem N personagens, então cada linha diz de qual personagem é — a
- * pessoa que raida em dois chars precisa ver os dois. Ver Regra 4.
- */
-export const myAttendanceSchema = z.object({
-  nights: raidNightInfoSchema
-    .extend({
-      entry: attendanceEntrySchema,
-    })
-    .array(),
-
-  /** Noites com evidência de log, e em quantas a pessoa esteve. */
-  summary: z.object({
-    /** Noites em que há como afirmar alguma coisa (`sem-dado` fora). */
-    counted: z.number().int(),
-    present: z.number().int(),
-    /** Noites em que confirmou e não apareceu. */
-    missed: z.number().int(),
-  }),
-});
-export type MyAttendance = z.infer<typeof myAttendanceSchema>;

@@ -1,11 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
-  isPresent,
   signupStatusSchema,
   toAttendanceState,
   type AttendanceEntry,
   type AttendanceReport,
-  type MyAttendance,
   type RaidNightInfo,
   type SignupStatus,
 } from '@titan/shared';
@@ -62,37 +60,6 @@ export class AttendanceReportService {
         ...this.info(n),
         entries: n.attendance.map((a) => this.entry(a, n.hasSignups)),
       })),
-    };
-  }
-
-  /**
-   * O histórico da própria pessoa, somando os personagens dela.
-   *
-   * @param characterIds identidades dos personagens da conta no roster
-   */
-  async getMine(characterIds: string[]): Promise<MyAttendance> {
-    const linhas = await this.repo.listForCharacters(characterIds, NOITES, this.hoje());
-
-    const nights = linhas.map((l) => ({
-      ...this.info(l.raidNight),
-      entry: this.entry(l, l.raidNight.hasSignups),
-    }));
-
-    // "counted" ignora `sem-dado` de propósito: noite sem log não pode afundar
-    // a taxa de presença de quem estava lá.
-    const contadas = nights.filter((n) => n.entry.state !== 'sem-dado');
-
-    return {
-      nights,
-      summary: {
-        counted: contadas.length,
-        present: contadas.filter((n) => isPresent(n.entry.state)).length,
-        // `furou` entra junto: é o mesmo fato (confirmou e não veio), só que
-        // confirmado pelo RL em vez de inferido. Contar só um dos dois faria a
-        // conta encolher conforme o RL for corrigindo as noites.
-        missed: contadas.filter((n) => n.entry.state === 'nao-raidou' || n.entry.state === 'furou')
-          .length,
-      },
     };
   }
 

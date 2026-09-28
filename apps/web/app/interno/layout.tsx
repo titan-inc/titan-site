@@ -1,4 +1,4 @@
-import { canManageOfficers, isActingOfficer } from '@titan/shared';
+import { canManageOfficers, canSeeOthersHistory, isActingOfficer } from '@titan/shared';
 import Link from 'next/link';
 import { getSessionUser } from '../../lib/api';
 import { Wordmark } from '../_components/ui/wordmark';
@@ -39,6 +39,7 @@ export default async function InternoLayout({ children }: { children: React.Reac
         <SidebarNav
           oficial={user !== null && canManageOfficers(user)}
           officer={user !== null && isActingOfficer(user)}
+          historico={user !== null && canSeeOthersHistory(user)}
           acessoInterno={user?.hasInternalAccess ?? false}
         />
       </aside>
