@@ -77,6 +77,13 @@ const ITEM_PRESENCA = {
   label: 'Presença',
 } as const;
 
+/** Rotação de banco, pelo mesmo gate da Presença — as duas são a Regra 7. */
+const ITEM_ROTACAO = {
+  segment: 'rotacao',
+  href: '/interno/rotacao',
+  label: 'Rotação',
+} as const;
+
 interface Item {
   readonly segment: string | null;
   readonly href: string;
@@ -107,7 +114,7 @@ export function SidebarNav({
   // população é a mesma, então agrupar não mente; se um dia divergirem, a
   // seção encolhe por pessoa, que é o comportamento certo.
   const lideranca: readonly Item[] = [
-    ...(historico ? [ITEM_PRESENCA] : []),
+    ...(historico ? [ITEM_PRESENCA, ITEM_ROTACAO] : []),
     ...(oficial ? ITENS_OFICIAL : []),
     ...(officer ? [ITEM_BET_OFFICER] : []),
   ];

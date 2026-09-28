@@ -468,7 +468,19 @@ Quando a liderança diz que alguém vai ficar no banco na semana, **é esperado 
 
 Então o plano de rotação nunca sai em payload que um membro alcance, e nunca vai para canal público do Discord. Se virar push, é canal de oficial — e aí vale o mesmo raciocínio da candidatura: **a permissão do canal é o controle de acesso**.
 
-Corolário que decide o modelo de dados: **não dá para contar tempo de banco a partir do resultado da noite.** Quem foi sentado e apareceu, e quem foi sentado e sumiu, ficam parecidos no fim da noite e significam o oposto. Contar pelo resultado dá crédito de descanso a quem não apareceu — ou seja, inverte exatamente o incentivo que o sigilo existe para proteger. O plano tem que ser gravado à parte, e cruzado com o resultado. Ver TIT-152.
+Corolário que decide o modelo de dados: **não dá para contar tempo de banco a partir do resultado da noite.** Quem foi sentado e apareceu, e quem foi sentado e sumiu, ficam parecidos no fim da noite e significam o oposto. Contar pelo resultado dá crédito de descanso a quem não apareceu — ou seja, inverte exatamente o incentivo que o sigilo existe para proteger. O plano tem que ser gravado à parte, e cruzado com o resultado.
+
+Implementado em `/interno/rotacao` (TIT-152), e três coisas dali valem para caso novo:
+
+| decisão                            | por quê                                                                                                     |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| o plano é **por semana**           | a raid é 2x por semana e quem descansa descansa a semana inteira; `weekStart` é a segunda no fuso da guilda |
+| lacuna conta **a favor** da pessoa | semana sem linha de presença é falha de coleta, não prova de ausência — mesma régua do `sem-dado`           |
+| a sugestão **nunca** vira plano    | o oficial edita e salva; plano que contraria a sugestão é aceito sem discussão                              |
+
+**O time de raid vem do WoWAudit, com role e melee/ranged prontos.** `GET /v1/characters` devolve `role` como `Tank | Heal | Melee | Ranged` — as duas classificações num campo só, o que faz "travar role" e "travar melee/ranged" serem o mesmo mecanismo. Não existe cadastro de time no site, e não deve passar a existir: o RL mantém lá, o site lê.
+
+Ficou de fora do MVP, por decisão da liderança: comp alvo e equilíbrio melee/range planejado. Adiar não custou nada — o dado já está no mesmo campo, então vira critério de desempate sem migração.
 
 #### Loot é o caso que responde diferente (13/08/2026)
 
