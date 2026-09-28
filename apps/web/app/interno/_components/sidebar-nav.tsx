@@ -77,6 +77,12 @@ const ITEM_PRESENCA = {
   label: 'Presença',
 } as const;
 
+interface Item {
+  readonly segment: string | null;
+  readonly href: string;
+  readonly label: string;
+}
+
 export function SidebarNav({
   oficial = false,
   officer = false,
@@ -94,38 +100,70 @@ export function SidebarNav({
   // Hook de client component: o layout é server component e importa este.
   const atual = useSelectedLayoutSegment();
   const base = acessoInterno ? ITENS : ITENS_SEM_ACESSO;
-  const itens = [
-    ...base,
-    ITEM_MPLUS,
-    ITEM_BET,
+
+  const comuns: readonly Item[] = [...base, ITEM_MPLUS, ITEM_BET];
+
+  // As três entram por permissões DIFERENTES (ver cada constante). Hoje a
+  // população é a mesma, então agrupar não mente; se um dia divergirem, a
+  // seção encolhe por pessoa, que é o comportamento certo.
+  const lideranca: readonly Item[] = [
     ...(historico ? [ITEM_PRESENCA] : []),
     ...(oficial ? ITENS_OFICIAL : []),
     ...(officer ? [ITEM_BET_OFFICER] : []),
   ];
+
+  /**
+   * `pedra-lit` e não uma cor nova: a paleta tem três famílias de propósito, e
+   * o quente dela é a pedra oliva. 10,2:1 sobre o fundo e 9,2:1 sobre a
+   * superfície, então o realce não custa legibilidade.
+   */
+  const item = (i: Item, daLideranca: boolean) => {
+    const ativo = i.segment === atual;
+    const cor = daLideranca
+      ? ativo
+        ? 'bg-surface text-pedra-lit font-medium'
+        : 'text-pedra-lit/80 hover:bg-surface hover:text-pedra-lit'
+      : ativo
+        ? 'bg-surface text-fg font-medium'
+        : 'text-fg-muted hover:bg-surface hover:text-fg';
+
+    return (
+      <Link
+        key={i.href}
+        href={i.href}
+        aria-current={ativo ? 'page' : undefined}
+        className={`shrink-0 rounded-md px-3 py-2 text-sm transition-colors ${cor}`}
+      >
+        {i.label}
+      </Link>
+    );
+  };
 
   return (
     <nav
       aria-label="Área interna"
       className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible"
     >
-      {itens.map((item) => {
-        const ativo = item.segment === atual;
+      {comuns.map((i) => item(i, false))}
 
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={ativo ? 'page' : undefined}
-            className={
-              ativo
-                ? 'bg-surface text-fg shrink-0 rounded-md px-3 py-2 text-sm font-medium'
-                : 'text-fg-muted hover:bg-surface hover:text-fg shrink-0 rounded-md px-3 py-2 text-sm transition-colors'
-            }
-          >
-            {item.label}
-          </Link>
-        );
-      })}
+      {lideranca.length > 0 && (
+        // A cor sozinha não é sinal acessível, então o rótulo é o sinal de
+        // verdade e a cor é reforço. No mobile o nav é uma tira horizontal com
+        // scroll, onde rótulo de seção não cabe — ali vira um fio vertical, que
+        // é decorativo e some do leitor de tela.
+        <div className="flex shrink-0 items-center md:block">
+          <span aria-hidden className="bg-border mx-1 h-5 w-px md:hidden" />
+          {/* Mesma forma e recuo do "Área interna" do layout: `font-mono
+              text-xs tracking-widest uppercase`, sem padding lateral, porque os
+              links têm `px-3` e a régua dos rótulos é a borda do aside. Só a
+              cor muda — é ela que marca a seção. */}
+          <span className="text-pedra hidden pt-5 pb-2 font-mono text-xs tracking-widest uppercase md:block">
+            Liderança
+          </span>
+        </div>
+      )}
+
+      {lideranca.map((i) => item(i, true))}
     </nav>
   );
 }
