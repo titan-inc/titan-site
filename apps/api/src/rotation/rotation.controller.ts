@@ -42,9 +42,14 @@ import { RotationService } from './rotation.service';
 export class RotationController {
   constructor(private readonly rotation: RotationService) {}
 
+  /**
+   * @param vagas recalcula a sugestão com outro número de vagas, **sem salvar**.
+   *   É o "Recalcular" da tela: o D'Hondt distribui as vagas entre os roles no
+   *   servidor, então mudar o número no cliente não teria como refazer a conta.
+   */
   @Get()
-  getView(@Query('semana') semana?: string): Promise<RotationView> {
-    return this.rotation.getView(semana);
+  getView(@Query('semana') semana?: string, @Query('vagas') vagas?: string): Promise<RotationView> {
+    return this.rotation.getView(semana, vagas === undefined ? undefined : Number(vagas));
   }
 
   @Put('role-locks')

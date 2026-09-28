@@ -192,6 +192,42 @@ describe('RotationService', () => {
     expect(v.suggestion.every((s) => s.role === 'Tank' || s.role === 'Heal')).toBe(true);
   });
 
+  describe('recalcular com outro número de vagas', () => {
+    it('o parâmetro sobrepõe o plano salvo, sem gravar nada', async () => {
+      repo.findPlan.mockResolvedValue({
+        seats: 2,
+        entries: [],
+        savedBy: 'x',
+        savedAt: new Date(),
+        weekStart: '2026-09-28',
+      });
+
+      const v = await service.getView(undefined, 4);
+
+      expect(v.seats).toBe(4);
+      expect(v.suggestion).toHaveLength(4);
+      // O plano salvo continua com o número dele: recalcular é rascunho.
+      expect(v.saved?.seats).toBe(2);
+      expect(repo.savePlan).not.toHaveBeenCalled();
+    });
+
+    it('zero vagas é um pedido válido, não "usa o default"', async () => {
+      const v = await service.getView(undefined, 0);
+
+      expect(v.seats).toBe(0);
+      expect(v.suggestion).toEqual([]);
+    });
+
+    it('parâmetro lixo cai no default em vez de zerar a sugestão', async () => {
+      // `Number('abc')` é NaN, e toda comparação com NaN é falsa — sem a
+      // checagem explícita isto viraria zero vaga sem erro nenhum.
+      const v = await service.getView(undefined, Number('abc'));
+
+      expect(v.seats).toBe(5);
+      expect(v.suggestion).toHaveLength(5);
+    });
+  });
+
   it('respeita quantos sentar', async () => {
     repo.findPlan.mockResolvedValue({
       seats: 2,

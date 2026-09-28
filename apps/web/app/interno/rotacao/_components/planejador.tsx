@@ -47,7 +47,16 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
   const disponiveis = view.pool.filter((p) => p.lock === null);
   const travados = view.pool.filter((p) => p.lock !== null);
 
-  /** Toda escrita devolve a view; aplicar por inteiro evita estado meio velho. */
+  /**
+   * Toda escrita devolve a view inteira, e ela substitui o pool e as travas.
+   *
+   * **Mas nunca refaz a lista do banco.** O oficial pode ter montado o banco à
+   * mão, e travar um role no meio do caminho não pode apagar esse trabalho. A
+   * única exceção é tirar quem a trava acabou de excluir — deixar alguém
+   * travado dentro do banco seria a tela se contradizendo.
+   *
+   * Refazer a lista é o `recalcular()`, e é explícito de propósito.
+   */
   function escrever(caminho: string, method: string, body?: unknown, depois?: () => void) {
     setErro(null);
 
@@ -64,11 +73,44 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
 
         const nova = (await res.json()) as RotationView;
         setView(nova);
-        setSeats(nova.seats);
-        setBanco(nova.saved?.characterIds ?? nova.suggestion.map((s) => s.characterId));
+
+        const travados = new Set(
+          nova.pool.filter((p) => p.lock !== null).map((p) => p.characterId),
+        );
+        setBanco((atual) => atual.filter((id) => !travados.has(id)));
         depois?.();
       } catch {
         setErro('Não foi possível salvar');
+      }
+    });
+  }
+
+  /**
+   * Refaz a sugestão com o número de vagas que está na tela, **sem salvar**.
+   *
+   * Precisa ir ao servidor porque é lá que as vagas são distribuídas entre os
+   * roles — mudar o número no cliente não teria como refazer essa conta.
+   *
+   * Existe por dois buracos que a tela tinha: mudar "Sentar" não fazia nada até
+   * salvar (e salvava o número novo com a lista velha), e depois de salvar não
+   * havia caminho de volta para um rascunho novo.
+   */
+  function recalcular() {
+    setErro(null);
+
+    startTransition(async () => {
+      try {
+        const res = await fetch(`${API_URL}/internal/rotation?vagas=${seats}`, {
+          credentials: 'include',
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const nova = (await res.json()) as RotationView;
+        setView(nova);
+        setBanco(nova.suggestion.map((s) => s.characterId));
+      } catch {
+        setErro('Não foi possível recalcular');
       }
     });
   }
@@ -205,18 +247,43 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
             Banco da semana
           </h2>
 
-          <label className="text-fg-muted flex items-center gap-2 text-sm">
-            Sentar
-            <input
-              type="number"
-              min={0}
-              max={40}
-              value={seats}
-              onChange={(e) => setSeats(Number(e.target.value))}
+          {/* Dizer de qual dos dois a lista é: sugestão e plano são coisas
+              diferentes, e confundi-las é o que faz alguém achar que salvou. */}
+          <span
+            className={
+              mudou
+                ? 'text-pedra-lit rounded border border-current/30 px-2 py-0.5 text-xs'
+                : 'text-accent rounded border border-current/30 px-2 py-0.5 text-xs'
+            }
+          >
+            {mudou ? 'rascunho — não salvo' : 'plano salvo'}
+          </span>
+
+          <span className="flex items-center gap-2">
+            <label className="text-fg-muted flex items-center gap-2 text-sm">
+              Sentar
+              <input
+                type="number"
+                min={0}
+                max={40}
+                value={seats}
+                onChange={(e) => setSeats(Number(e.target.value))}
+                disabled={ocupado}
+                className="border-border bg-bg text-fg w-16 rounded-md border px-2 py-1 text-sm tabular-nums"
+              />
+            </label>
+
+            {/* Mudar o número sozinho não refaz nada: as vagas são repartidas
+                entre os roles no servidor. Daí o botão ser explícito. */}
+            <button
+              type="button"
+              onClick={recalcular}
               disabled={ocupado}
-              className="border-border bg-bg text-fg w-16 rounded-md border px-2 py-1 text-sm tabular-nums"
-            />
-          </label>
+              className="border-border text-fg-muted hover:text-fg rounded-md border px-3 py-1 text-sm transition-colors disabled:opacity-40"
+            >
+              Recalcular
+            </button>
+          </span>
         </div>
 
         <ul className="flex flex-col">
@@ -273,9 +340,10 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
 
           {erro && <span className="text-danger text-sm">{erro}</span>}
 
-          {!mudou && salvo && (
+          {salvo && (
             <span className="text-fg-subtle text-xs">
-              salvo por {salvo.savedBy} em {new Date(salvo.savedAt).toLocaleString('pt-BR')}
+              último salvo por {salvo.savedBy} em {new Date(salvo.savedAt).toLocaleString('pt-BR')}{' '}
+              — {salvo.characterIds.length} no banco, {salvo.seats} vaga(s)
             </span>
           )}
         </div>

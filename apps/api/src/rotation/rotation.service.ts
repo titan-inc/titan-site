@@ -41,7 +41,11 @@ export class RotationService {
     private readonly characters: CharactersRepository,
   ) {}
 
-  async getView(semana?: string): Promise<RotationView> {
+  /**
+   * @param vagas sobrepõe quantos sentar, **só para este cálculo**. É o
+   *   "Recalcular" da tela: nada é gravado até o oficial salvar o plano.
+   */
+  async getView(semana?: string, vagas?: number): Promise<RotationView> {
     const weekStart = semana ? inicioDaSemana(semana) : this.semanaAtual();
 
     const snapshot = await this.wowaudit.getTeamCharactersSnapshot();
@@ -85,7 +89,11 @@ export class RotationService {
       };
     });
 
-    const seats = plano?.seats ?? DEFAULT_ROTATION_SEATS;
+    // Valor pedido > plano salvo > default. `Number('abc')` é NaN e toda
+    // comparação com NaN é falsa, então um parâmetro lixo cairia em zero vaga
+    // sem erro nenhum — daí a checagem explícita.
+    const pedido = vagas !== undefined && Number.isInteger(vagas) && vagas >= 0 ? vagas : null;
+    const seats = pedido ?? plano?.seats ?? DEFAULT_ROTATION_SEATS;
 
     return {
       weekStart,
