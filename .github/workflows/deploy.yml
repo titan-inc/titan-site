@@ -103,19 +103,36 @@ jobs:
       # isso o pull explícito antes do up.
       #
       # .env e a senha do banco JÁ existem na instância (TIT-106) -- este
-      # job nunca cria nem edita segredo, só troca as imagens e reinicia.
+      # job nunca cria nem edita segredo, só troca as imagens, aplica as
+      # migrations pendentes e reinicia.
       #
       # chmod +x no script de backup a cada deploy: não confiar que a scp
       # preserva o bit executável do git na cópia -- mais barato reafirmar
       # do que descobrir que o cron falhou silenciosamente por permissão.
-      - name: Pull das imagens novas e restart dos containers
+      # A ORDEM É pull -> migrate -> up -d, e ela é o conteúdo deste step
+      # (TIT-146). Migrar DEPOIS do up -d deixaria a imagem nova servindo 500
+      # contra o schema velho na janela entre as duas coisas; foi isso que
+      # aconteceu em 24/08/2026, esticado para dias porque ninguém migrou.
+      #
+      # `run --rm api`, e não `exec api`: no instante do migrate o container
+      # no ar ainda é o ANTIGO, e as migrations que precisam rodar são as da
+      # imagem que acabou de ser puxada. `run` sobe um container efêmero da
+      # imagem nova, respeita o depends_on (espera o postgres saudável) e não
+      # publica porta -- então não briga com a api que continua servindo.
+      #
+      # `set -euo pipefail` para migration que falha ABORTAR o deploy em vez
+      # de seguir para o up -d. Deploy verde com schema velho é exatamente o
+      # estado que esta automação existe para impedir.
+      - name: Pull, migrations e restart dos containers
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -euo pipefail
             cd /opt/titan-site
             chmod +x scripts/deploy/backup-postgres-to-s3.sh
             docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml run --rm api ./node_modules/.bin/prisma migrate deploy
             docker compose -f docker-compose.prod.yml up -d
