@@ -15,7 +15,6 @@ const ITENS = [
   { segment: 'roster', href: '/interno/roster', label: 'Roster' },
   { segment: 'progressao', href: '/interno/progressao', label: 'Progressão' },
   { segment: 'raid', href: '/interno/raid', label: 'Raid' },
-  { segment: 'presenca', href: '/interno/presenca', label: 'Presença' },
 
   // Em ITENS e não em ITENS_OFICIAL: a área de Loot é do "core", que é
   // exatamente quem já passou pelo corte da área interna. Um segundo corte com
@@ -61,14 +60,34 @@ const ITENS_OFICIAL = [
   { segment: 'oficiais', href: '/interno/oficiais', label: 'Oficiais' },
 ] as const;
 
+/**
+ * Presença, para quem passa em `canSeeOthersHistory` — a mesma função que a
+ * página checa, e **não** a de gerir oficiais.
+ *
+ * Fora de ITENS_OFICIAL de propósito: aquele é gateado por `canManageOfficers`,
+ * que hoje tem o mesmo corpo e decide outra coisa (CLAUDE.md, Regra 4). Casar o
+ * link com a permissão errada funciona até as duas divergirem, e aí o link
+ * passa a mandar gente para um redirect sem ninguém entender por quê.
+ *
+ * Saiu de ITENS na TIT-150, quando a visão de membro da presença foi removida.
+ */
+const ITEM_PRESENCA = {
+  segment: 'presenca',
+  href: '/interno/presenca',
+  label: 'Presença',
+} as const;
+
 export function SidebarNav({
   oficial = false,
   officer = false,
+  historico = false,
   acessoInterno = true,
 }: {
   oficial?: boolean;
   /** `isActingOfficer`: o Officer Panel do Titan Bet. */
   officer?: boolean;
+  /** `canSeeOthersHistory`: a Presença. Ver `ITEM_PRESENCA`. */
+  historico?: boolean;
   /** Rank dentro do corte. Falso = membro da guilda sem a área do time de raid. */
   acessoInterno?: boolean;
 }) {
@@ -79,6 +98,7 @@ export function SidebarNav({
     ...base,
     ITEM_MPLUS,
     ITEM_BET,
+    ...(historico ? [ITEM_PRESENCA] : []),
     ...(oficial ? ITENS_OFICIAL : []),
     ...(officer ? [ITEM_BET_OFFICER] : []),
   ];

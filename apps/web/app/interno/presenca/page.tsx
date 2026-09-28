@@ -6,7 +6,7 @@ import {
   type RaidNightInfo,
 } from '@titan/shared';
 import { redirect } from 'next/navigation';
-import { getAttendanceReport, getMyAttendance, getSessionUser } from '../../../lib/api';
+import { getAttendanceReport, getSessionUser } from '../../../lib/api';
 import { Estado } from './_components/estado';
 import { NotaDoRl } from './_components/nota-do-rl';
 
@@ -68,38 +68,37 @@ function Cabecalho({ night, entries }: { night: RaidNightInfo; entries: Attendan
 }
 
 /**
- * Presença de raid.
+ * Presença de raid. **Só oficial** — Regra 7.
  *
- * **Duas telas diferentes atrás da mesma rota, e isso é a Regra 7.** Oficial vê
- * o detalhe de todo mundo; membro vê o próprio histórico e nada além. O recorte
- * é feito no servidor, não escondendo linha no CSS — o dado dos outros nem sai
- * do banco para quem não pode ver.
+ * Até a TIT-150 esta rota servia duas telas: oficial via todo mundo, membro via
+ * o próprio histórico. A visão de membro saiu porque não tinha usuário — os
+ * players não entram no site, mesmo tendo acesso.
+ *
+ * O gate aqui é `canSeeOthersHistory()` e não `isActingOfficer()`: a pergunta
+ * que esta tela faz é literalmente "pode ver o histórico dos outros?". Quem
+ * checa a precondição é o `OfficerGuard`, no endpoint — e é ele que vale,
+ * porque isto aqui é UX (Regra 5).
  */
 export default async function PresencaPage() {
   const user = await getSessionUser();
   if (!user) redirect('/?erro=sessao');
-  if (!user.hasInternalAccess) redirect('/interno');
+  if (!canSeeOthersHistory(user)) redirect('/interno');
 
-  const oficial = canSeeOthersHistory(user);
-  const report = oficial ? await getAttendanceReport() : null;
-  const meu = oficial ? null : await getMyAttendance();
+  const report = await getAttendanceReport();
 
   return (
     <main className="flex flex-1 flex-col gap-6">
       <div>
         <p className="text-bronze font-mono text-xs tracking-widest uppercase">Time de raid</p>
-        <h1 className="text-fg mt-2 text-2xl font-semibold tracking-tight">
-          {oficial ? 'Presença' : 'Minha presença'}
-        </h1>
+        <h1 className="text-fg mt-2 text-2xl font-semibold tracking-tight">Presença</h1>
         <p className="text-fg-muted mt-2 text-sm">
           O que cada pessoa confirmou no signup, cruzado com quem apareceu em pull de boss no log.
-          {oficial
-            ? ' “Não raidou” é o único caso que o log não explica — banco decidido na hora e furo são idênticos ali.'
-            : ' Você vê o seu histórico; o das outras pessoas é da liderança.'}
+          “Não raidou” é o único caso que o log não explica — banco decidido na hora e furo são
+          idênticos ali.
         </p>
       </div>
 
-      {oficial ? <VisaoOficial report={report} /> : <VisaoMembro meu={meu} />}
+      <VisaoOficial report={report} />
     </main>
   );
 }
@@ -201,85 +200,5 @@ function VisaoOficial({ report }: { report: Awaited<ReturnType<typeof getAttenda
         </details>
       ))}
     </div>
-  );
-}
-
-function VisaoMembro({ meu }: { meu: Awaited<ReturnType<typeof getMyAttendance>> }) {
-  if (meu === null || meu.nights.length === 0) {
-    return (
-      <p className="border-border text-fg-muted rounded-lg border border-dashed p-5 text-sm">
-        Você ainda não aparece em nenhuma noite gravada.
-      </p>
-    );
-  }
-
-  return (
-    <>
-      <div className="border-border bg-surface flex flex-wrap gap-x-8 gap-y-2 rounded-lg border p-4 text-sm">
-        <div>
-          <span className="text-fg-subtle">Noites com dado </span>
-          <span className="text-fg font-mono tabular-nums">{meu.summary.counted}</span>
-        </div>
-        <div>
-          <span className="text-fg-subtle">Presente em </span>
-          <span className="text-accent font-mono tabular-nums">{meu.summary.present}</span>
-        </div>
-        <div>
-          <span className="text-fg-subtle">Confirmou e não raidou </span>
-          <span className="text-fg font-mono tabular-nums">{meu.summary.missed}</span>
-        </div>
-      </div>
-
-      {/* Noite sem log fica fora da conta de propósito: ela não diz nada sobre
-          quem estava lá, e entrar como falta afundaria a taxa de quem raidou. */}
-      <p className="text-fg-subtle text-xs">
-        Noites sem log com pull de boss não entram na conta — elas não dizem nada sobre quem estava
-        na raid.
-      </p>
-
-      <div className="border-border overflow-x-auto rounded-lg border">
-        <table className="w-full min-w-[36rem] text-sm">
-          <thead className="border-border text-fg-subtle border-b">
-            <tr>
-              <th scope="col" className="px-4 py-2 text-left font-medium">
-                Noite
-              </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium">
-                Personagem
-              </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium">
-                Signup
-              </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium">
-                Estado
-              </th>
-              <th scope="col" className="px-4 py-2 text-left font-medium">
-                Motivo
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {meu.nights.map((n) => (
-              <tr key={n.entry.id} className="border-border/60 border-b last:border-0">
-                <td className="px-4 py-2">
-                  <span className="text-fg font-mono tabular-nums">{dataCurta(n.date)}</span>
-                  <span className="text-fg-subtle ml-2 text-xs">{n.instance}</span>
-                  {n.optional && <span className="text-fg-subtle ml-2 text-xs">(opcional)</span>}
-                </td>
-                <td className="text-fg-muted px-4 py-2 font-mono">
-                  {n.entry.name}
-                  <span className="text-fg-subtle">-{n.entry.realm}</span>
-                </td>
-                <td className="text-fg-muted px-4 py-2">{n.entry.signup ?? '—'}</td>
-                <td className="px-4 py-2">
-                  <Estado state={n.entry.state} />
-                </td>
-                <td className="text-fg-muted px-4 py-2 text-xs">{n.entry.note ?? ''}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
   );
 }

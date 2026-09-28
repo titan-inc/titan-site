@@ -1,9 +1,8 @@
 import { Body, Controller, Get, Param, Put, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
-import type { AttendanceReport, MyAttendance, SessionUser } from '@titan/shared';
+import type { AttendanceReport, SessionUser } from '@titan/shared';
 import type { Request } from 'express';
-import type { UserWithCharacters } from '../auth/auth.repository';
-import { MemberGuard, OfficerGuard } from '../auth/session.guard';
+import { OfficerGuard } from '../auth/session.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AttendanceReportService } from './attendance-report.service';
 
@@ -13,14 +12,12 @@ const noteSchema = z.object({
 });
 
 /**
- * Presença de raid. Dois gates, e a diferença entre eles é a Regra 7.
+ * Presença de raid. **Só oficial**, em todas as rotas.
  *
- * - `/internal/attendance` — detalhe de todo mundo, **só oficial**.
- * - `/internal/attendance/me` — o próprio histórico, qualquer membro.
- *
- * O recorte de "meu histórico" é feito **no banco**, a partir dos personagens
- * da sessão. O cliente não escolhe de quem é o histórico que quer ver: se
- * escolhesse, o gate seria só decoração.
+ * Havia um `/me` com o próprio histórico, sob `MemberGuard`. Saiu: os players
+ * não entram no site, e a tela virou ferramenta de trabalho do raid leader —
+ * rotação de banco, que é explicitamente não-pública. Ver TIT-150 e a Regra 7
+ * do CLAUDE.md, que registra a reversão.
  */
 @Controller('internal/attendance')
 export class AttendanceController {
@@ -30,15 +27,6 @@ export class AttendanceController {
   @UseGuards(OfficerGuard)
   getReport(): Promise<AttendanceReport> {
     return this.report.getReport();
-  }
-
-  @Get('me')
-  @UseGuards(MemberGuard)
-  getMine(@Req() req: Request): Promise<MyAttendance> {
-    // Populado pelo MemberGuard: a conta com TODOS os personagens no roster.
-    // Uma pessoa raida em mais de um char, e o histórico dela é a soma.
-    const account = (req as Request & { account: UserWithCharacters }).account;
-    return this.report.getMine(account.characters.map((c) => c.characterId));
   }
 
   /**
