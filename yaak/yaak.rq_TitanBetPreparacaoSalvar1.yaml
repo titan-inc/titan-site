@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_TitanBetPreparacaoSalvar1
+createdAt: 2026-09-23T20:00:00.000000
+updatedAt: 2026-09-24T01:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"weekly": true, "encounters": [{"encounterId": 0, "track": "farm", "mercados": ["top_dps", "first_death"]}, {"encounterId": 0, "track": "progressao", "mercados": ["first_death"]}]}'
+bodyType: application/json
+description: 'OfficerGuard. A configuração INTEIRA da semana (D-45) — substitui a anterior e grava um BetEvent do que mudou. encounterId do catálogo do WCL (nome e zona vêm de lá); track farm ou progressao; progressão só tem first_death. weekly: true cria a Weekly Progression, cujas opções são os bosses de progressão (D-54) — o officer não marca boss. Candidatos e bettors não entram: são do Ready. 422 fora do catálogo; 409 depois do Ready ou do cutoff.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: PUT
+name: 'Salvar preparação (officer)'
+sortPriority: 800
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas/:roundId/preparacao
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

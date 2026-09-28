@@ -24,9 +24,14 @@ export type RevalidationResult =
 /**
  * Revalidação periódica de membership.
  *
- * A membership é confirmada no login e a sessão dura 12h, então sem isto quem
- * sai da guilda continua vendo a área interna até a sessão expirar — e, se não
- * deslogar, para sempre.
+ * A membership é confirmada no login, e desde a TIT-148 a sessão dura uma
+ * semana deslizante — ou seja, quem usa o site toda semana nunca reloga. Sem
+ * esta rodada, quem sai da guilda continuaria vendo a área interna até isso
+ * vencer, e quem não deslogasse continuaria para sempre.
+ *
+ * **Isto é o que substituiu o TTL curto de sessão**, e é o que permitiu alongá-lo:
+ * revogar deixou de depender de a sessão expirar sozinha. `revokeMembership`
+ * apaga as sessões junto, então o acesso cai na rodada, não no vencimento.
  *
  * Não precisa de token do usuário: os personagens gravados no login permitem
  * conferir contra o roster com a credencial da própria aplicação. É por isso que

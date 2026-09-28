@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CharactersModule } from '../characters/characters.module';
+import { WowItemStatsModule } from '../wow-data/wow-item-stats.module';
 import { LootHistoryController } from './loot-history.controller';
 import { LootHistoryService } from './loot-history.service';
 import { LootLinesRepository } from './loot-lines.repository';
@@ -24,9 +25,13 @@ import { RcImportService } from './rc-import.service';
  * `AuthModule` entra pelo `MemberGuard` do controller de leitura.
  * `CharactersModule` entra pelo `RcImportService`, que resolve identidade de
  * quem venceu e de quem lootou antes de gravar.
+ * `WowItemStatsModule` entra pelo `calcularVarios` (TIT-135) — o payload de
+ * stats de cada item da página do histórico. Não é `WowDataModule`: aquele
+ * importa este módulo de volta (pelo relatório de desconhecidos) e fecharia
+ * um ciclo.
  */
 @Module({
-  imports: [AuthModule, CharactersModule],
+  imports: [AuthModule, CharactersModule, WowItemStatsModule],
   controllers: [LootHistoryController],
   providers: [RcImportService, LootHistoryService, LootLinesService, LootLinesRepository],
   exports: [RcImportService, LootLinesService],

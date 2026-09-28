@@ -26,8 +26,18 @@ export function proxy(request: NextRequest) {
     // Para a home, não para uma página de login: a home é o único lugar de
     // login desde que `/entrar` saiu. O motivo abre o modal e some da URL.
     const url = request.nextUrl.clone();
+    const de = `${request.nextUrl.pathname}${request.nextUrl.search}`;
     url.pathname = '/';
-    url.search = '?erro=sessao';
+
+    // O caminho pretendido viaja junto (TIT-148). A Regra 7 manda todo post no
+    // Discord linkar fundo, na página exata — então o link que a pessoa clica
+    // sem sessão é justamente o que ela quer de volta, e devolvê-la em
+    // `/interno` genérico faz o link do Discord parecer quebrado.
+    //
+    // Quem valida isto é `destinoSeguro()` no Nest, nas duas pontas do OAuth.
+    // Aqui só se repassa; o Nest é que decide se aceita.
+    url.search = `?erro=sessao&de=${encodeURIComponent(de)}`;
+
     return NextResponse.redirect(url);
   }
 

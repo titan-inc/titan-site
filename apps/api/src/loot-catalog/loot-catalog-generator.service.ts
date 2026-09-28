@@ -11,7 +11,11 @@ import {
   type WowSpec,
 } from '@titan/shared';
 import { BlizzardService } from '../blizzard/blizzard.service';
-import { WarcraftLogsService, type RaidEncounter } from '../warcraftlogs/warcraftlogs.service';
+import {
+  ehEspelhoDeTeste,
+  WarcraftLogsService,
+  type RaidEncounter,
+} from '../warcraftlogs/warcraftlogs.service';
 
 /**
  * Monta o arquivo de catálogo a partir da Blizzard e do Warcraft Logs, para o
@@ -29,9 +33,6 @@ const DIFICULDADE_POR_MODE: Record<string, RaidDifficultyLevel> = {
   HEROIC: RAID_DIFFICULTIES.HEROIC,
   MYTHIC: RAID_DIFFICULTIES.MYTHIC,
 };
-
-/** Quanto o WCL soma no id para espelhar uma zona de teste. Ver `semEspelhosDeTeste`. */
-const OFFSET_ZONA_DE_TESTE = 50_000;
 
 /** Os três primários. O resto de `preview_item.stats` é secundário. */
 const PRIMARIO_POR_STAT: Record<string, PrimaryStat> = {
@@ -290,30 +291,16 @@ function specsDoDump(dump?: JournalDump): Map<number, WowSpec[]> {
 }
 
 /**
- * Descarta os espelhos de PTR/Beta do catálogo do WCL.
- *
- * Enquanto uma raid está em teste o WCL a publica **duas vezes**: a zona ao vivo
- * e uma de PTR/Beta, cujos encounters repetem o mesmo nome com o id somado de
- * 50000. Sem isto toda raid em teste sai ambígua — e raid em teste é exatamente
- * a que precisa ser gerada, porque é a que ainda não está no catálogo.
- *
- * O critério **não** é "id alto", é ter um gêmeo exato em `id - 50000` com o
- * mesmo nome. Assim um encounter ao vivo que um dia nasça com id alto continua
- * passando, em vez de sumir em silêncio.
- *
- * O nome da zona não serve de critério: em 09/08/2026 as zonas 53 e 54 se
- * chamam as duas "The Venomous Abyss", sem sufixo que as distinga. Só duas das
- * três zonas espelhadas dizem `(Beta)` ou `(PTR)` no nome.
+ * Descarta os espelhos de PTR/Beta do catálogo do WCL (`ehEspelhoDeTeste`).
+ * Sem isto toda raid em teste sai ambígua — e raid em teste é exatamente a que
+ * precisa ser gerada, porque é a que ainda não está no catálogo.
  *
  * O que sobra depois disto é ambiguidade de verdade: `Artificer Xy'mox` existe
  * em Castle Nathria (2405) e em Sepulcher (2553), dois bosses diferentes que
  * dividem o nome.
  */
 function semEspelhosDeTeste(encounters: Map<number, RaidEncounter>): RaidEncounter[] {
-  return [...encounters.values()].filter((boss) => {
-    if (boss.id < OFFSET_ZONA_DE_TESTE) return true;
-    return encounters.get(boss.id - OFFSET_ZONA_DE_TESTE)?.name !== boss.name;
-  });
+  return [...encounters.values()].filter((boss) => !ehEspelhoDeTeste(boss, encounters));
 }
 
 /** Slug de nome de raid. Só para sugerir; quem gera pode passar o seu. */

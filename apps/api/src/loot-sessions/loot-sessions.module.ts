@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CharactersModule } from '../characters/characters.module';
 import { LootLinesModule } from '../loot-lines/loot-lines.module';
+import { WowItemStatsModule } from '../wow-data/wow-item-stats.module';
 import { LootCouncilService } from './loot-council.service';
 import { LootSessionChangeBus } from './loot-session-change-bus';
 import { LootSessionDummiesService } from './loot-session-dummies.service';
@@ -26,9 +27,13 @@ import { LootSessionsService } from './loot-sessions.service';
  *
  * `LootSessionDummiesService` é a ferramenta de teste do realtime (TIT-68,
  * ver docs/ops.md): exportado porque `OpsModule` é quem expõe a rota.
+ *
+ * `WowItemStatsModule` entra pelo `calcularVarios` (TIT-135) — o payload de
+ * stats de cada item da sessão. Não é `WowDataModule`: aquele importa este
+ * módulo de volta (pelo relatório de desconhecidos) e fecharia um ciclo.
  */
 @Module({
-  imports: [AuthModule, CharactersModule, LootLinesModule],
+  imports: [AuthModule, CharactersModule, LootLinesModule, WowItemStatsModule],
   controllers: [LootSessionsController],
   providers: [
     LootSessionsService,

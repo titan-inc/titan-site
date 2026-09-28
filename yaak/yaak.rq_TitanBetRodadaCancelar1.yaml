@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_TitanBetRodadaCancelar1
+createdAt: 2026-09-25T00:00:00.000000
+updatedAt: 2026-09-25T00:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"motivo": ""}'
+bodyType: application/json
+description: 'OfficerGuard. Cancelamento administrativo da rodada (D-77): terminal e irreversível, com motivo obrigatório. Todo slip ativo (rascunho, aguardando_deposito, valido) vira cancelado; recusado e expirado ficam como estão. Nada é apagado e nada entra no ledger — devolução de gold é dos officers, fora do Titan Bet. Registra quem, quando e o motivo na rodada e em BetEvent (rodada_cancelada). 204; 400 sem motivo; 409 se a rodada tem settlement confirmado, está fechada ou já foi cancelada. MEXE NO ESTADO DA RODADA, SEM VOLTA.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Cancelar rodada (officer)'
+sortPriority: 10000
+url: ${[ base_url ]}/internal/titan-bet/officer/rodadas/:roundId/cancelar
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

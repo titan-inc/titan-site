@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_TitanBetAuditoriaSemRaid1
+createdAt: 2026-09-23T18:00:00.000000
+updatedAt: 2026-09-23T18:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"motivo": ""}'
+bodyType: application/json
+description: 'OfficerGuard. "Não houve raid oficial nesta sessão" (D-60): só na sessão ausente (nenhum titanbet*), com motivo obrigatório. :session é terca ou quinta. Fica registrado quem declarou e quando; resolvida a última ausente, a auditoria fica pronta. 204; 409 antes de quinta 23:30 no fuso da guilda (D-73), se a sessão não está ausente ou se a auditoria não está em revisão.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Declarar sessão sem raid (officer)'
+sortPriority: 10000
+url: ${[ base_url ]}/internal/titan-bet/officer/auditorias/:auditId/fontes/:session/sem-raid
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

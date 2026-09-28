@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { itemViewSchema } from './item-view.js';
 import { notaSchema } from './nota.js';
 import { lootSessionStatusSchema } from './loot-session.js';
 import { raidDifficultyLevelSchema } from './wow.js';
@@ -152,35 +153,24 @@ export const respostaNaSessaoSchema = z.object({
 });
 export type RespostaNaSessao = z.infer<typeof respostaNaSessaoSchema>;
 
-/** Uma peça da sessão, pronta para a tela. */
-export const lootSessionItemViewSchema = z.object({
+/**
+ * Uma peça da sessão, pronta para a tela.
+ *
+ * O item em si (nome, ícone, `itemString`, `ComputedItemStats`) vem do
+ * `itemViewSchema` unificado (TIT-135) — este schema só acrescenta o que é
+ * da SESSÃO, não do item: posição na colagem, quem lootou, a resposta.
+ *
+ * `itemContext`/`bonusIds`, que existiam aqui separados, saem: eram
+ * derivados do `itemString` só para a tela reconstruir a união de bônus, e
+ * `ComputedItemStats` já entrega essa união decodificada (`track`,
+ * `dificuldade`, `sockets`, `desconhecidos`) — sem consumidor, viraram
+ * duplicata do mesmo dado em forma crua.
+ */
+export const lootSessionItemViewSchema = itemViewSchema.extend({
   id: z.string(),
 
   /** Ordem na colagem. É o que distingue duas cópias do mesmo item. */
   position: z.number().int().positive(),
-
-  itemId: z.number().int().positive(),
-
-  /**
-   * O `itemString` cru, inteiro.
-   *
-   * Vai para a tela porque duas peças com o mesmo `itemID` podem ser coisas
-   * diferentes — observado em raid real, mesmo boss: duas cópias de `202593`
-   * com bônus `9415` e `9414`. Sem isso o conselho vê duas linhas idênticas.
-   */
-  itemString: z.string(),
-
-  /** Derivados do `itemString`. `itemContext` nulo é "não sei", nunca zero. */
-  itemContext: z.number().int().nullable(),
-  bonusIds: z.array(z.number().int()),
-
-  /**
-   * Nome e ícone do catálogo. Nulos quando o item ainda não foi enriquecido —
-   * a linha existe mesmo assim, e a tela mostra o id.
-   */
-  name: z.string().nullable(),
-  icon: z.string().nullable(),
-  equipLoc: z.string().nullable(),
 
   /** Quem lootou NO JOGO. Entrada para a decisão, nunca o resultado dela. */
   looterName: z.string().nullable(),
@@ -265,6 +255,17 @@ export const lootSessionDetailSchema = z.object({
    * nenhuma das duas é coisa que alguém declare.
    */
   opcoesDeResposta: z.array(z.object({ slug: z.string(), label: z.string() })),
+
+  /**
+   * `MAX(WowBonus.trackScalingId)` do build ativo — TIT-135. Quem decide se
+   * a contagem `4/6` de `ComputedItemStats.track` aparece é a TELA,
+   * comparando `track.scalingId` com este número; sem ele o browser não tem
+   * como saber qual é a season corrente (Regra 1 — só o Nest toca banco).
+   *
+   * `null` quando o build ativo não tem nenhum bonus com track — nenhuma
+   * peça da sessão mostra contagem.
+   */
+  trackScalingIdAtual: z.number().int().nullable(),
 });
 export type LootSessionDetail = z.infer<typeof lootSessionDetailSchema>;
 

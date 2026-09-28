@@ -37,3 +37,8 @@
 # prebuild do Next gera o manifesto de imagens do roster a partir de la.
 /docker-compose.yml
 /scripts
+
+# Harness de validação com o Warcraft Logs real (Titan Bet, test-design §40):
+# ferramenta local de teste. Não entra na imagem — a Regra 8 nasceu de ferramenta
+# de dev dentro da imagem de produção.
+/apps/api/test/wcl-real

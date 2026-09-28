@@ -4,6 +4,7 @@ import { LIMITE_DA_NOTA, type LootSessionItemView } from '@titan/shared';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { API_URL } from '../../../../lib/config';
 import { urlDoIcone } from './icone-do-item';
+import { TooltipDeItem } from './tooltip-de-item';
 
 /**
  * O card de uma peça: onde a pessoa declara o que quer.
@@ -19,12 +20,14 @@ export function CardDeResposta({
   sessionId,
   item,
   opcoes,
+  trackScalingIdAtual,
   aoFechar,
   aoResponder,
 }: {
   sessionId: string;
   item: LootSessionItemView;
   opcoes: Array<{ slug: string; label: string }>;
+  trackScalingIdAtual: number | null;
   aoFechar: () => void;
   aoResponder: () => void;
 }) {
@@ -84,7 +87,9 @@ export function CardDeResposta({
           )}
 
           <div>
-            <p className="font-medium">{item.name ?? `Item ${item.itemId}`}</p>
+            <TooltipDeItem item={item} trackScalingIdAtual={trackScalingIdAtual}>
+              <p className="font-medium">{item.name ?? `Item ${item.itemId}`}</p>
+            </TooltipDeItem>
             {item.looterName !== null && (
               <p className="text-fg-subtle text-xs">lootado por {item.looterName}</p>
             )}

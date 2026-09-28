@@ -1,0 +1,22 @@
+type: folder
+model: folder
+id: fl_rot4Ti152x
+createdAt: 2026-09-28T21:50:00.000000000
+updatedAt: 2026-09-28T21:50:00.000000000
+workspaceId: wk_8LmjjnEbam
+folderId: null
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: rotation
+sortPriority: 0.0
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true

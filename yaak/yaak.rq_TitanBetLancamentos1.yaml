@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetLancamentos1
+createdAt: 2026-09-24T06:00:00.000000
+updatedAt: 2026-09-24T06:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'OfficerGuard. Os lançamentos do ledger de um slip, em ordem (T-C06): entryId (texto — é o correctsEntryId do ajuste), kind, amount, reason, quem lançou e quando. Nenhuma aposta ou mercado. Lista vazia se o slip não tem lançamento.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Lançamentos do slip (officer)'
+sortPriority: 12500
+url: ${[ base_url ]}/internal/titan-bet/officer/slips/:slipId/lancamentos
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

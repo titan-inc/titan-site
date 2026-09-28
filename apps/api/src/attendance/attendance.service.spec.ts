@@ -280,4 +280,81 @@ describe('AttendanceService', () => {
 
     expect(noite()).toMatchObject({ optional: true });
   });
+
+  describe('congelamento do signup declarado', () => {
+    /** O terceiro argumento de saveNight: a raid ainda não começou? */
+    const congelou = (): boolean | undefined => {
+      const calls = repo.saveNight.mock.calls as unknown as Array<[unknown, unknown, boolean]>;
+      return calls[0]?.[2];
+    };
+
+    /** Congela o relógio num instante do fuso da guilda. */
+    const agora = (iso: string) => {
+      jest.useFakeTimers().setSystemTime(Date.parse(iso));
+    };
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('congela na manhã do dia da raid — o signup ainda é a declaração', () => {
+      // 28/07/2026 11:00 BRT, que é a hora em que o job roda.
+      agora('2026-07-28T14:00:00Z');
+
+      return service.sync().then(() => expect(congelou()).toBe(true));
+    });
+
+    it('para de congelar depois de a raid começar', () => {
+      // 28/07 22:00 BRT: a raid das 21h já rolou, e o que está no WoWAudit a
+      // partir daqui é a edição do RL, não o que as pessoas declararam.
+      agora('2026-07-29T01:00:00Z');
+
+      return service.sync().then(() => expect(congelou()).toBe(false));
+    });
+
+    it('não congela no dia seguinte, que é quando o RL já editou', () => {
+      agora('2026-07-29T14:00:00Z');
+
+      return service.sync().then(() => expect(congelou()).toBe(false));
+    });
+
+    it('congela dias antes — o congelamento não é tiro único', () => {
+      // A noite é relida todo dia até começar, então uma falha do WoWAudit
+      // numa manhã não perde a declaração daquela noite.
+      agora('2026-07-25T14:00:00Z');
+
+      return service.sync().then(() => expect(congelou()).toBe(true));
+    });
+
+    it('a janela inclui raid que ainda não aconteceu', async () => {
+      agora('2026-07-25T14:00:00Z');
+      wowaudit.getPlannedRaids.mockResolvedValue([raid({ id: 9, date: '2026-08-01' })]);
+
+      const r = await service.sync();
+
+      // Contada à parte de withoutLog: raid que não rolou não é lacuna.
+      expect(r.nights).toBe(1);
+      expect(r.upcoming).toBe(1);
+      expect(r.withoutLog).toBe(0);
+      expect(repo.saveNight).toHaveBeenCalledTimes(1);
+    });
+
+    it('respeita GUILD_RAID_START_HOUR em vez de assumir 21h', () => {
+      // 28/07 19:00 BRT: depois de uma raid marcada para as 18h.
+      process.env.GUILD_RAID_START_HOUR = '18';
+      agora('2026-07-28T22:00:00Z');
+
+      const comHora = new AttendanceService(
+        wowaudit as unknown as WowAuditService,
+        wcl as unknown as WarcraftLogsService,
+        repo as unknown as AttendanceRepository,
+        characters as unknown as CharactersRepository,
+      );
+
+      return comHora
+        .sync()
+        .then(() => expect(congelou()).toBe(false))
+        .finally(() => delete process.env.GUILD_RAID_START_HOUR);
+    });
+  });
 });

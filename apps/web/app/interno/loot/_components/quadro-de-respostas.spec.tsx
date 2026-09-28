@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
-import type { LootSessionDetail, LootSessionStatus } from '@titan/shared';
+import {
+  ITEM_STATS_INDISPONIVEL,
+  itemStatsIndisponivel,
+  type LootSessionDetail,
+  type LootSessionStatus,
+} from '@titan/shared';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QuadroDeRespostas } from './quadro-de-respostas';
@@ -27,17 +32,19 @@ const sessao = (over: Partial<LootSessionDetail> = {}): LootSessionDetail =>
     participantes: [participante('Fulano', 'fulano'), participante('Ciclano', 'ciclano')],
     minhaParticipacao: participante('Fulano', 'fulano'),
     opcoesDeResposta: [{ slug: 'bis', label: 'BiS' }],
+    trackScalingIdAtual: null,
     items: [
       {
         id: 'item-1',
         position: 1,
         itemId: 202612,
         itemString: 'item:202612',
-        itemContext: 6,
-        bonusIds: [],
         name: 'Ashen Sigil',
         icon: null,
         equipLoc: 'FINGER',
+        itemSubclass: null,
+        // Sem cálculo de item nestes testes — só o quadro de respostas.
+        ...itemStatsIndisponivel(ITEM_STATS_INDISPONIVEL.SEM_BUILD_ATIVO),
         looterName: 'Fulano',
         looterRealm: 'azralon',
         minhaResposta: {

@@ -159,11 +159,11 @@ export class LootSessionsRepository {
     return this.prisma.lootSessionItem.findMany({ select: { itemId: true, itemString: true } });
   }
 
-  /** Nome e ícone dos itens desta sessão, do catálogo. */
+  /** Nome, ícone e slot dos itens desta sessão, do catálogo. */
   findItems(itemIds: number[]) {
     return this.prisma.wowItem.findMany({
       where: { itemId: { in: itemIds } },
-      select: { itemId: true, name: true, icon: true, equipLoc: true },
+      select: { itemId: true, name: true, icon: true, equipLoc: true, itemSubclass: true },
     });
   }
 

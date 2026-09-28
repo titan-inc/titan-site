@@ -52,6 +52,23 @@ export interface RaidSignup {
   status: SignupStatus;
 }
 
+/**
+ * Time de raid + a procedência do dado — o mesmo desenho do `RosterSnapshot`
+ * da Blizzard.
+ *
+ * Existe porque "time" e "time confiável" não são a mesma coisa. Para montar
+ * tela, cache velho serve. Para congelar os candidatos do Titan Bet no Ready,
+ * não serve: uma lista velha ficaria valendo a semana inteira, sem ninguém
+ * saber (spec do Titan Bet, §5.4).
+ */
+export interface TeamSnapshot {
+  characters: TeamCharacter[];
+  /** Quando esta lista veio do WoWAudit de fato. */
+  fetchedAt: number;
+  /** true = a chamada falhou e isto é o cache anterior. */
+  stale: boolean;
+}
+
 /** TTL do cache. O raid leader mexe no time raramente. */
 const TEAM_TTL_MS = 60 * 60 * 1000;
 
@@ -77,8 +94,13 @@ export class WowAuditService {
    * hoje", que o rank da guilda não responde.
    */
   async getTeamCharacters(force = false): Promise<TeamCharacter[]> {
+    return (await this.getTeamCharactersSnapshot(force)).characters;
+  }
+
+  /** Time com a procedência junto. Ver `TeamSnapshot`. */
+  async getTeamCharactersSnapshot(force = false): Promise<TeamSnapshot> {
     if (!force && this.cache && Date.now() - this.cache.fetchedAt < TEAM_TTL_MS) {
-      return this.cache.characters;
+      return { ...this.cache, stale: false };
     }
 
     const key = process.env.WOW_AUDIT_KEY;
@@ -113,7 +135,7 @@ export class WowAuditService {
 
     this.cache = { characters, fetchedAt: Date.now() };
     this.logger.log(`Time do WoWAudit atualizado: ${characters.length} personagens`);
-    return characters;
+    return { ...this.cache, stale: false };
   }
 
   /**
@@ -212,11 +234,11 @@ export class WowAuditService {
     return (await res.json()) as T;
   }
 
-  private fallback(reason: string): TeamCharacter[] {
+  private fallback(reason: string): TeamSnapshot {
     if (this.cache) {
       const desde = new Date(this.cache.fetchedAt).toISOString();
       this.logger.warn(`WoWAudit falhou (${reason}); usando cache de ${desde}`);
-      return this.cache.characters;
+      return { ...this.cache, stale: true };
     }
     throw new Error(`WoWAudit falhou e não há cache anterior: ${reason}`);
   }

@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ApplicationsModule } from './applications/applications.module';
 import { AttendanceModule } from './attendance/attendance.module';
+import { RotationModule } from './rotation/rotation.module';
 import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
 import { LootCatalogModule } from './loot-catalog/loot-catalog.module';
@@ -20,6 +21,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RaidProgressModule } from './raidprogress/raidprogress.module';
 import { RosterModule } from './roster/roster.module';
 import { SnapshotsModule } from './snapshots/snapshots.module';
+import { TitanBetModule } from './titan-bet/titan-bet.module';
 
 @Module({
   imports: [
@@ -35,6 +37,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     SnapshotsModule,
     RaidProgressModule,
     AttendanceModule,
+    RotationModule,
     MembershipModule,
     OfficersModule,
     LootCatalogModule,
@@ -46,6 +49,7 @@ import { SnapshotsModule } from './snapshots/snapshots.module';
     HealthModule,
     ApplicationsModule,
     MplusModule,
+    TitanBetModule,
     OpsModule,
   ],
   controllers: [AppController],

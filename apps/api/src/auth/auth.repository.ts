@@ -121,6 +121,18 @@ export class AuthRepository {
     });
   }
 
+  /**
+   * Empurra a validade da sessão para frente.
+   *
+   * `updateMany` e não `update`: a sessão pode ter sido apagada entre a leitura
+   * e esta escrita — logout em outra aba, ou o job de revalidação revogando
+   * membership. `update` lançaria por isso, e derrubar um request por causa de
+   * uma renovação perdida seria trocar um efeito nenhum por um erro.
+   */
+  async touchSession(id: string, expiresAt: Date): Promise<void> {
+    await this.prisma.session.updateMany({ where: { id }, data: { expiresAt } });
+  }
+
   async deleteSession(id: string): Promise<void> {
     await this.prisma.session.deleteMany({ where: { id } });
   }

@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { toSlug } from '@titan/shared';
 import { loadGuildConfig, type GuildConfig } from '../config/guild.config';
+import type {
+  FightDoReport,
+  LeituraDoReport,
+  LinhaDeRanking,
+  LinhaDeTabela,
+  TabelaDeDispels,
+} from '../titan-bet/leitura-wcl';
 
 /** Boss de uma zona de raid, já com a zona a que pertence. */
 export interface RaidEncounter {
@@ -21,6 +28,29 @@ export interface RaidCatalog {
   zones: Map<number, RaidEncounter[]>;
   /** difficultyId → nome ("Mythic", "Heroic"...). */
   difficultyNames: Map<number, string>;
+}
+
+/** Quanto o WCL soma no id para espelhar uma zona de teste (PTR/Beta). */
+export const OFFSET_ZONA_DE_TESTE = 50_000;
+
+/**
+ * O boss é o espelho de PTR/Beta de um boss ao vivo?
+ *
+ * Enquanto uma raid está em teste o WCL a publica **duas vezes**: a zona ao vivo
+ * e uma de PTR/Beta, cujos encounters repetem o mesmo nome com o id somado de
+ * 50000. O critério **não** é "id alto", é ter um gêmeo exato em `id - 50000`
+ * com o mesmo nome — assim um encounter ao vivo que um dia nasça com id alto
+ * continua passando, em vez de sumir em silêncio.
+ *
+ * O nome da zona não serve de critério: em 09/08/2026 as zonas 53 e 54 se
+ * chamavam as duas "The Venomous Abyss", sem sufixo que as distinga.
+ */
+export function ehEspelhoDeTeste(
+  boss: RaidEncounter,
+  encounters: Map<number, RaidEncounter>,
+): boolean {
+  if (boss.id < OFFSET_ZONA_DE_TESTE) return false;
+  return encounters.get(boss.id - OFFSET_ZONA_DE_TESTE)?.name === boss.name;
 }
 
 /** Uma pull de boss num log da guilda. */
@@ -374,20 +404,166 @@ export class WarcraftLogsService {
     return relatorios;
   }
 
-  /** Relatórios da guilda na janela (código e início), paginando até o fim. */
-  private async listReports(
+  /**
+   * O report oficial do Titan Bet para o cálculo (spec do Titan Bet §7.3,
+   * §15.10): fights de boss Mythic, atores, mortes das fights dos encounters
+   * pedidos e, para cada kill deles, as tabelas e os rankings.
+   *
+   * Duas queries e a paginação das mortes. As tabelas vêm como o WCL exibe
+   * (D-47): Damage Done e Healing (com absorb e pets, o padrão da tabela), e
+   * Dispels. O ranking é `compare: Rankings, timeframe: Today` — a variante que
+   * reproduz a coluna "Parse %" (gate #1). Nenhuma regra de aposta aqui.
+   */
+  async getTitanBetReport(code: string, encounterIds: number[]): Promise<LeituraDoReport> {
+    if (!/^[A-Za-z0-9]+$/.test(code)) throw new Error(`código de report inválido: ${code}`);
+
+    const meta = await this.query<{
+      reportData: {
+        report: {
+          startTime: number;
+          revision: number;
+          fights: FightDoReport[];
+          masterData: { actors: Array<{ id: number; name: string; server: string }> };
+        };
+      };
+    }>(
+      `query($c: String!) { reportData { report(code: $c) {
+        startTime
+        revision
+        fights { id encounterID difficulty kill startTime endTime }
+        masterData { actors(type: "Player") { id name server } }
+      } } }`,
+      { c: code },
+    );
+    const rel = meta.reportData.report;
+    const fights = rel.fights.filter((f) => f.encounterID > 0 && f.difficulty === 5);
+    const pedidas = fights.filter((f) => encounterIds.includes(f.encounterID));
+    const kills = pedidas.filter((f) => f.kill === true);
+    const ids = pedidas.map((f) => f.id);
+
+    // Nenhuma fight dos encounters pedidos (report só de trash, ou só com boss
+    // fora da rodada): não há morte nem tabela para ler, e o WCL recusa
+    // `fightIDs: []` — o report continua valendo, só não traz pull.
+    if (ids.length === 0) {
+      return {
+        code,
+        startTime: rel.startTime,
+        revision: rel.revision,
+        fights,
+        actors: rel.masterData.actors,
+        deaths: [],
+        kills: {},
+      };
+    }
+
+    const porKill = kills
+      .map(
+        (k) => `
+        k${k.id}_dano: table(dataType: DamageDone, fightIDs: [${k.id}])
+        k${k.id}_cura: table(dataType: Healing, fightIDs: [${k.id}])
+        k${k.id}_dispels: table(dataType: Dispels, fightIDs: [${k.id}])
+        k${k.id}_dps: rankings(fightIDs: [${k.id}], playerMetric: dps, compare: Rankings, timeframe: Today)
+        k${k.id}_hps: rankings(fightIDs: [${k.id}], playerMetric: hps, compare: Rankings, timeframe: Today)`,
+      )
+      .join('');
+    const mortes = (extra: string) =>
+      `mortes: events(dataType: Deaths, fightIDs: $f, hostilityType: Friendlies, limit: 10000${extra}) { data nextPageTimestamp }`;
+
+    type Detalhe = Record<string, unknown> & {
+      mortes: { data: LeituraDoReport['deaths']; nextPageTimestamp: number | null };
+    };
+    const detalhe = (
+      await this.query<{ reportData: { report: Detalhe } }>(
+        `query($c: String!, $f: [Int]!) { reportData { report(code: $c) {
+          ${mortes('')}
+          ${porKill}
+        } } }`,
+        { c: code, f: ids },
+      )
+    ).reportData.report;
+
+    const deaths = [...detalhe.mortes.data];
+    for (let s = detalhe.mortes.nextPageTimestamp; s !== null;) {
+      const pagina = (
+        await this.query<{ reportData: { report: Pick<Detalhe, 'mortes'> } }>(
+          `query($c: String!, $f: [Int]!, $s: Float!) { reportData { report(code: $c) {
+            ${mortes(', startTime: $s')}
+          } } }`,
+          { c: code, f: ids, s },
+        )
+      ).reportData.report.mortes;
+      deaths.push(...pagina.data);
+      s = pagina.nextPageTimestamp;
+    }
+
+    const tabela = (k: number, nome: string) =>
+      (detalhe[`k${k}_${nome}`] as { data: { entries: LinhaDeTabela[] } }).data.entries ?? [];
+    const ranking = (k: number, nome: string): LinhaDeRanking[] => {
+      const lutas = (
+        detalhe[`k${k}_${nome}`] as {
+          data: Array<{ roles: Record<string, { characters: LinhaDeRanking[] }> }>;
+        }
+      ).data;
+      return lutas.flatMap((l) => Object.values(l.roles).flatMap((r) => r.characters ?? []));
+    };
+
+    return {
+      code,
+      startTime: rel.startTime,
+      revision: rel.revision,
+      fights,
+      actors: rel.masterData.actors,
+      deaths,
+      kills: Object.fromEntries(
+        kills.map((k) => [
+          k.id,
+          {
+            damage: tabela(k.id, 'dano'),
+            healing: tabela(k.id, 'cura'),
+            dispels: (detalhe[`k${k.id}_dispels`] as { data: TabelaDeDispels }).data,
+            rankingsDps: ranking(k.id, 'dps'),
+            rankingsHps: ranking(k.id, 'hps'),
+          },
+        ]),
+      ),
+    };
+  }
+
+  /**
+   * Relatórios da guilda na janela, com título e revisão — o que o Auditar do
+   * Titan Bet precisa para achar o report oficial `titanbet*` e congelar a
+   * referência lida (spec do Titan Bet §7.2, §15.10). Nenhuma regra de aposta
+   * aqui: quem decide o que é oficial é o Titan Bet.
+   */
+  async listGuildReports(
+    from: Date,
+    to: Date,
+  ): Promise<Array<{ code: string; title: string; revision: number; startTime: number }>> {
+    return this.listReports<{ code: string; title: string; revision: number; startTime: number }>(
+      from,
+      to,
+      'code title revision startTime',
+    );
+  }
+
+  /**
+   * Relatórios da guilda na janela, paginando até o fim. `campos` é o que se
+   * pede de cada um; por padrão, código e início.
+   */
+  private async listReports<T = { code: string; startTime: number }>(
     from: Date,
     to: Date | null,
-  ): Promise<Array<{ code: string; startTime: number }>> {
+    campos = 'code startTime',
+  ): Promise<T[]> {
     const guildId = await this.getGuildId();
-    const relatorios: Array<{ code: string; startTime: number }> = [];
+    const relatorios: T[] = [];
 
     for (let page = 1; ; page++) {
       const data = await this.query<{
         reportData: {
           reports: {
             has_more_pages: boolean;
-            data: Array<{ code: string; startTime: number }>;
+            data: T[];
           };
         };
       }>(
@@ -395,7 +571,7 @@ export class WarcraftLogsService {
           reportData {
             reports(guildID: $guild, startTime: $start, endTime: $end, limit: 100, page: $page) {
               has_more_pages
-              data { code startTime }
+              data { ${campos} }
             }
           }
         }`,

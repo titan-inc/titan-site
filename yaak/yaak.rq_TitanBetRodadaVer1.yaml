@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetRodadaVer1
+createdAt: 2026-09-24T06:00:00.000000
+updatedAt: 2026-09-24T06:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'ApostadorDaRodadaGuard. O cardápio com nomes (T-C02): mercados com o boss (nulo na Weekly), bosses de progressão, candidatos com nome, realm e role, podeApostar (fase OPEN + conta no snapshot, D-53b) e personagensDoApostador (os ids que o First Death recusa, D-56). 404 se a rodada não existe ou ainda está em preparação. Sem odds nem stake — odds têm rota própria.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Cardápio da rodada (membro)'
+sortPriority: 950
+url: ${[ base_url ]}/internal/titan-bet/rodadas/:roundId
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

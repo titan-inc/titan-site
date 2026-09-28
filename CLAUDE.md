@@ -120,6 +120,19 @@ Por isso existem **três** guards, e o nome mais simples não é o mais permissi
 | `MemberGuard`  | o acima + rank <= `GUILD_RANK_ACCESS_MAX` | o time de raid        |
 | `OfficerGuard` | o acima + ser oficial                     | a liderança           |
 
+Existe um quarto, **específico do Titan Bet**, que **não** substitui o `RosterGuard` em lugar
+nenhum fora dele:
+
+| guard                    | exige                                                         | quem passa                                           |
+| ------------------------ | ------------------------------------------------------------- | ---------------------------------------------------- |
+| `ApostadorDaRodadaGuard` | sessão + (personagem no roster **ou** slip na rodada da rota) | a guilda, e quem saiu dela com aposta naquela rodada |
+
+Serve só às rotas `internal/titan-bet/rodadas/:roundId/*`: quem apostou e saiu da guilda
+continua concorrendo naquela rodada (D-53a/D-65 da spec), e nada além dela — as outras
+rodadas e o resto do site continuam `RosterGuard`/`MemberGuard`. Na lista
+`internal/titan-bet/rodadas`, sem `:roundId`, basta slip em alguma rodada, e a lista só
+traz as dele. Ver `docs/specs/titan-bet.md`.
+
 Endpoint novo continua exigindo guard; a escolha é qual. Ver `docs/specs/mplus-vaga-discord.md`.
 
 ### O processo não pode depender de uma pessoa estar disponível
@@ -269,6 +282,29 @@ O arquivo é `apps/web/proxy.ts`. Chamava-se `middleware.ts` até o Next 16 reno
 
 Ao criar endpoint interno, o teste não é "a UI esconde?" — é "chamado sem cookie devolve 401?".
 
+### A sessão dura uma semana, e quem decide isso é o banco (01/09/2026)
+
+Dois relógios, de propósito — **igualá-los quebra o login**:
+
+|                     | vale                               | quem é              |
+| ------------------- | ---------------------------------- | ------------------- |
+| `Session.expiresAt` | 7 dias, contados do **último uso** | a autoridade        |
+| `maxAge` do cookie  | 30 dias                            | só o portador do id |
+
+O `expiresAt` desliza em `resolveSession()` (com folga de 1h, para não virar um `UPDATE` por request). O cookie precisa durar mais que ele porque **o deslizamento não tem como chegar ao browser**: quase toda leitura de sessão sai de um Server Component do Next, cujo `Set-Cookie` de resposta da API não é repassado adiante. Cookie órfão é inofensivo — não acha sessão, e as páginas de `/interno` mandam para `/?erro=sessao`.
+
+Era 12h fixas, justificado como "revalidar membership com frequência". Deixou de ser verdade com a TIT-25: o `MembershipService` revalida a cada 6h com a credencial da aplicação e **apaga as sessões** de quem perdeu acesso. O TTL curto não comprava revogação; comprava um login novo em quase toda visita — e cada login exercitava o fluxo mais frágil do código. Ver TIT-148.
+
+Consequência aceita: personagem **novo** só é descoberto no login, porque o roster da Blizzard não diz de qual conta cada personagem é. Com 12h isso se resolvia sozinho todo dia; agora leva uma semana. Não vale guardar refresh token de ninguém para encurtar isso.
+
+### O login é redirect de página inteira, nunca popup (01/09/2026)
+
+Foi popup até a TIT-148, com `window.open`, `BroadcastChannel`, polling e uma carência para adivinhar se a janela fechou por sucesso ou por desistência. Cinco peças coordenando o fim de um login, cada uma capaz de fazer um login **bem-sucedido** aparecer como erro de cancelamento — e foi o que aconteceu por semanas.
+
+Redirect não tem estado nenhum entre janelas: a resposta do callback já traz o cookie e já aponta para o destino. O botão é um `<a>`, então também funciona sem JavaScript.
+
+O destino viaja em `?de=`, validado por `destinoSeguro()` **nas duas pontas** do OAuth: só `/interno` e abaixo. Redirect controlado por querystring sem validação é open redirect, e um phishing que começa no nosso domínio é o que faz alguém digitar a senha da Battle.net sem desconfiar.
+
 ## Regra 6 — Chamadas a APIs externas
 
 Blizzard, Raider.IO e WarcraftLogs são chamadas **só pelo Nest**, nunca pelo browser.
@@ -408,12 +444,43 @@ Então o sistema grava o fato observável ("Não Raidou") e oferece ao raid lead
 Mesma lógica de "oficial é gate próprio" da Regra 4, aplicada ao histórico **de presença**:
 
 - **Oficial** vê o detalhe de qualquer pessoa.
-- **Membro** vê o próprio histórico, inteiro.
-- **Membro não vê o histórico de outro membro.**
+- **Membro não vê presença nenhuma** — nem a dos outros, nem a própria.
 
 **O motivo é social, não sigilo.** O dado está aberto no Logs e no WoWAudit; o que o site evita é apresentá-lo pronto em forma de ranking, que gera treta e não ajuda o raid leader — quem lidera já tem o detalhe.
 
 A régua para caso novo é "isto vira comparação entre membros?", não "isto é confidencial?". Média da guilda passa; lista ordenada por falta, não.
+
+#### O membro via o próprio histórico até 28/09/2026
+
+A segunda linha era **"membro vê o próprio histórico, inteiro"**, e existia `GET /internal/attendance/me` com um recorte feito no banco a partir dos personagens da sessão.
+
+Saiu porque **não tinha usuário**. Os players não entram no site, mesmo tendo acesso — quem usa a área interna é oficial. E a tela passou a ser ferramenta de trabalho do raid leader: é lá que mora a rotação de banco, que é explicitamente não-pública (ver a subseção seguinte).
+
+**A régua não mudou.** "Isto vira comparação entre membros?" continua valendo e continua dando "não" para presença. O que caiu foi a premissa de que existia um membro do outro lado da tela.
+
+Consequência prática: `myAttendanceSchema` saiu do shared e o endpoint foi **apagado**, não deixado sem uso — mesmo raciocínio que tirou o `canReviewApplications()` dali. Contrato órfão convida alguém a reconstruir a tela em cima dele.
+
+Registrado em vez de apagado, para ninguém refazer o raciocínio antigo achando que é novo. Ver TIT-150.
+
+#### O banco não é público, e isso é requisito (28/09/2026)
+
+Quando a liderança diz que alguém vai ficar no banco na semana, **é esperado que a pessoa compareça na raid mesmo assim**, para o caso de precisar trocar. Divulgar antes faz a pessoa não aparecer.
+
+Então o plano de rotação nunca sai em payload que um membro alcance, e nunca vai para canal público do Discord. Se virar push, é canal de oficial — e aí vale o mesmo raciocínio da candidatura: **a permissão do canal é o controle de acesso**.
+
+Corolário que decide o modelo de dados: **não dá para contar tempo de banco a partir do resultado da noite.** Quem foi sentado e apareceu, e quem foi sentado e sumiu, ficam parecidos no fim da noite e significam o oposto. Contar pelo resultado dá crédito de descanso a quem não apareceu — ou seja, inverte exatamente o incentivo que o sigilo existe para proteger. O plano tem que ser gravado à parte, e cruzado com o resultado.
+
+Implementado em `/interno/rotacao` (TIT-152), e três coisas dali valem para caso novo:
+
+| decisão                            | por quê                                                                                                     |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| o plano é **por semana**           | a raid é 2x por semana e quem descansa descansa a semana inteira; `weekStart` é a segunda no fuso da guilda |
+| lacuna conta **a favor** da pessoa | semana sem linha de presença é falha de coleta, não prova de ausência — mesma régua do `sem-dado`           |
+| a sugestão **nunca** vira plano    | o oficial edita e salva; plano que contraria a sugestão é aceito sem discussão                              |
+
+**O time de raid vem do WoWAudit, com role e melee/ranged prontos.** `GET /v1/characters` devolve `role` como `Tank | Heal | Melee | Ranged` — as duas classificações num campo só, o que faz "travar role" e "travar melee/ranged" serem o mesmo mecanismo. Não existe cadastro de time no site, e não deve passar a existir: o RL mantém lá, o site lê.
+
+Ficou de fora do MVP, por decisão da liderança: comp alvo e equilíbrio melee/range planejado. Adiar não custou nada — o dado já está no mesmo campo, então vira critério de desempate sem migração.
 
 #### Loot é o caso que responde diferente (13/08/2026)
 

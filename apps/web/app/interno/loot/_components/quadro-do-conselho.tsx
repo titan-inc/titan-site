@@ -156,7 +156,7 @@ export function QuadroDoConselho({
               <td className="text-fg-muted px-4 py-2 text-xs">
                 {c.recebidoAntes.length === 0
                   ? 'nada'
-                  : c.recebidoAntes.map((r) => r.itemName ?? '?').join(', ')}
+                  : c.recebidoAntes.map((r) => r.name ?? '?').join(', ')}
               </td>
 
               <td className="px-4 py-2">

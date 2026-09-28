@@ -1,0 +1,37 @@
+type: http_request
+model: http_request
+id: rq_TitanBetResultados1
+createdAt: 2026-09-23T22:00:00.000000
+updatedAt: 2026-09-24T01:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'OfficerGuard. Os resultados da tentativa por mercado: desfecho (vencedores, sem_vencedor — o prize pool vai para os outros mercados, D-61 — ou anulado), motivo, V/P/W, vencedores, os bosses vencedores da Weekly e a evidência lida. Para revisar antes de confirmar. 404 se a auditoria não existe.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: GET
+name: 'Resultados da auditoria (officer)'
+sortPriority: 12000
+url: ${[ base_url ]}/internal/titan-bet/officer/auditorias/:auditId/resultados
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

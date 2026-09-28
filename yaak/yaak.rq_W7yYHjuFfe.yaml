@@ -9,13 +9,27 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: Fluxo de redirect de browser (consent da Blizzard) — não é enviável de forma útil via CLI/yaak send, só documentado aqui. Abrir no navegador.
+description: |
+  Fluxo de redirect de browser (consent da Blizzard) — não é enviável de forma
+  útil via CLI/yaak send, só documentado aqui. Abrir no navegador.
+
+  Sempre navegação de página inteira: o `mode=popup` saiu na TIT-148.
+
+  - `trocar=1` força a Blizzard a pedir credenciais de novo (trocar de conta).
+  - `de` é para onde voltar depois do login. Só `/interno` e abaixo dele;
+    qualquer outra coisa é descartada por `destinoSeguro()`.
 headers: []
 method: GET
 name: Iniciar login (Battle.net)
 sortPriority: 0.0
 url: ${[ base_url ]}/auth/battlenet
-urlParameters: []
+urlParameters:
+  - enabled: false
+    name: trocar
+    value: '1'
+  - enabled: false
+    name: de
+    value: /interno/loot
 settingSendCookies:
   enabled: false
   value: true

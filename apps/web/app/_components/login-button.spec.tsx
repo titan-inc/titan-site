@@ -1,150 +1,51 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CANAL_LOGIN } from '../../lib/auth/canal';
+import type { SessionUser } from '@titan/shared';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { LoginButton } from './login-button';
 
 /**
- * O lado do login que não tinha teste — e onde estavam os três defeitos da
- * TIT-144. O que estes testes travam é a promessa central: **o fim do login
- * não depende de o popup conseguir avisar**.
+ * O que este arquivo protege é uma única propriedade: **o login é um `<a>`**.
+ *
+ * Parece pequeno e não é. Enquanto era `<button onClick={window.open}>`, o fim
+ * do login dependia de `BroadcastChannel`, polling e uma carência para adivinhar
+ * por que a janela fechou — e um login bem-sucedido chegava à tela como erro de
+ * cancelamento (TIT-144, TIT-148). Sendo link, o navegador navega e a resposta
+ * do callback já traz cookie e destino.
  */
-
-/**
- * jsdom não implementa `<dialog>`. `ModalErroLogin` chama `showModal()`, então
- * sem isto qualquer teste que produza erro estoura antes de asseverar nada.
- */
-beforeEach(() => {
-  HTMLDialogElement.prototype.showModal = function abrir(this: HTMLDialogElement) {
-    this.open = true;
-  };
-  HTMLDialogElement.prototype.close = function fechar(this: HTMLDialogElement) {
-    this.open = false;
-  };
-});
-
-const push = vi.fn();
-const refresh = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push, refresh }) }));
-
-const fetchMock = vi.fn();
-let janelaFalsa: { closed: boolean; focus: () => void; close: () => void };
-
-/** Resposta de `/api/sessao`. */
-function sessao(autenticado: boolean) {
-  return new Response(JSON.stringify({ autenticado }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.stubGlobal('fetch', fetchMock);
-  fetchMock.mockResolvedValue(sessao(false));
-
-  janelaFalsa = { closed: false, focus: vi.fn(), close: vi.fn() };
-  vi.stubGlobal(
-    'open',
-    vi.fn(() => janelaFalsa),
-  );
-  vi.stubGlobal('screen', { availWidth: 1920, availHeight: 1080 });
-});
-
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-});
-
-async function clicarEntrar() {
-  render(<LoginButton sessao={null} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Acesse com a Battle.net' }));
-}
+const sessao = { battletag: 'Fulano#1234' } as SessionUser;
 
 describe('LoginButton', () => {
-  it('conclui o login mesmo sem aviso nenhum do popup', async () => {
-    // O caso do opener cortado: ninguém avisa a mãe. Antes isso terminava em
-    // timeout depois de 3 minutos; agora a verificação de sessão resolve.
-    await clicarEntrar();
-    expect(screen.getByRole('button').textContent).toContain('Aguardando Battle.net…');
+  afterEach(cleanup);
 
-    fetchMock.mockResolvedValue(sessao(true));
+  it('sem sessão, é um link para o início do OAuth no Nest', () => {
+    render(<LoginButton sessao={null} />);
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/interno'), { timeout: 4000 });
-    // Sem o refresh a navbar continuaria oferecendo "Acesse com a Battle.net".
-    expect(refresh).toHaveBeenCalled();
+    const link = screen.getByRole('link', { name: 'Acesse com a Battle.net' });
+    expect(link.getAttribute('href')).toContain('/auth/battlenet');
   });
 
-  it('continua ouvindo um login demorado, em vez de desistir antes do backend', async () => {
-    // O cookie de OAuth dura 6h para cobrir 2FA e senha esquecida. Uma mãe que
-    // desiste antes disso faz o login dar certo sem ninguém aproveitar: a
-    // sessão nasce e a tela continua oferecendo o botão de entrar.
-    await clicarEntrar();
+  // Se isto virar botão de novo, volta junto todo o maquinário de janela.
+  it('sem sessão, NÃO é botão', () => {
+    render(<LoginButton sessao={null} />);
 
-    // Vários ciclos de verificação com a pessoa ainda na tela da Blizzard.
-    await new Promise((r) => setTimeout(r, 2500));
-    expect(push).not.toHaveBeenCalled();
-    expect(screen.getByRole('button').textContent).toContain('Aguardando Battle.net…');
-
-    fetchMock.mockResolvedValue(sessao(true));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/interno'), { timeout: 4000 });
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('não acusa cancelamento quando o popup fecha por ter dado certo', async () => {
-    // O sintoma que abriu a issue: fechar a janela é o ÚLTIMO passo de um login
-    // bem-sucedido, então "fechou" sozinho não prova desistência.
-    await clicarEntrar();
+  it('com sessão, aponta para a área interna', () => {
+    render(<LoginButton sessao={sessao} />);
 
-    janelaFalsa.closed = true;
-    fetchMock.mockResolvedValue(sessao(true));
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/interno'), { timeout: 4000 });
-    expect(screen.queryByText(/cancelou a autorização/i)).toBeNull();
-  });
-
-  it('acusa cancelamento quando fecha e a sessão não nasce', async () => {
-    await clicarEntrar();
-    janelaFalsa.closed = true;
-
-    await waitFor(() => expect(screen.getByText(/cancelou a autorização/i)).toBeTruthy(), {
-      timeout: 8000,
-    });
-    expect(push).not.toHaveBeenCalled();
-  });
-
-  it('o aviso do canal adianta, mas não é acreditado sozinho', async () => {
-    // `status: 'ok'` sem sessão de verdade não navega. O canal só antecipa o
-    // que a verificação diria — nunca inventa uma sessão.
-    await clicarEntrar();
-
-    const canal = new BroadcastChannel(CANAL_LOGIN);
-    canal.postMessage({ tipo: 'titan-oauth', status: 'ok' });
-
-    await new Promise((r) => setTimeout(r, 200));
-    expect(push).not.toHaveBeenCalled();
-    canal.close();
-  });
-
-  it('erro vindo do canal vira modal, sem navegar', async () => {
-    await clicarEntrar();
-
-    const canal = new BroadcastChannel(CANAL_LOGIN);
-    canal.postMessage({ tipo: 'titan-oauth', status: 'erro', motivo: 'state' });
-
-    await waitFor(() => expect(screen.getByText(/não pôde ser validado/i)).toBeTruthy());
-    expect(push).not.toHaveBeenCalled();
-    canal.close();
-  });
-
-  it('popup bloqueado pelo navegador vira modal com instrução', async () => {
-    vi.stubGlobal(
-      'open',
-      vi.fn(() => null),
+    expect(screen.getByRole('link', { name: 'Área de membros' }).getAttribute('href')).toBe(
+      '/interno',
     );
-    await clicarEntrar();
+  });
 
-    expect(screen.getByText(/bloqueou a janela de login/i)).toBeTruthy();
+  // A variante compacta da navbar mobile some com o rótulo visível, então o
+  // nome acessível é a única coisa que sobra para quem usa leitor de tela.
+  it('compacto mantém o nome acessível', () => {
+    render(<LoginButton sessao={null} compacto />);
+
+    expect(screen.getByRole('link', { name: 'Acesse com a Battle.net' })).toBeTruthy();
   });
 });

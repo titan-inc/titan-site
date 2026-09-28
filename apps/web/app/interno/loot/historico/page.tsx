@@ -54,7 +54,11 @@ export default async function LootHistoricoPage({
             </p>
           ) : (
             <>
-              <TabelaHistorico entries={pagina.entries} total={pagina.total} />
+              <TabelaHistorico
+                entries={pagina.entries}
+                total={pagina.total}
+                trackScalingIdAtual={pagina.trackScalingIdAtual}
+              />
               <Paginacao pagina={pagina} busca={busca} />
             </>
           )}

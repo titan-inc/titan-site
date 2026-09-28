@@ -392,7 +392,7 @@ describe('LootCouncilService', () => {
       const p = await service.painel('sess-1', ATOR);
 
       expect(p.itens[0]?.candidatos[0]?.recebidoAntes[0]).toMatchObject({
-        itemName: 'Ashen Sigil',
+        name: 'Ashen Sigil',
         equipLoc: 'FINGER',
         difficulty: 'mythic',
         responseOptionSlug: 'bis',
@@ -476,7 +476,7 @@ describe('LootCouncilService', () => {
 
       const p = await service.painel('sess-1', ATOR);
 
-      expect(p.itens[0]?.candidatos[0]?.recebidoAntes[0]).toMatchObject({ itemName: null });
+      expect(p.itens[0]?.candidatos[0]?.recebidoAntes[0]).toMatchObject({ name: null });
     });
   });
 

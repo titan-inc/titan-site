@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_TitanBetAjustar1
+createdAt: 2026-09-23T23:00:00.000000
+updatedAt: 2026-09-23T23:00:00.000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_TitanBet1
+authentication: {}
+authenticationType: null
+body:
+  text: '{"amount": 0, "reason": "", "correctsEntryId": ""}'
+bodyType: application/json
+description: 'OfficerGuard. Correção com ajuste (D-11): valor inteiro com sinal, motivo e o id do lançamento corrigido (desta conta). Nunca reescreve pagamento; o saldo novo vira outro pagamento. 409 se deixaria o saldo negativo (OQ-52). MEXE EM DINHEIRO.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: 'Ajustar lançamento (officer)'
+sortPriority: 16000
+url: ${[ base_url ]}/internal/titan-bet/officer/slips/:slipId/ajustes
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

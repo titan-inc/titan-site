@@ -51,10 +51,25 @@ export interface GuildConfig {
    * quem é oficial sem erro nenhum.
    */
   officerRankMax: number;
+
+  /**
+   * Hora em que a raid começa, no fuso da guilda. 21 = 21:00.
+   *
+   * Existe para uma pergunta só: "esta noite já começou?". É ela que decide se
+   * o job ainda pode congelar `signupDeclared` — depois que a raid começa, o
+   * que está no WoWAudit já é a correção do raid leader, não a declaração.
+   *
+   * Em configuração porque o horário da raid é decisão da guilda, e hardcodar
+   * faria a janela de congelamento mudar de significado sem ninguém notar.
+   */
+  raidStartHour: number;
 }
 
 /** Corte usado quando `GUILD_RANK_ACCESS_MAX` não está definida. */
 const DEFAULT_RANK_ACCESS_MAX = 4;
+
+/** Hora usada quando `GUILD_RAID_START_HOUR` não está definida. */
+const DEFAULT_RAID_START_HOUR = 21;
 
 /** Corte usado quando `GUILD_OFFICER_RANK_MAX` não está definida. */
 const DEFAULT_OFFICER_RANK_MAX = 2;
@@ -99,7 +114,40 @@ export function loadGuildConfig(env: NodeJS.ProcessEnv = process.env): GuildConf
     timezone: parseTimezone(env),
     rankAccessMax,
     officerRankMax: parseOfficerRankMax(env, rankAccessMax),
+    raidStartHour: parseRaidStartHour(env),
   };
+}
+
+/**
+ * Hora de início da raid, com default seguro.
+ *
+ * Valor inválido **lança**: `Number('21h')` é `NaN`, e toda comparação com
+ * `NaN` é falsa — o congelamento de `signupDeclared` pararia de acontecer em
+ * silêncio, e a perda só apareceria semanas depois, sem nada para reprocessar.
+ */
+function parseRaidStartHour(env: NodeJS.ProcessEnv): number {
+  const raw = env.GUILD_RAID_START_HOUR?.trim();
+  if (!raw) return DEFAULT_RAID_START_HOUR;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 23) {
+    throw new Error(
+      `GUILD_RAID_START_HOUR inválido: "${raw}". Esperado um inteiro de 0 a 23, ` +
+        `no fuso da guilda (default ${DEFAULT_RAID_START_HOUR}).`,
+    );
+  }
+
+  return parsed;
+}
+
+/**
+ * Só o fuso da guilda, sem exigir o resto da config.
+ *
+ * Para quem precisa do calendário da guilda e não consulta o roster: pedir
+ * `GUILD_NAME` e `GUILD_REALM` ali seria falhar por uma config que não usa.
+ */
+export function loadGuildTimezone(env: NodeJS.ProcessEnv = process.env): string {
+  return parseTimezone(env);
 }
 
 /** Fuso padrão quando `GUILD_TIMEZONE` não está definida. */

@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, type WowBonding, type WowScalingType } from '@prisma/client';
+import {
+  Prisma,
+  type WowBonding,
+  type WowItemLevelScaling,
+  type WowScalingType,
+} from '@prisma/client';
 import {
   COLS_BONUS,
   COLS_CONTEXT,
@@ -32,6 +37,40 @@ const facetasSelect = {
   difficultyColor: true,
   quality: true,
 } as const;
+
+/**
+ * As colunas de `WowItemData` que o cálculo de stats usa — comum ao singular
+ * (`itemPorId`) e ao plural (`itensPorId`, TIT-135), pra não divergir a lista
+ * em dois lugares.
+ */
+const itemDataSelect = {
+  itemLevel: true,
+  quality: true,
+  inventoryType: true,
+  material: true,
+  bonding: true,
+  flags: true,
+  statIds: true,
+  statAllocs: true,
+  socketAllocs: true,
+  itemDelay: true,
+  dmgVariance: true,
+  flavor: true,
+  itemSetId: true,
+  budgetIndex: true,
+  scalingType: true,
+  armorModifier: true,
+  effects: true,
+} as const;
+
+/**
+ * `itemId:itemContext` — a chave de `contextosDeBonusDeVarios` (TIT-135).
+ * Exportada para o `WowItemStatsService` montar a mesma chave ao consultar o
+ * `Map`, sem duplicar o formato da string nos dois lados.
+ */
+export function chaveContexto(itemId: number, itemContext: number): string {
+  return `${itemId}:${itemContext}`;
+}
 
 /**
  * O ÚNICO lugar que lê E ESCREVE as tabelas versionadas por build — TIT-137
@@ -103,6 +142,44 @@ export class WowDataRepository {
   }
 
   /**
+   * A mesma consulta que `contextosDeBonus`, para VÁRIOS pares (`itemId`,
+   * `itemContext`) de uma vez — a onda 1 de `calcularVarios` (TIT-135). Uma
+   * página de histórico não pode virar uma consulta de árvore por linha.
+   *
+   * A chave do `Map` é `chaveContexto(itemId, itemContext)` — quem chama
+   * despareia por ela, nunca reconstrói a string à mão.
+   */
+  async contextosDeBonusDeVarios(
+    buildId: string,
+    pares: Array<{ itemId: number; itemContext: number }>,
+  ): Promise<Map<string, number[]>> {
+    const porChave = new Map<string, number[]>();
+    if (pares.length === 0) return porChave;
+
+    // Sem duplicata no `OR`: o mesmo par se repete entre itemStrings
+    // diferentes do mesmo item (mesmo contexto, bônus explícitos distintos).
+    const paresUnicos = [
+      ...new Map(pares.map((p) => [chaveContexto(p.itemId, p.itemContext), p])).values(),
+    ];
+
+    const linhas = await this.prisma.wowItemContextBonus.findMany({
+      where: {
+        buildId,
+        OR: paresUnicos.map((p) => ({ itemId: p.itemId, itemContext: p.itemContext })),
+      },
+      select: { itemId: true, itemContext: true, bonusId: true },
+    });
+
+    for (const linha of linhas) {
+      const chave = chaveContexto(linha.itemId, linha.itemContext);
+      const atual = porChave.get(chave) ?? [];
+      atual.push(linha.bonusId);
+      porChave.set(chave, atual);
+    }
+    return porChave;
+  }
+
+  /**
    * A linha de `WowItemData` de um item, no build dado — o lado do ITEM do
    * cálculo de stats (TIT-136), companheiro de `facetasDeBonus` (o lado dos
    * bônus). `null` quando o item não tem dado neste build: patch que
@@ -112,29 +189,33 @@ export class WowDataRepository {
   async itemPorId(buildId: string, itemId: number): Promise<WowItemDataFacets | null> {
     const linha = await this.prisma.wowItemData.findUnique({
       where: { buildId_itemId: { buildId, itemId } },
-      select: {
-        itemLevel: true,
-        quality: true,
-        inventoryType: true,
-        material: true,
-        bonding: true,
-        flags: true,
-        statIds: true,
-        statAllocs: true,
-        socketAllocs: true,
-        itemDelay: true,
-        dmgVariance: true,
-        flavor: true,
-        itemSetId: true,
-        budgetIndex: true,
-        scalingType: true,
-        armorModifier: true,
-        effects: true,
-      },
+      select: itemDataSelect,
     });
     if (!linha) return null;
 
     return { ...linha, effects: paraEfeitoDoItem(itemId, linha.effects) };
+  }
+
+  /**
+   * A mesma leitura que `itemPorId`, para VÁRIOS `itemId` de uma vez — a
+   * onda 1 de `calcularVarios` (TIT-135). `itemId` sai do `select` e vira a
+   * chave do `Map`, pra `WowItemDataFacets` não carregar um campo que o
+   * schema não declara.
+   */
+  async itensPorId(buildId: string, itemIds: number[]): Promise<Map<number, WowItemDataFacets>> {
+    if (itemIds.length === 0) return new Map();
+
+    const linhas = await this.prisma.wowItemData.findMany({
+      where: { buildId, itemId: { in: itemIds } },
+      select: { itemId: true, ...itemDataSelect },
+    });
+
+    return new Map(
+      linhas.map(({ itemId, ...resto }) => [
+        itemId,
+        { ...resto, effects: paraEfeitoDoItem(itemId, resto.effects) },
+      ]),
+    );
   }
 
   /**
@@ -148,22 +229,25 @@ export class WowDataRepository {
     });
     if (!linha) return null;
 
-    return {
-      itemLevel: linha.itemLevel,
-      budget: linha.budget,
-      damageReplaceStat: linha.damageReplaceStat,
-      damageSecondary: linha.damageSecondary,
-      crMult: paraMultiplicador(linha.crMult),
-      stamMult: paraMultiplicador(linha.stamMult),
-      socketCost: linha.socketCost,
-      armorTotal: linha.armorTotal,
-      armorQuality: linha.armorQuality,
-      armorShield: linha.armorShield,
-      dmgOneHand: linha.dmgOneHand,
-      dmgTwoHand: linha.dmgTwoHand,
-      dmgOneHandCaster: linha.dmgOneHandCaster,
-      dmgTwoHandCaster: linha.dmgTwoHandCaster,
-    };
+    return paraLinhaEscala(linha);
+  }
+
+  /**
+   * A mesma leitura que `escalaPorItemLevel`, para VÁRIOS `itemLevel` de uma
+   * vez — a onda 2 de `calcularVarios` (TIT-135), depois que a onda 1 já
+   * decodificou os bônus e sabe o ilvl efetivo de cada item.
+   */
+  async escalasPorItemLevel(
+    buildId: string,
+    itemLevels: number[],
+  ): Promise<Map<number, LinhaEscala>> {
+    if (itemLevels.length === 0) return new Map();
+
+    const linhas = await this.prisma.wowItemLevelScaling.findMany({
+      where: { buildId, itemLevel: { in: itemLevels } },
+    });
+
+    return new Map(linhas.map((linha) => [linha.itemLevel, paraLinhaEscala(linha)]));
   }
 
   /** O conjunto (`WowItemSet`) que `WowItemData.itemSetId` aponta, no build dado. */
@@ -175,6 +259,45 @@ export class WowDataRepository {
     if (!linha) return null;
 
     return { ...linha, bonuses: paraBonusesDoSet(itemSetId, linha.bonuses) };
+  }
+
+  /**
+   * A mesma leitura que `setPorId`, para VÁRIOS `itemSetId` de uma vez — a
+   * onda 2 de `calcularVarios` (TIT-135), pelos `itemSetId` que a onda 1 já
+   * trouxe junto de cada `WowItemData`.
+   */
+  async setsPorId(buildId: string, itemSetIds: number[]): Promise<Map<number, WowItemSetFacets>> {
+    if (itemSetIds.length === 0) return new Map();
+
+    const linhas = await this.prisma.wowItemSet.findMany({
+      where: { buildId, itemSetId: { in: itemSetIds } },
+      select: { itemSetId: true, name: true, pieceItemIds: true, bonuses: true },
+    });
+
+    return new Map(
+      linhas.map((linha) => [
+        linha.itemSetId,
+        { ...linha, bonuses: paraBonusesDoSet(linha.itemSetId, linha.bonuses) },
+      ]),
+    );
+  }
+
+  /**
+   * `MAX(WowBonus.trackScalingId)` do build — a season de track mais recente
+   * que ele conhece (TIT-135). Serve só para quem RENDERIZA decidir se a
+   * contagem `4/6` aparece, comparando com `DecodedTrack.scalingId`; este
+   * método não faz a comparação, só entrega o número — uma consulta por
+   * build, derivada, cacheável pelo chamador se precisar.
+   *
+   * `null` quando o build não tem nenhum bonus com track — não há season
+   * para comparar.
+   */
+  async trackScalingIdAtual(buildId: string): Promise<number | null> {
+    const resultado = await this.prisma.wowBonus.aggregate({
+      where: { buildId },
+      _max: { trackScalingId: true },
+    });
+    return resultado._max.trackScalingId;
   }
 
   /** Todo bonus id que este build conhece — para o relatório de desconhecidos. */
@@ -328,6 +451,27 @@ function paraMultiplicador(bruto: number[]): MultiplicadorPorTipo {
     weapon: bruto[1] ?? 0,
     trinket: bruto[2] ?? 0,
     jewelry: bruto[3] ?? 0,
+  };
+}
+
+/** `WowItemLevelScaling` (linha crua do Prisma) → `LinhaEscala` — comum ao
+ * singular (`escalaPorItemLevel`) e ao plural (`escalasPorItemLevel`). */
+function paraLinhaEscala(linha: WowItemLevelScaling): LinhaEscala {
+  return {
+    itemLevel: linha.itemLevel,
+    budget: linha.budget,
+    damageReplaceStat: linha.damageReplaceStat,
+    damageSecondary: linha.damageSecondary,
+    crMult: paraMultiplicador(linha.crMult),
+    stamMult: paraMultiplicador(linha.stamMult),
+    socketCost: linha.socketCost,
+    armorTotal: linha.armorTotal,
+    armorQuality: linha.armorQuality,
+    armorShield: linha.armorShield,
+    dmgOneHand: linha.dmgOneHand,
+    dmgTwoHand: linha.dmgTwoHand,
+    dmgOneHandCaster: linha.dmgOneHandCaster,
+    dmgTwoHandCaster: linha.dmgTwoHandCaster,
   };
 }
 

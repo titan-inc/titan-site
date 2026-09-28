@@ -1,0 +1,12 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "wcl-real/.*\\.wcl-real\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "globalSetup": "<rootDir>/db/global-setup.ts",
+  "setupFiles": ["<rootDir>/wcl-real/ambiente.ts"],
+  "testTimeout": 600000
+}

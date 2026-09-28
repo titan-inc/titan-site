@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { itemViewSchema } from './item-view.js';
 import { lootCharacterSchema } from './loot-line.js';
 import { lootResponseKindSchema } from './loot-response.js';
 import { raidDifficultyLevelSchema } from './wow.js';
@@ -60,16 +61,13 @@ export type LootHistoryQuery = z.infer<typeof lootHistoryQuerySchema>;
  * Aquele vem no idioma do cliente de quem era loot master, então o mesmo item
  * apareceria em dois idiomas na mesma lista. Ver TIT-49.
  *
- * Os campos são nuláveis porque o catálogo pode estar atrás do histórico: item
- * de uma season que ninguém cadastrou ainda entra na linha e fica sem nome. A
- * linha existe mesmo assim — histórico não espera catálogo.
+ * `name`/`icon`/`equipLoc`/`itemSubclass` são nuláveis porque o catálogo pode
+ * estar atrás do histórico: item de uma season que ninguém cadastrou ainda
+ * entra na linha e fica sem nome. A linha existe mesmo assim — histórico não
+ * espera catálogo. `ComputedItemStats.indisponivel` cobre a mesma lacuna do
+ * lado do cálculo (TIT-135), pelo `itemViewSchema` unificado.
  */
-export const lootHistoryItemSchema = z.object({
-  itemId: z.number().int().positive(),
-  name: z.string().nullable(),
-  icon: z.string().nullable(),
-  equipLoc: z.string().nullable(),
-});
+export const lootHistoryItemSchema = itemViewSchema;
 
 /**
  * De onde a peça saiu.
@@ -138,6 +136,14 @@ export const lootHistoryPageSchema = z.object({
   total: z.number().int().nonnegative(),
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
+
+  /**
+   * `MAX(WowBonus.trackScalingId)` do build ativo — TIT-135, mesmo campo e
+   * mesmo motivo de `LootSessionDetail.trackScalingIdAtual`: quem decide se
+   * a contagem `4/6` aparece é a tela, e ela não toca banco pra saber a
+   * season corrente.
+   */
+  trackScalingIdAtual: z.number().int().nullable(),
 });
 export type LootHistoryPage = z.infer<typeof lootHistoryPageSchema>;
 

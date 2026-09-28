@@ -32,15 +32,22 @@ const ESTADOS: Record<AttendanceState, { rotulo: string; classe: string; ajuda: 
     classe: 'text-bronze',
     ajuda: 'Confirmou e não apareceu em pull nenhuma. Só o raid leader sabe o motivo',
   },
+  furou: {
+    rotulo: 'Furou',
+    // O único que ficaria justificável em vermelho — e mesmo assim não fica.
+    // A tela informa o raid leader, não expõe ninguém; `bronze` já destaca.
+    classe: 'text-bronze',
+    ajuda: 'Tinha confirmado antes da raid, e o raid leader marcou Absent depois',
+  },
   banco: {
     rotulo: 'Banco',
     classe: 'text-fg-muted',
-    ajuda: 'Marcou Standby no próprio signup',
+    ajuda: 'Standby no signup — declarado pela pessoa, ou marcado pelo RL por ter ficado de banco',
   },
   ausente: {
     rotulo: 'Ausente',
     classe: 'text-fg-muted',
-    ajuda: 'Declinou no signup',
+    ajuda: 'Declinou com antecedência, e não voltou atrás',
   },
   rotacao: {
     rotulo: 'Rotação',

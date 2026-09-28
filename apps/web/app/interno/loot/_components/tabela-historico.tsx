@@ -1,4 +1,5 @@
 import { urlDoIcone } from './icone-do-item';
+import { TooltipDeItem } from './tooltip-de-item';
 import type { LootHistoryEntry } from '@titan/shared';
 
 const DIFICULDADE_CURTA: Record<string, string> = {
@@ -42,9 +43,11 @@ function dataDaEntrega(iso: string): string {
 export function TabelaHistorico({
   entries,
   total,
+  trackScalingIdAtual,
 }: {
   entries: LootHistoryEntry[];
   total: number;
+  trackScalingIdAtual: number | null;
 }) {
   if (entries.length === 0) {
     return (
@@ -110,23 +113,25 @@ export function TabelaHistorico({
                 </td>
 
                 <td className="px-3 py-2">
-                  <span className="flex items-center gap-2">
-                    {e.item.icon && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={urlDoIcone(e.item.icon)}
-                        alt=""
-                        width={20}
-                        height={20}
-                        className="rounded"
-                      />
-                    )}
-                    {/* Item que o catálogo ainda não tem fica sem nome. Mostrar
-                        o id é melhor que mostrar o nome localizado da fonte. */}
-                    <span className={e.item.name ? 'text-fg' : 'text-fg-subtle'}>
-                      {e.item.name ?? `Item ${e.item.itemId}`}
+                  <TooltipDeItem item={e.item} trackScalingIdAtual={trackScalingIdAtual}>
+                    <span className="flex items-center gap-2">
+                      {e.item.icon && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={urlDoIcone(e.item.icon)}
+                          alt=""
+                          width={20}
+                          height={20}
+                          className="rounded"
+                        />
+                      )}
+                      {/* Item que o catálogo ainda não tem fica sem nome. Mostrar
+                          o id é melhor que mostrar o nome localizado da fonte. */}
+                      <span className={e.item.name ? 'text-fg' : 'text-fg-subtle'}>
+                        {e.item.name ?? `Item ${e.item.itemId}`}
+                      </span>
                     </span>
-                  </span>
+                  </TooltipDeItem>
                 </td>
 
                 <td className="px-3 py-2">

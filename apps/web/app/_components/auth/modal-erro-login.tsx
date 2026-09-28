@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { MENSAGENS_LOGIN } from '../../../lib/auth/mensagens';
-import { API_URL } from '../../../lib/config';
 
 export function ModalErroLogin({
   motivo,
@@ -33,16 +32,6 @@ export function ModalErroLogin({
         <p className="text-fg-muted mt-4 leading-relaxed">
           {motivo ? (MENSAGENS_LOGIN[motivo] ?? MENSAGENS_LOGIN.falha) : ''}
         </p>
-        {/* Caminho de escape do popup bloqueado. Aponta direto para o início do
-            OAuth no Nest — sem `mode=popup`, é navegação de página inteira, que
-            é o único jeito de entrar quando o navegador recusa a janela. Não
-            existe mais página `/entrar` intermediária: ela só somava um clique
-            entre a pessoa e a Blizzard. */}
-        {motivo === 'bloqueado' && (
-          <a href={`${API_URL}/auth/battlenet`} className="text-accent mt-3 inline-block underline">
-            Entrar pela página inteira
-          </a>
-        )}
         <div className="mt-7 flex flex-wrap justify-end gap-3">
           <button
             type="button"
