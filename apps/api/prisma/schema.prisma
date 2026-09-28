@@ -2580,6 +2580,18 @@ model RotationPlanEntry {
   characterId String
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 
+  /// O raid leader pôs esta pessoa no banco à mão, e ela **não sai no
+  /// recálculo**.
+  ///
+  /// O caso: numa luta em que a classe rende mal, o RL decide sentar aquela
+  /// pessoa mesmo que a conta não a escolhesse — ela é melhor aproveitada na
+  /// semana seguinte. Sem esta coluna a decisão se perderia no primeiro
+  /// "Recalcular", e o RL refaria o mesmo trabalho toda vez.
+  ///
+  /// Gravada junto com o plano porque, sem isso, recarregar a tela já perderia
+  /// a fixação — o banco voltaria a ser uma lista sem memória do porquê.
+  pinned Boolean @default(false)
+
   @@unique([planId, characterId])
   @@index([characterId])
 }

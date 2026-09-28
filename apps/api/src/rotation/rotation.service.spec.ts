@@ -228,6 +228,137 @@ describe('RotationService', () => {
     });
   });
 
+  describe('fixar alguém no banco', () => {
+    /** Time grande, para a proporção ter o que mostrar. */
+    const grande = [
+      pessoa('Tank1', 'Tank'),
+      pessoa('Tank2', 'Tank'),
+      ...Array.from({ length: 6 }, (_, i) => pessoa(`Heal${i}`, 'Heal')),
+      ...Array.from({ length: 10 }, (_, i) => pessoa(`Melee${i}`, 'Melee')),
+      ...Array.from({ length: 8 }, (_, i) => pessoa(`Range${i}`, 'Ranged')),
+    ];
+
+    const contarRoles = (v: { suggestion: { role: string }[] }) =>
+      v.suggestion.reduce<Record<string, number>>((acc, s) => {
+        acc[s.role] = (acc[s.role] ?? 0) + 1;
+        return acc;
+      }, {});
+
+    beforeEach(() => {
+      // Os dois: `getView` usa o snapshot, `savePlan` usa a lista direta.
+      wowaudit.getTeamCharacters.mockResolvedValue(grande);
+      wowaudit.getTeamCharactersSnapshot.mockResolvedValue({
+        characters: grande,
+        fetchedAt: Date.now(),
+        stale: false,
+      });
+    });
+
+    it('o fixado sobrevive ao recálculo e sai marcado', async () => {
+      // O caso do RL: numa luta em que a classe rende mal, sentar aquela pessoa
+      // mesmo que a conta não a escolhesse.
+      const forcado = idDe({ name: 'Melee9', realm: 'Azralon' });
+
+      const semFixar = await service.getView();
+      expect(semFixar.suggestion.map((x) => x.characterId)).not.toContain(forcado);
+
+      const v = await service.getView(undefined, 5, [forcado]);
+
+      expect(v.suggestion.map((x) => x.characterId)).toContain(forcado);
+      expect(v.suggestion.find((x) => x.characterId === forcado)?.pinned).toBe(true);
+    });
+
+    it('o fixado consome vaga da role dele, então o banco continua proporcional', async () => {
+      // Sem isso, fixar um melee daria um melee a mais no banco e
+      // desequilibraria justamente o que o D'Hondt existe para equilibrar.
+      const forcado = idDe({ name: 'Melee9', realm: 'Azralon' });
+
+      const v = await service.getView(undefined, 5, [forcado]);
+
+      expect(v.suggestion).toHaveLength(5);
+      expect(contarRoles(v)).toEqual({ Melee: 2, Ranged: 2, Heal: 1 });
+    });
+
+    it('fixar mais gente que as vagas mantém todos — a decisão é do RL', async () => {
+      const tres = ['Melee9', 'Melee8', 'Melee7'].map((n) => idDe({ name: n, realm: 'Azralon' }));
+
+      const v = await service.getView(undefined, 2, tres);
+
+      expect(v.suggestion).toHaveLength(3);
+      expect(v.suggestion.every((x) => x.pinned)).toBe(true);
+    });
+
+    it('fixado que virou travado sai do banco', async () => {
+      repo.listRoleLocks.mockResolvedValue([
+        { role: 'Melee', lockedBy: 'x', lockedAt: new Date() },
+      ]);
+      const forcado = idDe({ name: 'Melee9', realm: 'Azralon' });
+
+      const v = await service.getView(undefined, 5, [forcado]);
+
+      // Quem está fora da rotação não pode estar no banco, mesmo tendo sido
+      // fixado antes de a trava existir.
+      expect(v.suggestion.map((x) => x.characterId)).not.toContain(forcado);
+    });
+
+    it('sem o parâmetro, valem as fixações do plano salvo', async () => {
+      // Recarregar a tela não pode perder uma fixação já decidida.
+      const forcado = idDe({ name: 'Melee9', realm: 'Azralon' });
+      repo.findPlan.mockResolvedValue({
+        seats: 5,
+        entries: [{ characterId: forcado, pinned: true }],
+        savedBy: 'x',
+        savedAt: new Date(),
+        weekStart: '2026-09-28',
+      });
+
+      const v = await service.getView();
+
+      expect(v.suggestion.find((x) => x.characterId === forcado)?.pinned).toBe(true);
+      expect(v.saved?.pinned).toEqual([forcado]);
+    });
+
+    it('lista de fixos vazia é diferente de ausente — solta todo mundo', async () => {
+      const forcado = idDe({ name: 'Melee9', realm: 'Azralon' });
+      repo.findPlan.mockResolvedValue({
+        seats: 5,
+        entries: [{ characterId: forcado, pinned: true }],
+        savedBy: 'x',
+        savedAt: new Date(),
+        weekStart: '2026-09-28',
+      });
+
+      const v = await service.getView(undefined, 5, []);
+
+      expect(v.suggestion.every((x) => !x.pinned)).toBe(true);
+    });
+
+    it('recusa fixar quem não está no banco', async () => {
+      const dentro = idDe({ name: 'Melee9', realm: 'Azralon' });
+      const fora = idDe({ name: 'Melee8', realm: 'Azralon' });
+
+      await expect(
+        service.savePlan(
+          { weekStart: '2026-09-28', seats: 5, characterIds: [dentro], pinned: [fora] },
+          'Eu#1',
+        ),
+      ).rejects.toThrow(/fixar quem está no banco/);
+
+      expect(repo.savePlan).not.toHaveBeenCalled();
+    });
+
+    it('grava as fixações junto com o plano', async () => {
+      const forcado = idDe({ name: 'Melee9', realm: 'Azralon' });
+
+      await service.savePlan(
+        { weekStart: '2026-09-28', seats: 5, characterIds: [forcado], pinned: [forcado] },
+        'Eu#1',
+      );
+
+      expect(repo.savePlan).toHaveBeenCalledWith('2026-09-28', 5, [forcado], [forcado], 'Eu#1');
+    });
+  });
+
   it('respeita quantos sentar', async () => {
     repo.findPlan.mockResolvedValue({
       seats: 2,
@@ -334,7 +465,7 @@ describe('RotationService', () => {
   it('recusa plano com gente de fora do time', async () => {
     await expect(
       service.savePlan(
-        { weekStart: '2026-09-28', seats: 5, characterIds: ['char:desconhecido'] },
+        { weekStart: '2026-09-28', seats: 5, characterIds: ['char:desconhecido'], pinned: [] },
         'Eu#1',
       ),
     ).rejects.toThrow(/não estão no time/);
@@ -348,6 +479,7 @@ describe('RotationService', () => {
         weekStart: '2026-10-01',
         seats: 3,
         characterIds: [idDe({ name: 'Espadas', realm: 'Azralon' })],
+        pinned: [],
       },
       'Eu#1',
     );
@@ -356,6 +488,7 @@ describe('RotationService', () => {
       '2026-09-28',
       3,
       [idDe({ name: 'Espadas', realm: 'Azralon' })],
+      [],
       'Eu#1',
     );
   });
@@ -364,10 +497,13 @@ describe('RotationService', () => {
     const tanky = idDe({ name: 'Tanky', realm: 'Azralon' });
     repo.listRoleLocks.mockResolvedValue([{ role: 'Tank', lockedBy: 'x', lockedAt: new Date() }]);
 
-    await service.savePlan({ weekStart: '2026-09-28', seats: 1, characterIds: [tanky] }, 'Eu#1');
+    await service.savePlan(
+      { weekStart: '2026-09-28', seats: 1, characterIds: [tanky], pinned: [] },
+      'Eu#1',
+    );
 
     // Tank está travado e ainda assim o plano passa: recusar a decisão do
     // oficial seria a ferramenta mandando em quem ela deveria ajudar.
-    expect(repo.savePlan).toHaveBeenCalledWith('2026-09-28', 1, [tanky], 'Eu#1');
+    expect(repo.savePlan).toHaveBeenCalledWith('2026-09-28', 1, [tanky], [], 'Eu#1');
   });
 });

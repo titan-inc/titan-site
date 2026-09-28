@@ -46,10 +46,23 @@ export class RotationController {
    * @param vagas recalcula a sugestão com outro número de vagas, **sem salvar**.
    *   É o "Recalcular" da tela: o D'Hondt distribui as vagas entre os roles no
    *   servidor, então mudar o número no cliente não teria como refazer a conta.
+   * @param fixos quem o RL pôs no banco à mão e não deve sair no recálculo,
+   *   separados por vírgula. Eles consomem vaga da role deles, então o banco
+   *   continua proporcional.
    */
   @Get()
-  getView(@Query('semana') semana?: string, @Query('vagas') vagas?: string): Promise<RotationView> {
-    return this.rotation.getView(semana, vagas === undefined ? undefined : Number(vagas));
+  getView(
+    @Query('semana') semana?: string,
+    @Query('vagas') vagas?: string,
+    @Query('fixos') fixos?: string,
+  ): Promise<RotationView> {
+    return this.rotation.getView(
+      semana,
+      vagas === undefined ? undefined : Number(vagas),
+      // Ausente é diferente de vazio: sem o parâmetro valem as fixações do
+      // plano salvo; com ele vazio, o RL soltou todo mundo.
+      fixos === undefined ? undefined : fixos.split(',').filter(Boolean),
+    );
   }
 
   @Put('role-locks')

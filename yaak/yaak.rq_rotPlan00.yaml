@@ -7,7 +7,8 @@ workspaceId: wk_8LmjjnEbam
 folderId: fl_rot4Ti152x
 authentication: {}
 authenticationType: null
-body: {"text":"{\n  \"weekStart\": \"2026-09-28\",\n  \"seats\": 5,\n  \"characterIds\": []\n}"}
+body: {"text":"{\n  \"weekStart\": \"2026-09-28\",\n  \"seats\": 5,\n  \"characterIds\": [],
+  \"pinned\": []\n}"}
 bodyType: application/json
 description: ''
 headers:

@@ -19,7 +19,15 @@ method: GET
 name: Semana atual
 sortPriority: 0.0
 url: ${[ base_url ]}/internal/rotation
-urlParameters: []
+urlParameters:
+- enabled: false
+  name: vagas
+  value: '5'
+  id: null
+- enabled: false
+  name: fixos
+  value: ''
+  id: null
 settingSendCookies:
   enabled: false
   value: true

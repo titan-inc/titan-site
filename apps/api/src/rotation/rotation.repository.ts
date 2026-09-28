@@ -72,6 +72,7 @@ export class RotationRepository {
     weekStart: string,
     seats: number,
     characterIds: string[],
+    pinned: string[],
     savedBy: string,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -83,8 +84,13 @@ export class RotationRepository {
 
       await tx.rotationPlanEntry.deleteMany({ where: { planId: plan.id } });
       if (characterIds.length > 0) {
+        const fixados = new Set(pinned);
         await tx.rotationPlanEntry.createMany({
-          data: characterIds.map((characterId) => ({ planId: plan.id, characterId })),
+          data: characterIds.map((characterId) => ({
+            planId: plan.id,
+            characterId,
+            pinned: fixados.has(characterId),
+          })),
         });
       }
     });

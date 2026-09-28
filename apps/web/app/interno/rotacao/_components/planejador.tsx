@@ -40,6 +40,21 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
     inicial.saved?.characterIds ?? inicial.suggestion.map((s) => s.characterId),
   );
   const [seats, setSeats] = useState(inicial.seats);
+
+  /**
+   * Quem o RL pôs no banco à mão e não sai no recálculo.
+   *
+   * O caso: numa luta em que a classe rende mal, sentar aquela pessoa mesmo que
+   * a conta não a escolhesse — ela é melhor aproveitada na semana seguinte.
+   * Sem isto, o primeiro "Recalcular" apagaria a decisão.
+   */
+  const [fixos, setFixos] = useState<Set<string>>(
+    () =>
+      new Set(
+        inicial.saved?.pinned ??
+          inicial.suggestion.filter((s) => s.pinned).map((s) => s.characterId),
+      ),
+  );
   const [motivoTrava, setMotivoTrava] = useState('');
   const [aTravar, setATravar] = useState('');
 
@@ -78,6 +93,7 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
           nova.pool.filter((p) => p.lock !== null).map((p) => p.characterId),
         );
         setBanco((atual) => atual.filter((id) => !travados.has(id)));
+        setFixos((atual) => new Set([...atual].filter((id) => !travados.has(id))));
         depois?.();
       } catch {
         setErro('Não foi possível salvar');
@@ -100,7 +116,10 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
 
     startTransition(async () => {
       try {
-        const res = await fetch(`${API_URL}/internal/rotation?vagas=${seats}`, {
+        // `fixos` vai sempre, mesmo vazio: ausente significaria "usa o que está
+        // salvo", e aqui o que vale é o que está na tela.
+        const query = new URLSearchParams({ vagas: String(seats), fixos: [...fixos].join(',') });
+        const res = await fetch(`${API_URL}/internal/rotation?${query}`, {
           credentials: 'include',
         });
 
@@ -130,16 +149,52 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
     });
   }
 
+  /** Pôr à mão já é uma decisão: entra fixado, senão o recálculo apagaria. */
+  function adicionarAoBanco(id: string) {
+    setBanco((atual) => [...atual, id]);
+    setFixos((atual) => new Set(atual).add(id));
+  }
+
+  /** Tirar solta junto — senão a pessoa voltaria no recálculo seguinte. */
+  function tirarDoBanco(id: string) {
+    setBanco((atual) => atual.filter((x) => x !== id));
+    setFixos((atual) => {
+      const novo = new Set(atual);
+      novo.delete(id);
+      return novo;
+    });
+  }
+
+  function alternarFixo(id: string) {
+    setFixos((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
   function salvarPlano() {
-    escrever('/plan', 'PUT', { weekStart: view.weekStart, seats, characterIds: banco });
+    escrever('/plan', 'PUT', {
+      weekStart: view.weekStart,
+      seats,
+      characterIds: banco,
+      // Só faz sentido fixar quem está no banco; o Nest recusa o resto.
+      pinned: banco.filter((id) => fixos.has(id)),
+    });
   }
 
   const salvo = view.saved;
+  const fixadosAgora = banco.filter((id) => fixos.has(id));
   const mudou =
     salvo === null ||
     salvo.seats !== seats ||
     salvo.characterIds.length !== banco.length ||
-    banco.some((id) => !salvo.characterIds.includes(id));
+    banco.some((id) => !salvo.characterIds.includes(id)) ||
+    // Soltar ou fixar alguém muda o plano mesmo com a mesma lista de gente:
+    // é o que decide quem sobrevive ao próximo recálculo.
+    salvo.pinned.length !== fixadosAgora.length ||
+    fixadosAgora.some((id) => !salvo.pinned.includes(id));
 
   return (
     <div className="flex flex-col gap-6">
@@ -310,10 +365,27 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
                 <span className="text-pedra-lit text-xs">
                   {motivoDaSugestao(p.weeksSinceBench)}
                 </span>
+
+                {fixos.has(id) && (
+                  <span className="text-accent rounded border border-current/30 px-1.5 py-0.5 text-xs">
+                    fixado
+                  </span>
+                )}
+
+                {/* Fixar é dizer "esta pessoa fica mesmo que a conta mude".
+                    Soltar é o desfazer de quem foi posto ali por engano. */}
                 <button
                   type="button"
-                  onClick={() => setBanco(banco.filter((x) => x !== id))}
+                  onClick={() => alternarFixo(id)}
                   className="text-fg-subtle hover:text-fg ml-auto text-xs underline"
+                >
+                  {fixos.has(id) ? 'soltar' : 'fixar'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => tirarDoBanco(id)}
+                  className="text-fg-subtle hover:text-fg text-xs underline"
                 >
                   tirar
                 </button>
@@ -325,7 +397,7 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
         <div className="border-border flex flex-wrap items-center gap-3 border-t px-4 py-3">
           <Adicionar
             candidatos={disponiveis.filter((p) => !banco.includes(p.characterId))}
-            onAdd={(id) => setBanco([...banco, id])}
+            onAdd={adicionarAoBanco}
             disabled={ocupado}
           />
 

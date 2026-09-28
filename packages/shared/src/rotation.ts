@@ -77,6 +77,16 @@ export const rotationSuggestionSchema = z.object({
   realm: z.string(),
   role: rotationRoleSchema,
   reason: z.string(),
+
+  /**
+   * Posto no banco à mão pelo raid leader, e **não sai no recálculo**.
+   *
+   * O caso: numa luta em que a classe rende mal, o RL senta aquela pessoa mesmo
+   * que a conta não a escolhesse. A fixação consome vaga da role dela, então o
+   * banco continua proporcional — o que muda é quem ocupa a vaga, não quantas
+   * cada role recebe.
+   */
+  pinned: z.boolean(),
 });
 export type RotationSuggestion = z.infer<typeof rotationSuggestionSchema>;
 
@@ -84,6 +94,8 @@ export type RotationSuggestion = z.infer<typeof rotationSuggestionSchema>;
 export const rotationSavedPlanSchema = z.object({
   seats: z.number().int(),
   characterIds: z.string().array(),
+  /** Subconjunto de `characterIds` que o RL fixou à mão. */
+  pinned: z.string().array(),
   savedBy: z.string(),
   savedAt: z.string(),
 });
@@ -143,6 +155,11 @@ export const savePlanSchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   seats: z.number().int().min(0).max(40),
   characterIds: z.string().array(),
+  /**
+   * Quem foi fixado à mão. Tem que ser subconjunto de `characterIds` — fixar
+   * alguém que não está no banco não quer dizer nada, e o service recusa.
+   */
+  pinned: z.string().array().default([]),
 });
 export type SavePlan = z.infer<typeof savePlanSchema>;
 

@@ -45,7 +45,7 @@ export class RotationService {
    * @param vagas sobrepõe quantos sentar, **só para este cálculo**. É o
    *   "Recalcular" da tela: nada é gravado até o oficial salvar o plano.
    */
-  async getView(semana?: string, vagas?: number): Promise<RotationView> {
+  async getView(semana?: string, vagas?: number, fixos?: string[]): Promise<RotationView> {
     const weekStart = semana ? inicioDaSemana(semana) : this.semanaAtual();
 
     const snapshot = await this.wowaudit.getTeamCharactersSnapshot();
@@ -95,16 +95,23 @@ export class RotationService {
     const pedido = vagas !== undefined && Number.isInteger(vagas) && vagas >= 0 ? vagas : null;
     const seats = pedido ?? plano?.seats ?? DEFAULT_ROTATION_SEATS;
 
+    // Sem `fixos` explícito, valem os do plano salvo — assim recarregar a tela
+    // não perde uma fixação que o RL já tinha decidido.
+    const fixados = new Set(
+      fixos ?? plano?.entries.filter((e) => e.pinned).map((e) => e.characterId) ?? [],
+    );
+
     return {
       weekStart,
       seats,
       roleLocks: [...rolesTravadas].filter(this.ehRole),
       pool,
-      suggestion: this.sugerir(pool, seats),
+      suggestion: this.sugerir(pool, seats, fixados),
       saved: plano
         ? {
             seats: plano.seats,
             characterIds: plano.entries.map((e) => e.characterId),
+            pinned: plano.entries.filter((e) => e.pinned).map((e) => e.characterId),
             savedBy: plano.savedBy,
             savedAt: plano.savedAt.toISOString(),
           }
@@ -135,19 +142,32 @@ export class RotationService {
    *
    * **Nunca é o plano.** Quem decide é o oficial; isto é o primeiro rascunho.
    */
-  private sugerir(pool: RotationPlayer[], seats: number): RotationSuggestion[] {
+  private sugerir(
+    pool: RotationPlayer[],
+    seats: number,
+    fixos: ReadonlySet<string>,
+  ): RotationSuggestion[] {
     const livres = pool.filter((p) => p.lock === null);
     const vagas = Math.min(Math.max(0, seats), livres.length);
-    if (vagas === 0) return [];
+
+    // Fixado travado sai junto: quem está fora da rotação não pode estar no
+    // banco, mesmo tendo sido posto à mão antes da trava existir.
+    const fixados = livres.filter((p) => fixos.has(p.characterId));
+    if (vagas === 0 && fixados.length === 0) return [];
 
     const filas = new Map<RotationRole, RotationPlayer[]>();
     for (const p of livres) {
+      if (fixos.has(p.characterId)) continue;
       const fila = filas.get(p.role);
       if (fila) fila.push(p);
       else filas.set(p.role, [p]);
     }
 
-    const tamanho = new Map([...filas].map(([role, fila]) => [role, fila.length]));
+    // O tamanho da role conta os fixados junto: a proporção é sobre o time
+    // inteiro, não sobre quem sobrou depois de fixar.
+    const tamanho = new Map<RotationRole, number>();
+    for (const p of livres) tamanho.set(p.role, (tamanho.get(p.role) ?? 0) + 1);
+
     for (const fila of filas.values()) {
       fila.sort((a, b) => {
         const va = a.weeksSinceBench ?? Number.POSITIVE_INFINITY;
@@ -157,8 +177,15 @@ export class RotationService {
       });
     }
 
-    const escolhidos: RotationPlayer[] = [];
+    // Os fixados entram primeiro e **consomem vaga da role deles**. Sem isso,
+    // fixar um melee daria um melee a mais no banco e desequilibraria o que o
+    // D'Hondt existe para equilibrar.
+    //
+    // Se o RL fixar mais gente que as vagas, todos ficam: recusar a decisão
+    // dele seria a ferramenta mandando em quem ela deveria ajudar.
+    const escolhidos: RotationPlayer[] = [...fixados];
     const usadas = new Map<RotationRole, number>();
+    for (const p of fixados) usadas.set(p.role, (usadas.get(p.role) ?? 0) + 1);
 
     while (escolhidos.length < vagas) {
       let melhor: RotationRole | null = null;
@@ -192,6 +219,7 @@ export class RotationService {
       realm: p.realm,
       role: p.role,
       reason: motivoDaSugestao(p.weeksSinceBench),
+      pinned: fixos.has(p.characterId),
     }));
   }
 
@@ -324,7 +352,14 @@ export class RotationService {
       );
     }
 
-    await this.repo.savePlan(weekStart, body.seats, ids, autor);
+    // Fixar quem não está no banco não quer dizer nada, e gravado assim viraria
+    // uma fixação fantasma que reaparece no próximo recálculo.
+    const fixados = [...new Set(body.pinned)];
+    if (fixados.some((id) => !ids.includes(id))) {
+      throw new BadRequestException('Só dá para fixar quem está no banco');
+    }
+
+    await this.repo.savePlan(weekStart, body.seats, ids, fixados, autor);
     return this.getView(weekStart);
   }
 
