@@ -15,6 +15,7 @@ describe('loadGuildConfig', () => {
       timezone: 'America/Sao_Paulo',
       rankAccessMax: 4,
       officerRankMax: 2,
+      raidStartHour: 21,
     });
   });
 
@@ -116,6 +117,31 @@ describe('loadGuildConfig', () => {
       // Apertar restringe — nunca libera.
       expect(loadGuildConfig({ ...valid, GUILD_RANK_ACCESS_MAX: '1' }).officerRankMax).toBe(1);
       expect(loadGuildConfig({ ...valid, GUILD_RANK_ACCESS_MAX: '0' }).officerRankMax).toBe(0);
+    });
+  });
+
+  describe('GUILD_RAID_START_HOUR', () => {
+    it('lê a hora do ambiente', () => {
+      expect(loadGuildConfig({ ...valid, GUILD_RAID_START_HOUR: '20' }).raidStartHour).toBe(20);
+    });
+
+    it('cai no default quando não está definida', () => {
+      expect(loadGuildConfig(valid).raidStartHour).toBe(21);
+    });
+
+    it('aceita 0 — raid de madrugada', () => {
+      expect(loadGuildConfig({ ...valid, GUILD_RAID_START_HOUR: '0' }).raidStartHour).toBe(0);
+    });
+
+    it('rejeita valor fora de 0–23, não numérico ou fracionário', () => {
+      // Silenciar aqui pararia o congelamento de signupDeclared sem erro
+      // nenhum, e a perda só apareceria semanas depois — sem nada para
+      // reprocessar, porque a declaração já não existe no WoWAudit.
+      for (const raw of ['24', '-1', '21h', '20.5']) {
+        expect(() => loadGuildConfig({ ...valid, GUILD_RAID_START_HOUR: raw })).toThrow(
+          /GUILD_RAID_START_HOUR/,
+        );
+      }
     });
   });
 

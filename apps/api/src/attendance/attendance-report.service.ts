@@ -9,6 +9,7 @@ import {
   type RaidNightInfo,
   type SignupStatus,
 } from '@titan/shared';
+import { loadGuildTimezone } from '../config/guild.config';
 import { AttendanceRepository } from './attendance.repository';
 
 /** Quantas noites a tela mostra. Duas temporadas de raid cabem folgado. */
@@ -19,6 +20,7 @@ interface LinhaDoBanco {
   id: string;
   character: { name: string; realm: string };
   signup: string | null;
+  signupDeclared: string | null;
   raided: boolean | null;
   firstPull: number | null;
   pulls: number | null;
@@ -47,11 +49,13 @@ interface NoiteDoBanco {
  */
 @Injectable()
 export class AttendanceReportService {
+  private readonly timezone = loadGuildTimezone();
+
   constructor(private readonly repo: AttendanceRepository) {}
 
   /** Todas as noites, com todo mundo. Só oficial — Regra 7. */
   async getReport(): Promise<AttendanceReport> {
-    const noites = await this.repo.listNights(NOITES);
+    const noites = await this.repo.listNights(NOITES, this.hoje());
 
     return {
       nights: noites.map((n) => ({
@@ -67,7 +71,7 @@ export class AttendanceReportService {
    * @param characterIds identidades dos personagens da conta no roster
    */
   async getMine(characterIds: string[]): Promise<MyAttendance> {
-    const linhas = await this.repo.listForCharacters(characterIds, NOITES);
+    const linhas = await this.repo.listForCharacters(characterIds, NOITES, this.hoje());
 
     const nights = linhas.map((l) => ({
       ...this.info(l.raidNight),
@@ -83,7 +87,11 @@ export class AttendanceReportService {
       summary: {
         counted: contadas.length,
         present: contadas.filter((n) => isPresent(n.entry.state)).length,
-        missed: contadas.filter((n) => n.entry.state === 'nao-raidou').length,
+        // `furou` entra junto: é o mesmo fato (confirmou e não veio), só que
+        // confirmado pelo RL em vez de inferido. Contar só um dos dois faria a
+        // conta encolher conforme o RL for corrigindo as noites.
+        missed: contadas.filter((n) => n.entry.state === 'nao-raidou' || n.entry.state === 'furou')
+          .length,
       },
     };
   }
@@ -121,20 +129,38 @@ export class AttendanceReportService {
 
   private entry(a: LinhaDoBanco, hasSignups: boolean): AttendanceEntry {
     const signup = this.signup(a.signup);
+    const signupDeclared = this.signup(a.signupDeclared);
 
     return {
       id: a.id,
       name: a.character.name,
       realm: a.character.realm,
       signup,
+      signupDeclared,
       raided: a.raided,
       // Derivado no shared, nunca aqui: o job e a tela têm que responder a
       // mesma coisa, e o que está em jogo é a reputação de gente.
-      state: toAttendanceState(signup, a.raided, hasSignups),
+      state: toAttendanceState(signup, a.raided, hasSignups, signupDeclared),
       firstPull: a.firstPull,
       pulls: a.pulls,
       note: a.note,
     };
+  }
+
+  /**
+   * Data de hoje no fuso da guilda, como corte superior da leitura.
+   *
+   * A noite de hoje entra mesmo antes de começar — é a raid que o oficial está
+   * olhando à tarde, e ela já tem os signups. O que fica de fora é sábado que
+   * vem. `en-CA` porque devolve `YYYY-MM-DD`, o formato gravado.
+   */
+  private hoje(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
   }
 
   /** O banco guarda texto; o contrato é enum. Valor estranho vira null. */

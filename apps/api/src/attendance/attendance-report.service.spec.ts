@@ -1,6 +1,10 @@
 import type { AttendanceRepository } from './attendance.repository';
 import { AttendanceReportService } from './attendance-report.service';
 
+// O corte de "raid que ainda não aconteceu" é uma data no fuso da guilda.
+// Fixar aqui evita que um .env local mude o resultado do teste.
+process.env.GUILD_TIMEZONE = 'America/Sao_Paulo';
+
 const noite = (over: Record<string, unknown> = {}) => ({
   id: 1,
   date: '2026-07-28',
@@ -18,6 +22,7 @@ const linha = (over: Record<string, unknown> = {}) => ({
   id: 'linha-1',
   character: { name: 'Fulano', realm: 'Azralon' },
   signup: 'Present',
+  signupDeclared: 'Present',
   raided: true,
   firstPull: 1,
   pulls: 21,
@@ -67,7 +72,12 @@ describe('AttendanceReportService', () => {
     // (Regra 4). `getMine` só repassa os ids ao repositório.
     await service.getMine(['char-fulano']);
 
-    expect(repo.listForCharacters).toHaveBeenCalledWith(['char-fulano'], expect.any(Number));
+    expect(repo.listForCharacters).toHaveBeenCalledWith(
+      ['char-fulano'],
+      expect.any(Number),
+      // Corte superior: raid que ainda não aconteceu não é histórico.
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    );
   });
 
   it('soma os personagens da conta — a pessoa é a soma dos chars dela', async () => {
@@ -76,7 +86,25 @@ describe('AttendanceReportService', () => {
     expect(repo.listForCharacters).toHaveBeenCalledWith(
       ['char-fulano', 'char-beltrano'],
       expect.any(Number),
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     );
+  });
+
+  it('não pede ao banco raid que ainda não aconteceu', async () => {
+    // O job grava as noites futuras — é o que torna o congelamento de
+    // signupDeclared repetível. Elas não são presença: entrariam no topo da
+    // lista como noites vazias e empurrariam as reais para fora do limite.
+    await service.getReport();
+
+    const [, ate] = repo.listNights.mock.calls[0] as [number, string];
+    const hoje = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    expect(ate).toBe(hoje);
   });
 
   it('noite sem dado fica fora da taxa de presença', async () => {

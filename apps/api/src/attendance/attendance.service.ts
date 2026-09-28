@@ -32,6 +32,14 @@ export interface SyncResult {
   withoutLog: number;
   /** Noites puladas por ambiguidade de data. */
   ambiguous: number;
+  /**
+   * Noites que ainda não aconteceram.
+   *
+   * Contadas à parte de `withoutLog`: raid de sábado que ainda não rolou não é
+   * "noite sem log", é noite que não teve o que logar. Somar as duas faria o
+   * número de lacunas parecer pior do que é toda semana.
+   */
+  upcoming: number;
   /** Linhas de presença gravadas. */
   entries: number;
 }
@@ -103,13 +111,18 @@ export class AttendanceService {
     const planejadas = await this.wowaudit.getPlannedRaids();
     const limite = desde ? this.dataLocal(desde.getTime()) : null;
 
+    // A janela inclui **raid que ainda não aconteceu**, de propósito. É o que
+    // torna o congelamento de `signupDeclared` repetível: a noite é relida todo
+    // dia até começar, e a última leitura antes das 21h é a que vale. Sem isso,
+    // só a rodada das 11h do dia da raid pegaria a declaração — e uma falha do
+    // WoWAudit naquela manhã perderia a noite inteira, sem nada para reprocessar.
     const naJanela = planejadas
-      .filter((r) => (limite === null || r.date >= limite) && r.date <= this.dataLocal(Date.now()))
+      .filter((r) => limite === null || r.date >= limite)
       .sort((a, b) => a.date.localeCompare(b.date));
 
     if (naJanela.length === 0) {
       this.logger.warn('Nenhuma raid planejada na janela; nada a gravar');
-      return { nights: 0, withLog: 0, withoutLog: 0, ambiguous: 0, entries: 0 };
+      return { nights: 0, withLog: 0, withoutLog: 0, ambiguous: 0, upcoming: 0, entries: 0 };
     }
 
     const primeira = naJanela[0];
@@ -147,6 +160,7 @@ export class AttendanceService {
       withLog: 0,
       withoutLog: 0,
       ambiguous: 0,
+      upcoming: 0,
       entries: 0,
     };
 
@@ -169,6 +183,7 @@ export class AttendanceService {
         // Conta pela evidência, não pela existência do arquivo: log sem pull
         // de boss não diz nada sobre quem raidou.
         if (gravada.hasEvidence) resultado.withLog++;
+        else if (this.aindaNaoComecou(raid.date)) resultado.upcoming++;
         else resultado.withoutLog++;
       } catch (err: unknown) {
         // Uma noite que falha não pode abortar as outras 157.
@@ -180,7 +195,7 @@ export class AttendanceService {
     this.logger.log(
       `Presença: ${resultado.nights} noites — ${resultado.withLog} com log, ` +
         `${resultado.withoutLog} sem log, ${resultado.ambiguous} ambíguas, ` +
-        `${resultado.entries} registros`,
+        `${resultado.upcoming} a acontecer, ${resultado.entries} registros`,
     );
     return resultado;
   }
@@ -308,9 +323,62 @@ export class AttendanceService {
         hasSignups: signups.length > 0,
       },
       entradas,
+      this.aindaNaoComecou(raid.date),
     );
 
     return { entries, hasEvidence: temEvidencia };
+  }
+
+  /**
+   * A raid desta data ainda não começou?
+   *
+   * É o que decide se o signup lido agora é a **declaração das pessoas** ou já
+   * a **correção do raid leader**. Depois da noite o RL edita os status para
+   * refletir o que aconteceu, e a partir daí o congelamento tem que parar —
+   * senão a declaração original é sobrescrita e "furou" fica indistinguível de
+   * "declinou com antecedência".
+   *
+   * Comparação de instantes, não de datas: o job roda às 11h, mas a rota de ops
+   * dispara o sync a qualquer hora, inclusive durante a raid. Por data, uma
+   * rodada às 23h do dia da raid ainda pareceria "antes" e apagaria tudo.
+   */
+  private aindaNaoComecou(date: string): boolean {
+    return Date.now() < this.inicioDaRaid(date);
+  }
+
+  /**
+   * O instante em que a raid daquela data começa, em epoch.
+   *
+   * O WoWAudit dá só a data de calendário; a hora vem da config da guilda. O
+   * offset é calculado para **aquele dia**, não fixo: o Brasil já teve horário
+   * de verão e pode voltar a ter, e congelar o offset erraria uma hora durante
+   * meses sem nenhum erro aparecer.
+   */
+  private inicioDaRaid(date: string): number {
+    const hora = String(this.guild.raidStartHour).padStart(2, '0');
+
+    // Palpite em UTC, depois corrigido pelo offset real do fuso naquele
+    // instante. Duas linhas em vez de uma biblioteca de fuso.
+    const palpite = new Date(`${date}T${hora}:00:00Z`).getTime();
+    return palpite + this.offsetDoFuso(palpite);
+  }
+
+  /** Quanto o fuso da guilda está atrás do UTC naquele instante, em ms. */
+  private offsetDoFuso(epoch: number): number {
+    // `sv` porque formata como "YYYY-MM-DD HH:mm:ss", que o Date lê como UTC
+    // ao trocar o espaço por "T" e anexar "Z".
+    const local = new Intl.DateTimeFormat('sv', {
+      timeZone: this.guild.timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(new Date(epoch));
+
+    return epoch - new Date(`${local.replace(' ', 'T')}Z`).getTime();
   }
 
   /** Identidade que atravessa as duas fontes: nome com acento + realm frouxo. */

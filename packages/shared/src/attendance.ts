@@ -8,12 +8,17 @@ import { z } from 'zod';
  */
 
 /**
- * Status do signup, como o WoWAudit entrega. São **auto-declarados**: quem
- * marca é a própria pessoa, não o raid leader.
+ * Status do signup, como o WoWAudit entrega.
  *
- * `Standby` é o banco **declarado** — não precisa de inferência nem do RL.
+ * **Nasce auto-declarado e termina como correção do raid leader.** A pessoa
+ * marca antes da raid; depois da noite, o RL edita para refletir o que de fato
+ * aconteceu — `Standby` vira "veio e ficou de banco", `Absent` vira "não veio".
+ *
+ * Por isso existem dois valores por linha, e não um: o congelado antes da raid
+ * (`signupDeclared`) e o de agora. Ver `toAttendanceState()`.
+ *
  * `Late` é a pessoa avisando que chega atrasada, o que é melhor que derivar do
- * índice da pull.
+ * índice da pull. Se acabou no banco, o RL sobrescreve com `Standby`.
  *
  * NÃO usar `selected` do WoWAudit como designação de banco: veio `true` em 168
  * de 168 signups da amostra, inclusive nos `Absent`.
@@ -58,6 +63,14 @@ export const ATTENDANCE_STATES = [
   'raidou',
   /** Confirmou e não apareceu. AMBÍGUO — só o humano resolve. */
   'nao-raidou',
+  /**
+   * Confirmou antes e o raid leader marcou `Absent` depois: **furou**.
+   *
+   * Não é `nao-raidou`: ali o log não sabe se foi banco ou furo, aqui o RL já
+   * disse. E não é `ausente`, que é ter declinado com antecedência — a coisa
+   * socialmente oposta. Só existe com `signupDeclared` gravado.
+   */
+  'furou',
   /** Banco declarado no próprio signup (`Standby`). */
   'banco',
   /** Declinou no signup (`Absent`) e não raidou. */
@@ -77,15 +90,20 @@ export type AttendanceState = z.infer<typeof attendanceStateSchema>;
  * que mostra. Duas implementações divergiriam em silêncio, e o que está em jogo
  * é a reputação de gente.
  *
- * @param signup status declarado, ou null se a pessoa nem apareceu no signup
+ * @param signup status do signup **agora** — depois da noite, é a correção do
+ *   raid leader. Null se a pessoa nem apareceu no signup
  * @param raided true/false do log; **null quando a noite não tem log**
  * @param hasSignupData a noite tem lista de signup? `false` para noite antiga,
  *   em que o WoWAudit não guardou nada — e aí "não confirmou" não é afirmável
+ * @param declared o que estava declarado **antes de a raid começar**, congelado
+ *   pelo job. Null quando não dá para afirmar — e aí a derivação cai no
+ *   comportamento antigo em vez de inventar
  */
 export function toAttendanceState(
   signup: SignupStatus | null,
   raided: boolean | null,
   hasSignupData = true,
+  declared: SignupStatus | null = null,
 ): AttendanceState {
   if (raided === null) return 'sem-dado';
 
@@ -105,7 +123,10 @@ export function toAttendanceState(
     case 'Standby':
       return 'banco';
     case 'Absent':
-      return 'ausente';
+      // `Absent` agora tem duas origens opostas, e só o declarado separa:
+      // quem sempre disse que não vinha, e quem confirmou e o RL rebaixou
+      // depois de não aparecer. Sem o declarado, não dá para afirmar o furo.
+      return declared === 'Present' || declared === 'Late' ? 'furou' : 'ausente';
     case 'Present':
     case 'Late':
       // O quadrante ambíguo: disse que vinha e não está em pull nenhuma.
@@ -126,6 +147,10 @@ export function isPresent(state: AttendanceState): boolean {
  *
  * Só um. A API do WoWAudit encolheu esse conjunto: `Standby` e `Absent` já vêm
  * declarados, então o trabalho manual do RL é bem menor do que parecia.
+ *
+ * `furou` **não** entra: ali o RL já disse o que aconteceu ao editar o signup
+ * para `Absent`. Pedir que ele anote de novo seria cobrar duas vezes o mesmo
+ * trabalho, e encheria a tela de pendência que não é pendência.
  */
 export function needsReview(state: AttendanceState): boolean {
   return state === 'nao-raidou';
@@ -139,7 +164,17 @@ export const attendanceEntrySchema = z.object({
   name: z.string(),
   realm: z.string(),
 
+  /** O signup como está agora — depois da noite, a correção do RL. */
   signup: signupStatusSchema.nullable(),
+
+  /**
+   * O que estava declarado antes de a raid começar.
+   *
+   * Null nas noites gravadas antes deste campo existir, e nas que entraram no
+   * banco já depois de acontecer. Null não é "não confirmou" — é "não dá para
+   * saber o que foi confirmado".
+   */
+  signupDeclared: signupStatusSchema.nullable(),
 
   /** Null = a noite não tem log. Nunca confundir com `false`. */
   raided: z.boolean().nullable(),
