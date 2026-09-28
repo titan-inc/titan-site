@@ -162,6 +162,10 @@ model Character {
   betCandidateSnapshots BetRoundCandidate[]
   betSlipsDeposit       BetSlip[]           @relation("DepositanteDoSlip")
 
+  /// Rotação de banco — TIT-152.
+  rotationLock       RotationPlayerLock?
+  rotationPlanBenchs RotationPlanEntry[]
+
   /// A identidade é o par nome + realm, nunca o nome sozinho.
   @@unique([nameKey, realmKey])
 }
@@ -2493,4 +2497,89 @@ model RoundClosingReport {
 
   /// Republicar é versão nova (T-C02).
   @@unique([roundId, version])
+}
+
+/// Role do time de raid que está fora da rotação de banco.
+///
+/// Os valores são os do WoWAudit — `Tank`, `Heal`, `Melee`, `Ranged` —, que
+/// colapsam role e melee/ranged num campo só. Travar role e travar
+/// melee/ranged é, por isso, o mesmo mecanismo.
+///
+/// Uma linha por role travada; ausência de linha é "rotaciona". Não tem motivo
+/// obrigatório porque é um toggle de tela, reversível num clique — diferente do
+/// `RotationPlayerLock`, que aponta para uma pessoa.
+model RotationRoleLock {
+  role String @id
+
+  lockedBy String
+  lockedAt DateTime @default(now())
+}
+
+/// Pessoa que não entra na rotação de banco.
+///
+/// O caso que motivou: o único warlock da guilda, que a maioria das lutas
+/// exige. Foi cogitado DERIVAR isso de cobertura de classe — a trava se
+/// dissolveria sozinha quando um segundo warlock entrasse no time — e a
+/// liderança preferiu a trava explícita (TIT-152).
+///
+/// `reason` é obrigatório de propósito. O risco da trava manual é sobreviver ao
+/// motivo que a criou, e o que protege contra isso não é código: é o motivo
+/// escrito e a tela mostrando há quantas semanas ele está lá.
+model RotationPlayerLock {
+  id String @id @default(cuid())
+
+  characterId String    @unique
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  reason String
+
+  lockedBy String
+  lockedAt DateTime @default(now())
+}
+
+/// O banco planejado de uma semana.
+///
+/// Por SEMANA e não por noite: a raid é duas vezes por semana e quem descansa
+/// descansa a semana inteira. `weekStart` é a segunda-feira no fuso da guilda,
+/// "2026-09-28" — mesmo formato das datas de `RaidNight`, que é o que permite
+/// cruzar plano e resultado sem conversão.
+///
+/// **Gravado desde a primeira rodada**, mesmo com a tela crua: sem o plano
+/// gravado, a sugestão da semana seguinte continua chutando, e não dá para
+/// recuperar depois quem tinha sido decidido sentar. Regra 7.
+model RotationPlan {
+  id String @id @default(cuid())
+
+  weekStart String @unique
+
+  /// Quantos o oficial decidiu sentar naquela semana. Fica na linha, e não em
+  /// constante, porque nos bosses difíceis a liderança rotaciona menos gente.
+  seats Int
+
+  /// Quem salvou. Decidir quem senta não pode ser ação anônima.
+  savedBy String
+  savedAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  entries RotationPlanEntry[]
+}
+
+/// Uma pessoa no banco planejado de uma semana.
+///
+/// É o dado que a sugestão da semana seguinte lê. O cruzamento com a presença
+/// é o que separa "descansou" de "faltou": quem foi sentado e apareceu cumpriu
+/// o combinado; quem foi sentado e sumiu, não — e contar os dois igual
+/// premiaria quem falta. Ver a Regra 7 do CLAUDE.md.
+model RotationPlanEntry {
+  id String @id @default(cuid())
+
+  planId String
+  plan   RotationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, characterId])
+  @@index([characterId])
 }

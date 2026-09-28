@@ -37,6 +37,7 @@ import {
   progressReportSchema,
   raidProgressReportSchema,
   rosterSchema,
+  rotationViewSchema,
   sessionUserSchema,
   vagaListSchema,
   vagaSchema,
@@ -50,6 +51,7 @@ import {
   type ProgressReport,
   type RaidProgressReport,
   type Roster,
+  type RotationView,
   type SessionUser,
   type Vaga,
   type VagaList,
@@ -225,6 +227,31 @@ export async function getAttendanceReport(): Promise<AttendanceReport | null> {
     if (!res.ok) return null;
 
     const parsed = attendanceReportSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rotação de banco da semana. **Só oficial** — Regra 7.
+ *
+ * O banco planejado não pode chegar a quem vai ser sentado: a pessoa precisa
+ * aparecer na raid mesmo sentada, para o caso de precisar trocar.
+ */
+export async function getRotationView(semana?: string): Promise<RotationView | null> {
+  const query = semana ? `?semana=${encodeURIComponent(semana)}` : '';
+
+  try {
+    const res = await fetch(`${API_URL}/internal/rotation${query}`, {
+      headers: await sessionHeader(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) return null;
+
+    const parsed = rotationViewSchema.safeParse(await res.json());
     return parsed.success ? parsed.data : null;
   } catch {
     return null;

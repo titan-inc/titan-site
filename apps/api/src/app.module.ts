@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ApplicationsModule } from './applications/applications.module';
 import { AttendanceModule } from './attendance/attendance.module';
+import { RotationModule } from './rotation/rotation.module';
 import { AuthModule } from './auth/auth.module';
 import { BlizzardModule } from './blizzard/blizzard.module';
 import { LootCatalogModule } from './loot-catalog/loot-catalog.module';
@@ -36,6 +37,7 @@ import { TitanBetModule } from './titan-bet/titan-bet.module';
     SnapshotsModule,
     RaidProgressModule,
     AttendanceModule,
+    RotationModule,
     MembershipModule,
     OfficersModule,
     LootCatalogModule,
