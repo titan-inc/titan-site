@@ -359,8 +359,27 @@ model RaidAttendance {
   characterId String
   character   Character @relation(fields: [characterId], references: [id])
 
-  /// Status auto-declarado no signup. Null = a pessoa não estava no signup.
+  /// Status do signup **como está agora** no WoWAudit.
+  ///
+  /// Deixou de ser só auto-declarado: o raid leader edita depois da noite para
+  /// refletir o que aconteceu (`Standby` = veio e ficou de banco, `Absent` =
+  /// não veio). Ou seja, esta coluna é a CORREÇÃO DELE — ver `signupDeclared`.
+  ///
+  /// Null = a pessoa não estava no signup.
   signup String?
+
+  /// O que a pessoa tinha declarado **antes de a raid começar**.
+  ///
+  /// Congelada: o job só escreve enquanto a raid não começou, e nunca mais
+  /// depois. Sem ela, a edição do RL apaga a declaração original e "furou"
+  /// (confirmou e não veio) fica indistinguível de "declinou com antecedência"
+  /// — os dois viram `Absent`. Esse é o único sinal de indisciplina que existe.
+  ///
+  /// Null quando não dá para afirmar o que foi declarado: noite gravada pela
+  /// primeira vez depois de já ter acontecido (backfill, ou raid marcada em
+  /// cima da hora). Mesmo princípio do `hasSignups` — ausência de dado não
+  /// vira acusação.
+  signupDeclared String?
 
   /// Apareceu em alguma pull de boss.
   ///

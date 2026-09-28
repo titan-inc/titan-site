@@ -35,10 +35,21 @@ export class AttendanceRepository {
    * leader, e reprocessar a noite não pode apagar o motivo que ele escreveu —
    * o que fica no banco é a correção do humano, nunca a inferência.
    *
+   * **E só escreve `signupDeclared` com `congelarDeclarado`.** Mesmo princípio,
+   * outro mecanismo: ali o job nunca escreve, aqui ele escreve enquanto a raid
+   * não começou e para para sempre depois. Ver `AttendanceService`.
+   *
    * Numa transação porque uma noite gravada pela metade é pior que uma noite
    * não gravada: a tela mostraria meia raid faltando.
+   *
+   * @param congelarDeclarado a raid ainda não começou, então o que está no
+   *   WoWAudit é a declaração das pessoas e pode virar `signupDeclared`
    */
-  async saveNight(night: RaidNightInput, entries: AttendanceInput[]): Promise<number> {
+  async saveNight(
+    night: RaidNightInput,
+    entries: AttendanceInput[],
+    congelarDeclarado: boolean,
+  ): Promise<number> {
     const { id, ...resto } = night;
 
     await this.prisma.$transaction([
@@ -50,12 +61,22 @@ export class AttendanceRepository {
 
       ...entries.map((e) => {
         const { characterId, ...campos } = e;
+
+        // Fora da janela, `signupDeclared` some do payload inteiro — não vai
+        // como null. Mandar null apagaria o que já foi congelado, e o dado não
+        // volta: a declaração original já não existe mais no WoWAudit.
+        const declarado = congelarDeclarado ? { signupDeclared: campos.signup } : {};
+
         return this.prisma.raidAttendance.upsert({
           where: {
             raidNightId_characterId: { raidNightId: id, characterId },
           },
-          create: { raidNightId: id, characterId, ...campos },
-          update: campos,
+          // No create o mesmo cuidado, por outro motivo: noite que entra no
+          // banco já depois de ter acontecido (backfill) não tem declaração
+          // para congelar, e copiar a correção do RL mentiria dizendo que foi
+          // isso que a pessoa declarou.
+          create: { raidNightId: id, characterId, ...campos, ...declarado },
+          update: { ...campos, ...declarado },
         });
       }),
     ]);
@@ -63,9 +84,18 @@ export class AttendanceRepository {
     return entries.length;
   }
 
-  /** Noites com o detalhe de todo mundo. Só oficial chega aqui — Regra 7. */
-  listNights(limite: number) {
+  /**
+   * Noites com o detalhe de todo mundo. Só oficial chega aqui — Regra 7.
+   *
+   * @param ate data de calendário máxima, no fuso da guilda. O job grava as
+   *   raids que ainda vão acontecer (é o que torna o congelamento de
+   *   `signupDeclared` repetível), e elas não são presença: entrariam no topo
+   *   da lista como noites vazias, empurrando as que aconteceram para fora do
+   *   limite. Tela de noite futura é rotação, e é a TIT-152.
+   */
+  listNights(limite: number, ate: string) {
     return this.prisma.raidNight.findMany({
+      where: { date: { lte: ate } },
       orderBy: { date: 'desc' },
       take: limite,
       include: {
@@ -85,11 +115,13 @@ export class AttendanceRepository {
    * Recebe a lista de ids porque uma conta tem N personagens, e o histórico da
    * pessoa é o de todos eles juntos. Ver Regra 4.
    */
-  listForCharacters(characterIds: string[], limite: number) {
+  listForCharacters(characterIds: string[], limite: number, ate: string) {
     if (characterIds.length === 0) return Promise.resolve([]);
 
     return this.prisma.raidAttendance.findMany({
-      where: { characterId: { in: characterIds } },
+      // Mesmo corte de `listNights`: raid que ainda não aconteceu não é
+      // histórico, e apareceria como "sem dado" contra a pessoa.
+      where: { characterId: { in: characterIds }, raidNight: { date: { lte: ate } } },
       orderBy: { raidNight: { date: 'desc' } },
       take: limite,
       include: { raidNight: true, character: true },

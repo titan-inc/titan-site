@@ -110,3 +110,49 @@ describe('toAttendanceState sem lista de signup', () => {
     expect(needsReview('raidou')).toBe(false);
   });
 });
+
+describe('toAttendanceState com o signup declarado congelado', () => {
+  it('confirmou antes e o RL marcou Absent depois é "furou", não "ausente"', () => {
+    // O caso que motivou a coluna. Sem o declarado, os dois viram `Absent` e
+    // quem furou fica indistinguível de quem avisou que não vinha.
+    expect(toAttendanceState('Absent', false, true, 'Present')).toBe('furou');
+    expect(toAttendanceState('Absent', false, true, 'Late')).toBe('furou');
+  });
+
+  it('quem sempre declinou continua ausente', () => {
+    expect(toAttendanceState('Absent', false, true, 'Absent')).toBe('ausente');
+  });
+
+  it('sem declarado não afirma furo — cai no comportamento antigo', () => {
+    // Noites gravadas antes da coluna existir. Ausência de dado não vira
+    // acusação: mesmo princípio do `hasSignupData`.
+    expect(toAttendanceState('Absent', false, true, null)).toBe('ausente');
+    expect(toAttendanceState('Absent', false)).toBe('ausente');
+  });
+
+  it('declarado não promove a banco nem a rotação a furo', () => {
+    // Só `Absent` no final vira furo. Standby é banco, tendo confirmado antes
+    // ou não — quem foi sentado pelo RL não furou nada.
+    expect(toAttendanceState('Standby', false, true, 'Present')).toBe('banco');
+    expect(toAttendanceState('Unknown', false, true, 'Present')).toBe('rotacao');
+  });
+
+  it('declarado não muda quem apareceu na raid', () => {
+    expect(toAttendanceState('Absent', true, true, 'Present')).toBe('sem-confirmar');
+    expect(toAttendanceState('Present', true, true, 'Absent')).toBe('presente');
+  });
+
+  it('noite sem log continua sem-dado, mesmo com declarado', () => {
+    // O RL pode marcar Absent numa noite cujo log nunca subiu. Ainda assim o
+    // estado é sem-dado: aqui só a coluna do resultado mudaria isso, e ela é
+    // trabalho da TIT-151.
+    expect(toAttendanceState('Absent', null, true, 'Present')).toBe('sem-dado');
+  });
+
+  it('"furou" não conta como presença e não pede anotação', () => {
+    // O RL já disse o que aconteceu ao editar o signup. Pedir a nota de novo
+    // seria cobrar duas vezes o mesmo trabalho.
+    expect(isPresent('furou')).toBe(false);
+    expect(needsReview('furou')).toBe(false);
+  });
+});
