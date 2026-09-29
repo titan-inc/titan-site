@@ -127,7 +127,7 @@ export class RotationService {
    *
    * **Quantas vagas cada role recebe** — proporcional ao tamanho da role no
    * time, pelo método D'Hondt. Sem isso a sugestão desanda no começo: enquanto
-   * quase todo mundo está empatado em "nunca sentou", o desempate por nome
+   * quase todo mundo está empatado em "ainda não foi banco", o desempate por nome
    * sentava 3 dos 6 healers e quebrava a raid. Com 2 tanks, 6 healers, 10 melee
    * e 8 ranged, 5 vagas viram 2 melee, 2 ranged e 1 healer — que por acaso é a
    * regra que a liderança já seguia, sem estar escrita em lugar nenhum.

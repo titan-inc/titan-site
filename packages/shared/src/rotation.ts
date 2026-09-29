@@ -190,10 +190,20 @@ export function inicioDaSemana(date: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** O texto que a tela mostra ao lado de quem foi sugerido. */
+/**
+ * O texto que a tela mostra ao lado de quem foi sugerido.
+ *
+ * O vocabulário é **"foi banco"**, e não "sentou", por pedido da liderança: a
+ * tela fala sobre pessoas que vão ler o que está escrito sobre elas, e "nunca
+ * sentou" lia como cobrança. Trocar só aquele caso deixaria a tela misturando
+ * dois vocabulários, então os quatro acompanham.
+ *
+ * Não é preciosismo: é a mesma razão de "Não raidou" não ser vermelho na tela
+ * de presença — o sistema descreve um fato, não emite um juízo.
+ */
 export function motivoDaSugestao(weeksSinceBench: number | null): string {
-  if (weeksSinceBench === null) return 'nunca sentou';
-  if (weeksSinceBench <= 0) return 'sentou esta semana';
-  if (weeksSinceBench === 1) return '1 semana sem sentar';
-  return `${weeksSinceBench} semanas sem sentar`;
+  if (weeksSinceBench === null) return 'ainda não foi banco';
+  if (weeksSinceBench <= 0) return 'foi banco esta semana';
+  if (weeksSinceBench === 1) return '1 semana sem banco';
+  return `${weeksSinceBench} semanas sem banco`;
 }

@@ -124,7 +124,7 @@ describe('RotationService', () => {
     });
   });
 
-  it('quem está há mais tempo sem sentar vem primeiro, e nunca-sentou na frente', async () => {
+  it('quem está há mais tempo sem banco vem primeiro, e quem nunca foi na frente', async () => {
     repo.listStandbys.mockResolvedValue([
       // Sentou na semana de 21/09 — a mais recente, então vai por último.
       {
@@ -140,7 +140,7 @@ describe('RotationService', () => {
     const v = await service.getView();
     const nomes = v.suggestion.map((s) => s.name);
 
-    // Dentro da mesma role (os dois são Ranged), quem nunca sentou passa na
+    // Dentro da mesma role (os dois são Ranged), quem nunca foi banco passa na
     // frente de quem sentou há 3 semanas — e a vaga da role é uma só.
     expect(nomes).toContain('Kusiak');
     expect(nomes).not.toContain('Arqueiro');
@@ -151,8 +151,9 @@ describe('RotationService', () => {
   });
 
   it('espalha o banco pelos roles na proporção do time', async () => {
-    // O bug que a tela real expôs: com quase todo mundo empatado em "nunca
-    // sentou", o desempate por nome sentava 3 dos 6 healers e quebrava a raid.
+    // O bug que a tela real expôs: com quase todo mundo empatado em "ainda
+    // não foi banco", o desempate por nome sentava 3 dos 6 healers e quebrava
+    // a raid.
     // Com 2 tanks, 6 healers, 10 melee e 8 ranged, 5 vagas têm que virar
     // 2 melee, 2 ranged e 1 healer.
     const grande = [

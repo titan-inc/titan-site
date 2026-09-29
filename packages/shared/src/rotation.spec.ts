@@ -40,17 +40,25 @@ describe('semanasEntre', () => {
 });
 
 describe('motivoDaSugestao', () => {
-  it('quem nunca sentou é dito como tal, não como zero', () => {
-    // "0 semanas sem sentar" leria como "acabou de sentar" — o oposto.
-    expect(motivoDaSugestao(null)).toBe('nunca sentou');
+  it('quem nunca foi banco é dito como tal, não como zero', () => {
+    // "0 semanas sem banco" leria como "acabou de sentar" — o oposto.
+    expect(motivoDaSugestao(null)).toBe('ainda não foi banco');
   });
 
   it('singular e plural', () => {
-    expect(motivoDaSugestao(1)).toBe('1 semana sem sentar');
-    expect(motivoDaSugestao(3)).toBe('3 semanas sem sentar');
+    expect(motivoDaSugestao(1)).toBe('1 semana sem banco');
+    expect(motivoDaSugestao(3)).toBe('3 semanas sem banco');
   });
 
-  it('quem sentou nesta semana não aparece como candidato', () => {
-    expect(motivoDaSugestao(0)).toBe('sentou esta semana');
+  it('quem foi banco nesta semana não aparece como candidato', () => {
+    expect(motivoDaSugestao(0)).toBe('foi banco esta semana');
+  });
+
+  it('nenhum dos textos usa vocabulário de cobrança', () => {
+    // A tela fala sobre pessoas que vão ler o que está escrito sobre elas.
+    // "nunca sentou" lia como acusação, e foi por isso que caiu.
+    const textos = [null, 0, 1, 3].map(motivoDaSugestao);
+    expect(textos.some((t) => t.includes('nunca'))).toBe(false);
+    expect(textos.every((t) => t.includes('banco'))).toBe(true);
   });
 });
