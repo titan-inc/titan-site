@@ -9,6 +9,7 @@ import {
 } from '@titan/shared';
 import { useState, useTransition } from 'react';
 import { API_URL } from '../../../../lib/config';
+import { corDaClasse } from '../../../../lib/wow/classe';
 
 /** Cor por role. Só `pedra`, porque role não é estado nem alerta. */
 const ROTULO_ROLE: Record<RotationRole, string> = {
@@ -233,10 +234,8 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
               .filter((p) => p.lock?.kind === 'player')
               .map((p) => (
                 <li key={p.characterId} className="flex flex-wrap items-baseline gap-x-3 text-sm">
-                  <span className="text-fg font-mono">
-                    {p.name}
-                    <span className="text-fg-subtle">-{p.realm}</span>
-                  </span>
+                  <NomeDoJogador jogador={p} />
+                  <span className="text-fg-subtle text-xs">{p.wowClass}</span>
                   <span className="text-fg-muted">{p.lock?.reason}</span>
                   {/* Há quantas semanas a trava existe: é o que faz alguém
                       revisar um motivo que já deixou de valer. */}
@@ -268,7 +267,7 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
               <option value="">travar jogador…</option>
               {disponiveis.map((p) => (
                 <option key={p.characterId} value={p.characterId}>
-                  {p.name}-{p.realm} ({p.role})
+                  {p.name}-{p.realm} ({p.wowClass} · {p.role})
                 </option>
               ))}
             </select>
@@ -355,11 +354,10 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
                 key={id}
                 className="border-border/60 flex flex-wrap items-baseline gap-x-3 border-b px-4 py-2 text-sm last:border-0"
               >
-                <span className="text-fg font-mono">
-                  {p.name}
-                  <span className="text-fg-subtle">-{p.realm}</span>
+                <NomeDoJogador jogador={p} />
+                <span className="text-fg-subtle text-xs">
+                  {p.wowClass} · {p.role}
                 </span>
-                <span className="text-fg-subtle text-xs">{p.role}</span>
                 {/* O motivo é o que o RL repete no Discord. Sem ele a sugestão
                     não é defensável, mesmo estando certa. */}
                 <span className="text-pedra-lit text-xs">
@@ -424,6 +422,24 @@ export function Planejador({ inicial }: { inicial: RotationView }) {
   );
 }
 
+/**
+ * Nome + realm, com o nome na cor da classe — é como o time reconhece as
+ * pessoas no jogo, e deixa ver de relance quais classes estão no banco.
+ *
+ * A cor é reforço, não a informação: a classe também sai escrita ao lado, e
+ * grafia desconhecida cai no texto normal em vez de adivinhar.
+ */
+function NomeDoJogador({ jogador }: { jogador: RotationPlayer }) {
+  const cor = corDaClasse(jogador.wowClass);
+
+  return (
+    <span className="text-fg font-mono">
+      <span style={cor ? { color: cor } : undefined}>{jogador.name}</span>
+      <span className="text-fg-subtle">-{jogador.realm}</span>
+    </span>
+  );
+}
+
 /** Põe alguém no banco à mão — a sugestão é rascunho, não decisão. */
 function Adicionar({
   candidatos,
@@ -454,7 +470,7 @@ function Adicionar({
         <option value="">adicionar ao banco…</option>
         {candidatos.map((p) => (
           <option key={p.characterId} value={p.characterId}>
-            {p.name}-{p.realm} ({p.role}) — {motivoDaSugestao(p.weeksSinceBench)}
+            {p.name}-{p.realm} ({p.wowClass} · {p.role}) — {motivoDaSugestao(p.weeksSinceBench)}
           </option>
         ))}
       </select>

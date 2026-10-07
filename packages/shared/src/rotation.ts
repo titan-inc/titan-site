@@ -47,7 +47,7 @@ export const rotationPlayerSchema = z.object({
   name: z.string(),
   realm: z.string(),
 
-  /** Token do cliente (`WARLOCK`), como o WoWAudit devolve. */
+  /** Classe como o WoWAudit devolve ("Death Knight"), string crua. */
   wowClass: z.string(),
   role: rotationRoleSchema,
 
