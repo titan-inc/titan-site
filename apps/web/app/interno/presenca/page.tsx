@@ -7,6 +7,7 @@ import {
 } from '@titan/shared';
 import { redirect } from 'next/navigation';
 import { getAttendanceReport, getSessionUser } from '../../../lib/api';
+import { AtualizarNoite } from './_components/atualizar-noite';
 import { Estado } from './_components/estado';
 import { NotaDoRl } from './_components/nota-do-rl';
 
@@ -142,6 +143,12 @@ function VisaoOficial({ report }: { report: Awaited<ReturnType<typeof getAttenda
               <Cabecalho night={night} entries={night.entries} />
             </div>
           </summary>
+
+          {/* Fora do <summary> de propósito: botão dentro dele abriria e
+              fecharia a noite a cada clique. */}
+          <div className="border-border/60 flex justify-end border-b px-4 py-2">
+            <AtualizarNoite raidId={night.id} />
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">

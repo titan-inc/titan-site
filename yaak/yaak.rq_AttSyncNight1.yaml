@@ -1,0 +1,41 @@
+type: http_request
+model: http_request
+id: rq_AttSyncNight1
+createdAt: 2026-10-08T12:00:00.000000000
+updatedAt: 2026-10-08T12:00:00.000000000
+workspaceId: wk_8LmjjnEbam
+folderId: fl_w6tr7mEstu
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: 'Relê uma noite do WoWAudit e do WCL agora. :raidId é o id da raid no WoWAudit (RaidNight.id). 404 se o WoWAudit não conhece a raid; 502 se a fonte falhou.'
+headers:
+- enabled: true
+  name: Cookie
+  value: titan_session=${[ session_cookie ]}
+  id: null
+method: POST
+name: Atualizar noite do WoWAudit (oficial)
+sortPriority: 0.0
+url: ${[ base_url ]}/internal/attendance/nights/:raidId/sync
+urlParameters:
+- enabled: true
+  name: :raidId
+  value: '123456'
+  id: null
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

@@ -104,15 +104,69 @@ export interface ReportParticipation {
 }
 
 /** Relatório com os campos necessários para presença. */
-interface WclParticipationReport {
+export interface WclParticipationReport {
   code: string;
   startTime: number;
   masterData: { actors: Array<{ id: number; name: string; server: string }> };
   fights: Array<{
     encounterID: number;
     difficulty: number | null;
+    /** Offset dentro do relatório, em ms — não epoch. */
+    startTime: number;
     friendlyPlayers: number[] | null;
   }>;
+}
+
+/**
+ * Decide se uma pull de boss conta para a presença.
+ *
+ * @param pullStartedAt início da pull, em epoch
+ * @param reportStartedAt início do relatório, em epoch — é por ele que a noite
+ *   é datada, então é dele que sai a hora de corte
+ */
+export type PullConta = (pullStartedAt: number, reportStartedAt: number) => boolean;
+
+/**
+ * Quem estava em cada pull de boss de raid de um relatório.
+ *
+ * Pura para o filtro de pull ser testável sem o WCL. `firstPull` e `bossPulls`
+ * contam só as pulls que passaram: quem entrou na primeira pull da raid oficial
+ * não pode aparecer como "entrou na 9ª" por causa da heroica de antes.
+ */
+export function toParticipation(
+  rel: WclParticipationReport,
+  catalog: RaidCatalog,
+  pullConta?: PullConta,
+): ReportParticipation {
+  const atores = new Map(rel.masterData.actors.map((a) => [a.id, a]));
+
+  const pulls = rel.fights.filter(
+    (f) =>
+      f.encounterID !== 0 &&
+      f.difficulty !== null &&
+      catalog.encounters.has(f.encounterID) &&
+      (pullConta === undefined || pullConta(rel.startTime + f.startTime, rel.startTime)),
+  );
+
+  /** actorId → { primeira pull, quantas }. */
+  const porAtor = new Map<number, { firstPull: number; pulls: number }>();
+
+  pulls.forEach((f, i) => {
+    for (const id of f.friendlyPlayers ?? []) {
+      const atual = porAtor.get(id);
+      if (atual) atual.pulls++;
+      else porAtor.set(id, { firstPull: i + 1, pulls: 1 });
+    }
+  });
+
+  const players: PlayerParticipation[] = [];
+  for (const [id, dados] of porAtor) {
+    const ator = atores.get(id);
+    if (!ator) continue;
+    players.push({ name: ator.name, realm: ator.server, ...dados });
+  }
+
+  return { code: rel.code, startedAt: rel.startTime, bossPulls: pulls.length, players };
 }
 
 /**
@@ -218,6 +272,7 @@ export class WarcraftLogsService {
     fights {
       encounterID
       difficulty
+      startTime
       friendlyPlayers
     }`;
 
@@ -322,11 +377,15 @@ export class WarcraftLogsService {
    *   com raid marcada. Sem ele, o histórico inteiro estoura os 3600
    *   pontos/hora — a query de participação é bem mais cara que a de pulls,
    *   porque traz `masterData` e `friendlyPlayers` de cada luta.
+   * @param pullConta filtro **por pull**, aplicado depois de baixar. Filtrar o
+   *   relatório não basta: quem sobe o log às vezes grava a heroica de
+   *   equipamento e a raid oficial no mesmo arquivo.
    */
   async getRaidParticipation(
     from: Date,
     to: Date | null,
     interessa?: (startedAt: number) => boolean,
+    pullConta?: PullConta,
   ): Promise<ReportParticipation[]> {
     const catalogo = await this.getRaidCatalog();
     const relatorios = await this.fetchReports<WclParticipationReport>(
@@ -336,34 +395,7 @@ export class WarcraftLogsService {
       interessa,
     );
 
-    return relatorios.map((rel) => {
-      const atores = new Map(rel.masterData.actors.map((a) => [a.id, a]));
-
-      const pulls = rel.fights.filter(
-        (f) =>
-          f.encounterID !== 0 && f.difficulty !== null && catalogo.encounters.has(f.encounterID),
-      );
-
-      /** actorId → { primeira pull, quantas }. */
-      const porAtor = new Map<number, { firstPull: number; pulls: number }>();
-
-      pulls.forEach((f, i) => {
-        for (const id of f.friendlyPlayers ?? []) {
-          const atual = porAtor.get(id);
-          if (atual) atual.pulls++;
-          else porAtor.set(id, { firstPull: i + 1, pulls: 1 });
-        }
-      });
-
-      const players: PlayerParticipation[] = [];
-      for (const [id, dados] of porAtor) {
-        const ator = atores.get(id);
-        if (!ator) continue;
-        players.push({ name: ator.name, realm: ator.server, ...dados });
-      }
-
-      return { code: rel.code, startedAt: rel.startTime, bossPulls: pulls.length, players };
-    });
+    return relatorios.map((rel) => toParticipation(rel, catalogo, pullConta));
   }
 
   /** Lista os relatórios da janela e busca o detalhe de cada um. */

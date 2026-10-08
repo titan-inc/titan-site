@@ -1,7 +1,9 @@
 import {
+  toParticipation,
   toRaidPulls,
   type RaidCatalog,
   type RaidEncounter,
+  type WclParticipationReport,
   type WclReport,
 } from './warcraftlogs.service';
 
@@ -96,5 +98,44 @@ describe('toRaidPulls', () => {
     const pulls = toRaidPulls([relatorio([fight({ kill: null })])], catalogo());
 
     expect(pulls[0]?.kill).toBe(false);
+  });
+});
+
+describe('toParticipation', () => {
+  /** Heroica de equipamento com pug, depois a raid oficial — no mesmo log. */
+  const noiteComHeroica = (): WclParticipationReport => ({
+    code: 'aBcD1234',
+    startTime: 1_000_000,
+    masterData: {
+      actors: [
+        { id: 1, name: 'Fulano', server: 'Azralon' },
+        { id: 2, name: 'Pug', server: 'Illidan' },
+      ],
+    },
+    fights: [
+      { encounterID: 3176, difficulty: 4, startTime: 100, friendlyPlayers: [1, 2] },
+      { encounterID: 3183, difficulty: 4, startTime: 200, friendlyPlayers: [1, 2] },
+      { encounterID: 0, difficulty: null, startTime: 5_000, friendlyPlayers: [1] },
+      { encounterID: 3176, difficulty: 5, startTime: 10_000, friendlyPlayers: [1] },
+    ],
+  });
+
+  it('sem filtro, conta toda pull de boss de raid', () => {
+    const r = toParticipation(noiteComHeroica(), catalogo());
+
+    expect(r.bossPulls).toBe(3);
+    expect(r.players.map((p) => p.name).sort()).toEqual(['Fulano', 'Pug']);
+  });
+
+  it('o filtro recebe horário absoluto e recontagem começa na primeira pull que passou', () => {
+    const r = toParticipation(
+      noiteComHeroica(),
+      catalogo(),
+      (pull, report) => pull - report >= 10_000,
+    );
+
+    expect(r.bossPulls).toBe(1);
+    // O pug só esteve na heroica, e quem entrou na raid oficial entrou na 1ª.
+    expect(r.players).toEqual([{ name: 'Fulano', realm: 'Azralon', firstPull: 1, pulls: 1 }]);
   });
 });

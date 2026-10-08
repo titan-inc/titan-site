@@ -42,6 +42,8 @@ export interface SyncResult {
   upcoming: number;
   /** Linhas de presença gravadas. */
   entries: number;
+  /** Noites que falharam e ficaram como estavam no banco. */
+  failed: number;
 }
 
 /**
@@ -122,9 +124,54 @@ export class AttendanceService {
 
     if (naJanela.length === 0) {
       this.logger.warn('Nenhuma raid planejada na janela; nada a gravar');
-      return { nights: 0, withLog: 0, withoutLog: 0, ambiguous: 0, upcoming: 0, entries: 0 };
+      return this.vazio();
     }
 
+    return this.processar(naJanela);
+  }
+
+  /**
+   * Reprocessa **uma** noite, agora.
+   *
+   * É a ferramenta do dia seguinte: o raid leader corrige os signups no
+   * WoWAudit (quem esqueceu de responder, quem faltou, quem foi banco) e
+   * confere o resultado aqui sem esperar a rodada das 11h nem um dev.
+   *
+   * Vão junto as outras raids marcadas na mesma data, para a regra de noite
+   * ambígua responder igual à da rodada diária.
+   *
+   * Diferente da rodada em lote, falha **lança**: quem apertou o botão precisa
+   * saber que a noite não foi atualizada, e não ver a tela velha como se fosse
+   * a nova.
+   *
+   * @returns null se o WoWAudit não tem raid com esse id
+   */
+  async syncNight(raidId: number): Promise<SyncResult | null> {
+    const planejadas = await this.wowaudit.getPlannedRaids();
+    const alvo = planejadas.find((r) => r.id === raidId);
+    if (!alvo) return null;
+
+    const resultado = await this.processar(planejadas.filter((r) => r.date === alvo.date));
+    if (resultado.failed > 0) {
+      throw new Error(`a noite ${raidId} (${alvo.date}) não pôde ser reprocessada`);
+    }
+    return resultado;
+  }
+
+  private vazio(): SyncResult {
+    return {
+      nights: 0,
+      withLog: 0,
+      withoutLog: 0,
+      ambiguous: 0,
+      upcoming: 0,
+      entries: 0,
+      failed: 0,
+    };
+  }
+
+  /** Cruza signups e logs das noites dadas, em ordem de data, e grava. */
+  private async processar(naJanela: PlannedRaid[]): Promise<SyncResult> {
     const primeira = naJanela[0];
     if (!primeira) throw new Error('janela sem raids após o filtro');
 
@@ -138,8 +185,19 @@ export class AttendanceService {
 
     // Filtrar por data ANTES de baixar o detalhe: a guilda sobe muito log de
     // M+, e baixar tudo estoura a cota do WCL num backfill de dois anos.
-    const relatorios = await this.wcl.getRaidParticipation(inicio, null, (startedAt) =>
-      datasComRaid.has(this.dataLocal(startedAt)),
+    const relatorios = await this.wcl.getRaidParticipation(
+      inicio,
+      null,
+      (startedAt) => datasComRaid.has(this.dataLocal(startedAt)),
+      // Só conta pull a partir da hora da raid. Antes dela a guilda faz run de
+      // equipamento (heroica com pug) que não é a raid do core, e o log pode
+      // trazer as duas no mesmo arquivo — quem sobe é um jogador, e sobe o que
+      // gravou. Corte por hora e não por dificuldade: a raid oficial é normal,
+      // depois heroica, depois mítica ao longo do patch, e um corte por
+      // dificuldade quebraria a cada troca. Atraso não atrapalha: a primeira
+      // pull da raid oficial sai sempre depois do horário, nunca antes.
+      (pullStartedAt, reportStartedAt) =>
+        pullStartedAt >= this.inicioDaRaid(this.dataLocal(reportStartedAt)),
     );
 
     /** data local → relatórios daquela noite. */
@@ -155,14 +213,7 @@ export class AttendanceService {
     const raidsPorData = new Map<string, number>();
     for (const r of naJanela) raidsPorData.set(r.date, (raidsPorData.get(r.date) ?? 0) + 1);
 
-    const resultado: SyncResult = {
-      nights: naJanela.length,
-      withLog: 0,
-      withoutLog: 0,
-      ambiguous: 0,
-      upcoming: 0,
-      entries: 0,
-    };
+    const resultado: SyncResult = { ...this.vazio(), nights: naJanela.length };
 
     for (const raid of naJanela) {
       // Duas raids marcadas no mesmo dia: não dá para saber de qual é o log.
@@ -189,13 +240,15 @@ export class AttendanceService {
         // Uma noite que falha não pode abortar as outras 157.
         const motivo = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Noite ${raid.id} (${raid.date}) falhou: ${motivo}`);
+        resultado.failed++;
       }
     }
 
     this.logger.log(
       `Presença: ${resultado.nights} noites — ${resultado.withLog} com log, ` +
         `${resultado.withoutLog} sem log, ${resultado.ambiguous} ambíguas, ` +
-        `${resultado.upcoming} a acontecer, ${resultado.entries} registros`,
+        `${resultado.upcoming} a acontecer, ${resultado.failed} com falha, ` +
+        `${resultado.entries} registros`,
     );
     return resultado;
   }
@@ -272,19 +325,26 @@ export class AttendanceService {
       });
     }
 
-    // Quem apareceu no log sem ter feito signup. Existe de verdade — na noite
-    // de 28/07 são três pessoas.
-    for (const [chave, p] of doLog) {
-      if (pessoas.has(chave)) continue;
+    // Com lista de signup, **o WoWAudit decide quem é da noite**, e o log só
+    // diz quem raidou. A lista é o core que o raid leader mantém lá, e é lá
+    // que ele corrige no dia seguinte quem esqueceu de responder. Quem está no
+    // log e não está na lista é pug, ou alt fora do time — não é da raid do
+    // core, e entrar como "Sem confirmar" poluiria a noite de quem é.
+    //
+    // Sem lista (as noites de 2024–2025), o log é o único fato que existe.
+    const temLista = signups.length > 0;
 
-      pessoas.set(chave, {
-        name: p.name,
-        realm: p.realm,
-        signup: null,
-        raided: true,
-        firstPull: p.firstPull,
-        pulls: p.pulls,
-      });
+    if (!temLista) {
+      for (const [chave, p] of doLog) {
+        pessoas.set(chave, {
+          name: p.name,
+          realm: p.realm,
+          signup: null,
+          raided: true,
+          firstPull: p.firstPull,
+          pulls: p.pulls,
+        });
+      }
     }
 
     // Uma chamada só para a noite inteira — resolver por linha seriam dezenas
@@ -320,10 +380,13 @@ export class AttendanceService {
         bossPulls: temEvidencia ? bossPulls : null,
         // Lista vazia é ausência de dado, não ausência de gente: o WoWAudit só
         // devolve signups a partir de 2026.
-        hasSignups: signups.length > 0,
+        hasSignups: temLista,
       },
       entradas,
       this.aindaNaoComecou(raid.date),
+      // Podar só com lista: é ela que diz quem é da noite. Sem lista, uma
+      // leitura vazia do WoWAudit apagaria a noite inteira.
+      temLista,
     );
 
     return { entries, hasEvidence: temEvidencia };

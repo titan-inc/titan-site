@@ -44,11 +44,16 @@ export class AttendanceRepository {
    *
    * @param congelarDeclarado a raid ainda não começou, então o que está no
    *   WoWAudit é a declaração das pessoas e pode virar `signupDeclared`
+   * @param podar `entries` é a noite inteira: quem já estava gravado e não
+   *   veio agora sai. É o que tira pug gravado antes de o WoWAudit virar a
+   *   base, e quem o raid leader removeu da lista depois. Linha com anotação
+   *   **fica** — mesma regra de nunca apagar a correção do humano.
    */
   async saveNight(
     night: RaidNightInput,
     entries: AttendanceInput[],
     congelarDeclarado: boolean,
+    podar = false,
   ): Promise<number> {
     const { id, ...resto } = night;
 
@@ -58,6 +63,18 @@ export class AttendanceRepository {
         create: { id, ...resto },
         update: resto,
       }),
+
+      ...(podar
+        ? [
+            this.prisma.raidAttendance.deleteMany({
+              where: {
+                raidNightId: id,
+                characterId: { notIn: entries.map((e) => e.characterId) },
+                note: null,
+              },
+            }),
+          ]
+        : []),
 
       ...entries.map((e) => {
         const { characterId, ...campos } = e;
