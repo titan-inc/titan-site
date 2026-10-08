@@ -182,7 +182,8 @@ describe('AttendanceService', () => {
     expect(de('Beltrano')?.raided).toBe(false);
   });
 
-  it('quem aparece no log sem ter feito signup entra na noite', async () => {
+  it('sem lista de signup, quem aparece no log entra na noite', async () => {
+    // Noite de 2024–2025: o log é o único fato que existe.
     wcl.getRaidParticipation.mockResolvedValue([
       relatorio({ players: [{ name: 'Avulso', realm: 'Illidan', firstPull: 3, pulls: 8 }] }),
     ]);
@@ -190,6 +191,107 @@ describe('AttendanceService', () => {
     await service.sync();
 
     expect(de('Avulso')).toMatchObject({ signup: null, raided: true, firstPull: 3 });
+  });
+
+  it('com lista de signup, quem só está no log fica fora — pug não é da raid do core', async () => {
+    wowaudit.getRaidSignups.mockResolvedValue([
+      {
+        name: 'Fulano',
+        realm: 'Azralon',
+        nameKey: 'fulano',
+        realmSlug: 'azralon',
+        status: 'Unknown',
+      },
+    ]);
+    wcl.getRaidParticipation.mockResolvedValue([
+      relatorio({
+        players: [
+          { name: 'Fulano', realm: 'Azralon', firstPull: 1, pulls: 10 },
+          { name: 'Pug', realm: 'Illidan', firstPull: 1, pulls: 10 },
+        ],
+      }),
+    ]);
+
+    await service.sync();
+
+    expect(gravados()).toHaveLength(1);
+    expect(de('Fulano')).toMatchObject({ signup: 'Unknown', raided: true });
+  });
+
+  it('poda a noite só quando há lista de signup', async () => {
+    const podou = () => (repo.saveNight.mock.calls as unknown as unknown[][])[0]?.[3];
+
+    await service.sync();
+    expect(podou()).toBe(false);
+
+    jest.clearAllMocks();
+    wowaudit.getRaidSignups.mockResolvedValue([
+      {
+        name: 'Fulano',
+        realm: 'Azralon',
+        nameKey: 'fulano',
+        realmSlug: 'azralon',
+        status: 'Present',
+      },
+    ]);
+
+    await service.sync();
+    expect(podou()).toBe(true);
+  });
+
+  describe('syncNight', () => {
+    it('reprocessa só a noite pedida', async () => {
+      wowaudit.getPlannedRaids.mockResolvedValue([
+        raid({ id: 1, date: '2026-07-21' }),
+        raid({ id: 2, date: '2026-07-28' }),
+      ]);
+
+      const r = await service.syncNight(2);
+
+      expect(r?.nights).toBe(1);
+      expect(wowaudit.getRaidSignups).toHaveBeenCalledWith(2);
+      expect(wowaudit.getRaidSignups).not.toHaveBeenCalledWith(1);
+    });
+
+    it('leva junto a outra raid da mesma data, para a ambiguidade responder igual', async () => {
+      wowaudit.getPlannedRaids.mockResolvedValue([
+        raid({ id: 1, date: '2026-07-28' }),
+        raid({ id: 2, date: '2026-07-28', optional: true }),
+      ]);
+
+      const r = await service.syncNight(1);
+
+      expect(r?.ambiguous).toBe(2);
+    });
+
+    it('raid que o WoWAudit não conhece devolve null', async () => {
+      expect(await service.syncNight(999)).toBeNull();
+    });
+
+    it('lança quando a noite falha — o botão não pode fingir que atualizou', async () => {
+      wowaudit.getRaidSignups.mockRejectedValue(new Error('WoWAudit fora do ar'));
+
+      await expect(service.syncNight(1)).rejects.toThrow('não pôde ser reprocessada');
+    });
+  });
+
+  it('só conta pull a partir da hora da raid — a heroica de antes não é a raid do core', async () => {
+    await service.sync();
+
+    const calls = wcl.getRaidParticipation.mock.calls as unknown as Array<
+      [Date, Date | null, unknown, (pull: number, report: number) => boolean]
+    >;
+    const pullConta = calls[0]?.[3];
+    if (!pullConta) throw new Error('getRaidParticipation sem filtro de pull');
+
+    // Log aberto 19:00 BRT de 28/07 com a heroica, e a raid oficial no mesmo
+    // arquivo depois das 21h.
+    const relatorioAs19 = Date.parse('2026-07-28T22:00:00Z');
+    expect(pullConta(Date.parse('2026-07-28T23:30:00Z'), relatorioAs19)).toBe(false);
+    expect(pullConta(Date.parse('2026-07-29T00:20:00Z'), relatorioAs19)).toBe(true);
+
+    // Pull depois da meia-noite continua sendo da noite em que o log abriu.
+    expect(pullConta(Date.parse('2026-07-29T03:30:00Z'), relatorioAs19)).toBe(true);
   });
 
   it('dois logs na mesma noite viram um só, por união', async () => {
