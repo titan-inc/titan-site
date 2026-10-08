@@ -123,6 +123,20 @@ jobs:
       # `set -euo pipefail` para migration que falha ABORTAR o deploy em vez
       # de seguir para o up -d. Deploy verde com schema velho é exatamente o
       # estado que esta automação existe para impedir.
+      #
+      # `docker image prune -f` nas duas pontas (TIT-155). Cada pull de
+      # `latest` tira a tag da imagem anterior, e ela fica no disco sem nada
+      # que a apague; em 08/10/2026 isso encheu o disco da instância e o pull
+      # morreu com "no space left on device". Antes do pull, limpa o que os
+      # deploys anteriores deixaram, e é o que destrava um disco já cheio;
+      # depois do up -d, apaga a imagem que acabou de ser trocada.
+      #
+      # Sem `-a` e sem `--volumes`, de propósito: só imagem sem tag e sem
+      # container. A imagem em uso e o volume do Postgres — que divide este
+      # disco — ficam intactos.
+      #
+      # `df -h` e `docker system df` vão para o log do Actions: é onde dá para
+      # ver o disco sem precisar de SSH na instância.
       - name: Pull, migrations e restart dos containers
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -133,6 +147,11 @@ jobs:
             set -euo pipefail
             cd /opt/titan-site
             chmod +x scripts/deploy/backup-postgres-to-s3.sh
+            df -h /
+            docker system df
+            docker image prune -f
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml run --rm api ./node_modules/.bin/prisma migrate deploy
             docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+            df -h /
